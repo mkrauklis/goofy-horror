@@ -17,11 +17,15 @@
 </header>
 
 <div class="wrap">
+  <div id="hud">
+    <span id="hud-buttons">Buttons: 0 / 3</span>
+    <span id="hud-door">Door: locked</span>
+  </div>
   <div id="game-canvas-holder" class="panel">
     <canvas id="game-canvas" width="920" height="340"></canvas>
     <div id="game-message"></div>
   </div>
-  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys</p>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys &nbsp;&middot;&nbsp; sound plays after your first key press</p>
 </div>
 
 <script src="levels/level1/level.js"></script>

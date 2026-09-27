@@ -18,11 +18,98 @@
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
   const messageEl = document.getElementById('game-message');
+  const hudButtonsEl = document.getElementById('hud-buttons');
+  const hudDoorEl = document.getElementById('hud-door');
+
+  // ---- procedural audio (no asset files) ----
+  let audioCtx = null;
+  let ambientOsc = null;
+  let ambientGain = null;
+
+  function ensureAudio() {
+    if (audioCtx) return;
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtor) return;
+    audioCtx = new AudioCtor();
+
+    ambientGain = audioCtx.createGain();
+    ambientGain.gain.value = 0.05;
+    ambientGain.connect(audioCtx.destination);
+
+    ambientOsc = audioCtx.createOscillator();
+    ambientOsc.type = 'sine';
+    ambientOsc.frequency.value = 55;
+    ambientOsc.connect(ambientGain);
+    ambientOsc.start();
+
+    const lfo = audioCtx.createOscillator();
+    lfo.frequency.value = 0.15;
+    const lfoGain = audioCtx.createGain();
+    lfoGain.gain.value = 4;
+    lfo.connect(lfoGain);
+    lfoGain.connect(ambientOsc.frequency);
+    lfo.start();
+  }
+
+  function playTone(freq, duration, type, peakGain, delay) {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime + (delay || 0);
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(peakGain || 0.15, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + duration + 0.05);
+  }
+
+  function playButtonChime() {
+    playTone(880, 0.18, 'sine', 0.2);
+  }
+
+  function playDoorUnlockChime() {
+    playTone(440, 0.2, 'triangle', 0.22, 0);
+    playTone(660, 0.2, 'triangle', 0.22, 0.12);
+    playTone(880, 0.3, 'triangle', 0.22, 0.24);
+  }
+
+  function playCatchSting() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(320, start);
+    osc.frequency.exponentialRampToValueAtTime(50, start + 0.45);
+    gain.gain.setValueAtTime(0.28, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.5);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.55);
+  }
+
+  function playWinJingle() {
+    [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
+  }
+
+  function updateAmbientTension() {
+    if (!audioCtx) return;
+    const minDist = Math.min(...players.map((p) => Math.hypot(p.x - monster.x, p.y - monster.y)));
+    const proximity = clamp(1 - minDist / 380, 0, 1);
+    ambientGain.gain.setTargetAtTime(0.05 + proximity * 0.18, audioCtx.currentTime, 0.3);
+    ambientOsc.frequency.setTargetAtTime(55 + proximity * 45, audioCtx.currentTime, 0.3);
+  }
 
   const TRACKED_KEYS = new Set(['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
   const keys = {};
 
   window.addEventListener('keydown', (e) => {
+    ensureAudio();
     if (TRACKED_KEYS.has(e.key)) {
       keys[e.key] = true;
       e.preventDefault();
@@ -151,11 +238,16 @@
         const idx = LEVEL.buttons.findIndex((b) => b.x === t.x && b.y === t.y);
         if (idx >= 0 && !buttonsPressed[idx]) {
           buttonsPressed[idx] = true;
-          if (buttonsPressed.every(Boolean)) doorUnlocked = true;
+          playButtonChime();
+          if (buttonsPressed.every(Boolean)) {
+            doorUnlocked = true;
+            playDoorUnlockChime();
+          }
         }
       }
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
+        playWinJingle();
       }
     });
   }
@@ -297,6 +389,7 @@
     if (gameState !== 'playing') return;
     gameState = 'caught';
     catchFlash = 1;
+    playCatchSting();
     setTimeout(() => {
       resetLevel();
       gameState = 'playing';
@@ -514,12 +607,21 @@
     }
   }
 
+  function updateHud() {
+    const pressedCount = buttonsPressed.filter(Boolean).length;
+    hudButtonsEl.textContent = `Buttons: ${pressedCount} / ${LEVEL.buttons.length}`;
+    hudButtonsEl.classList.toggle('done', pressedCount === LEVEL.buttons.length);
+    hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
+    hudDoorEl.classList.toggle('done', doorUnlocked);
+  }
+
   function loop(now) {
     if (gameState === 'playing') {
       updateInputMovement();
       updateTriggers();
       updateMonster(now);
       updateCatch();
+      updateAmbientTension();
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -534,6 +636,7 @@
     }
 
     updateOverlay();
+    updateHud();
     requestAnimationFrame(loop);
   }
 

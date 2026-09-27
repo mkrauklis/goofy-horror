@@ -76,6 +76,24 @@ header.hero p {
   padding: 0 1.5rem 3rem;
 }
 
+#hud {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--dim);
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+}
+
+#hud span {
+  transition: color 0.2s ease;
+}
+
+#hud span.done {
+  color: var(--accent);
+}
+
 #game-canvas-holder {
   position: relative;
   display: flex;
