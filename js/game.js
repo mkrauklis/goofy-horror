@@ -24,10 +24,12 @@
   const ALERT_GRACE_MS = 2500;
   const FLASHLIGHT_RADIUS = 230;
   const RADAR_DURATION_MS = 10000;
+  const SCANNER_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
   const EAT_DURATION_MS = 3000;
   const CRATE_RESPAWN_MS = 60000;
-  const CRATE_ITEMS = ['radar', 'meat', 'co2'];
+  const CATCH_CUTSCENE_MS = 2000;
+  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner'];
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
@@ -60,6 +62,53 @@
   let ambientOsc = null;
   let ambientGain = null;
   let safeMusicGain = null;
+  let safeGlitchGain = null;
+  let safeVoices = [];
+
+  // A stepped/quantized waveshaper curve -- crushes a smooth sine into a
+  // rougher, lower-resolution digital stair-step, for a lo-fi "glitchy"
+  // texture instead of a clean tone.
+  function makeBitcrushCurve(steps) {
+    const curve = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) {
+      const x = (i / 1023) * 2 - 1;
+      curve[i] = Math.round(x * steps) / steps;
+    }
+    return curve;
+  }
+
+  // Every several seconds, a brief, gentle flutter in the safe-room music's
+  // volume and a soft pitch dip on a couple of voices -- runs continuously
+  // in the background; it's inaudible whenever safeMusicGain itself is
+  // faded near zero. Subtle on purpose: enough to read as "not quite
+  // right" without undercutting the calming point of the music.
+  function scheduleSafeMusicGlitch() {
+    const delay = 3000 + Math.random() * 4500;
+    setTimeout(() => {
+      if (!audioCtx || !safeGlitchGain) return;
+      const t = audioCtx.currentTime;
+      safeGlitchGain.gain.cancelScheduledValues(t);
+      safeGlitchGain.gain.setValueAtTime(1, t);
+      let tt = t;
+      const stutters = 1 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < stutters; i++) {
+        tt += 0.05 + Math.random() * 0.04;
+        safeGlitchGain.gain.setValueAtTime(0.4, tt);
+        tt += 0.04 + Math.random() * 0.04;
+        safeGlitchGain.gain.setValueAtTime(1, tt);
+      }
+      if (Math.random() < 0.4) {
+        safeVoices.forEach((osc) => {
+          const base = osc.frequency.value;
+          osc.frequency.cancelScheduledValues(t);
+          osc.frequency.setValueAtTime(base, t);
+          osc.frequency.linearRampToValueAtTime(base * 0.975, t + 0.09);
+          osc.frequency.linearRampToValueAtTime(base, t + 0.22);
+        });
+      }
+      scheduleSafeMusicGlitch();
+    }, delay);
+  }
 
   function ensureAudio() {
     if (audioCtx) return;
@@ -85,16 +134,51 @@
     lfoGain.connect(ambientOsc.frequency);
     lfo.start();
 
-    // Gentle chord pad that fades in while a player is resting in the safe zone.
+    // Gentle chord pad that fades in while a player is resting in the safe
+    // zone -- pitched down a bit, softly bitcrushed and lightly echoed for
+    // a lower, dreamier "liminal elevator music" character, with an
+    // occasional subtle flutter (see scheduleSafeMusicGlitch) rather than
+    // anything harsh.
     safeMusicGain = audioCtx.createGain();
     safeMusicGain.gain.value = 0.0001;
     safeMusicGain.connect(audioCtx.destination);
-    [261.6, 329.6, 392.0, 523.2].forEach((freq, i) => {
+
+    const safeCrusher = audioCtx.createWaveShaper();
+    safeCrusher.curve = makeBitcrushCurve(14);
+    safeCrusher.oversample = '2x';
+
+    const safeFilter = audioCtx.createBiquadFilter();
+    safeFilter.type = 'lowpass';
+    safeFilter.frequency.value = 1600;
+    safeFilter.Q.value = 0.3;
+
+    // A soft echo gives the pad some room/space instead of sounding dry
+    // and flat, like a real elevator's reverberant little box.
+    const safeDelay = audioCtx.createDelay(1.0);
+    safeDelay.delayTime.value = 0.24;
+    const safeDelayFeedback = audioCtx.createGain();
+    safeDelayFeedback.gain.value = 0.25;
+    const safeDelayMix = audioCtx.createGain();
+    safeDelayMix.gain.value = 0.3;
+    safeDelay.connect(safeDelayFeedback);
+    safeDelayFeedback.connect(safeDelay);
+    safeDelay.connect(safeDelayMix);
+    safeDelayMix.connect(safeMusicGain);
+
+    safeGlitchGain = audioCtx.createGain();
+    safeGlitchGain.gain.value = 1;
+    safeGlitchGain.connect(safeCrusher);
+    safeCrusher.connect(safeFilter);
+    safeFilter.connect(safeMusicGain);
+    safeFilter.connect(safeDelay);
+
+    safeVoices = [];
+    [261.6, 329.6, 392.0, 523.2].map((f) => f * 0.8).forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
       osc.type = 'sine';
       osc.frequency.value = freq;
       const voiceGain = audioCtx.createGain();
-      voiceGain.gain.value = 0.2;
+      voiceGain.gain.value = 0.16;
       const vibrato = audioCtx.createOscillator();
       vibrato.frequency.value = 0.1 + i * 0.03;
       const vibratoGain = audioCtx.createGain();
@@ -103,9 +187,11 @@
       vibratoGain.connect(osc.frequency);
       vibrato.start();
       osc.connect(voiceGain);
-      voiceGain.connect(safeMusicGain);
+      voiceGain.connect(safeGlitchGain);
       osc.start();
+      safeVoices.push(osc);
     });
+    scheduleSafeMusicGlitch();
   }
 
   function updateSafeMusic(inSafeZone) {
@@ -159,13 +245,38 @@
     osc.stop(start + 0.55);
   }
 
+  function playChompThud(delay) {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime + (delay || 0);
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(90, start);
+    osc.frequency.exponentialRampToValueAtTime(40, start + 0.18);
+    gain.gain.setValueAtTime(0.35, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.25);
+  }
+
   function playWinJingle() {
     [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
   }
 
+  function nearestMonster(x, y) {
+    let best = monsters[0], bestD = Infinity;
+    monsters.forEach((m) => {
+      const d = Math.hypot(x - m.x, y - m.y);
+      if (d < bestD) { bestD = d; best = m; }
+    });
+    return best;
+  }
+
   function updateAmbientTension() {
     if (!audioCtx) return;
-    const minDist = Math.min(...players.map((p) => Math.hypot(p.x - monster.x, p.y - monster.y)));
+    const minDist = Math.min(...players.flatMap((p) => monsters.map((m) => Math.hypot(p.x - m.x, p.y - m.y))));
     const proximity = clamp(1 - minDist / 380, 0, 1);
     ambientGain.gain.setTargetAtTime(0.05 + proximity * 0.18, audioCtx.currentTime, 0.3);
     ambientOsc.frequency.setTargetAtTime(55 + proximity * 45, audioCtx.currentTime, 0.3);
@@ -229,7 +340,10 @@
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
-    return { x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0 };
+    return {
+      x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0,
+      caught: false, caughtAt: 0,
+    };
   }
 
   const players = [
@@ -237,28 +351,33 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
-  const monster = {
-    x: 0,
-    y: 0,
-    radius: 16,
-    seed: Math.random() * 100,
-    path: [],
-    pathIndex: 0,
-    nextRepathAt: 0,
-    lookDir: { x: 1, y: 0 },
-    tentacleTargets: [],
-    state: 'patrol', // 'patrol' | 'alert'
-    alertUntil: 0,
-    alertTargetTile: null,
-    patrolIndex: 0,
-    frozenUntil: 0,
-    luredState: 'none', // 'none' | 'lured' | 'eating'
-    lureTarget: null,
-    eatingUntil: 0,
-  };
+  function makeMonster(patrolStartIndex) {
+    return {
+      x: 0,
+      y: 0,
+      radius: 16,
+      seed: Math.random() * 100,
+      path: [],
+      pathIndex: 0,
+      nextRepathAt: 0,
+      lookDir: { x: 1, y: 0 },
+      tentacleTargets: [],
+      state: 'patrol', // 'patrol' | 'alert'
+      alertUntil: 0,
+      alertTargetTile: null,
+      patrolIndex: patrolStartIndex,
+      frozenUntil: 0,
+      luredState: 'none', // 'none' | 'lured' | 'eating'
+      lureTarget: null,
+      eatingUntil: 0,
+    };
+  }
+
+  const monsters = [makeMonster(0), makeMonster(Math.floor(LEVEL.patrolPoints.length / 2))];
 
   let crates = [];
   let radarUntil = 0;
+  let scannerUntil = 0;
   let floatingTexts = [];
 
   function respawnPlayer(p) {
@@ -267,13 +386,21 @@
   }
 
   function resetLevel() {
-    players.forEach(respawnPlayer);
+    players.forEach((p) => {
+      respawnPlayer(p);
+      p.caught = false;
+      p.caughtAt = 0;
+      p.invulnerableUntil = 0;
+    });
 
-    const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
-    monster.x = m.x; monster.y = m.y;
-    monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
-    monster.state = 'patrol'; monster.alertUntil = 0; monster.alertTargetTile = null; monster.patrolIndex = 0;
-    monster.frozenUntil = 0; monster.luredState = 'none'; monster.lureTarget = null; monster.eatingUntil = 0;
+    const spawns = [LEVEL.monsterSpawn, LEVEL.monsterSpawn2 || LEVEL.monsterSpawn];
+    monsters.forEach((mon, i) => {
+      const m = tileCenter(spawns[i].x, spawns[i].y);
+      mon.x = m.x; mon.y = m.y;
+      mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
+      mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
+      mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.eatingUntil = 0;
+    });
 
     buttonsPressed = [false, false, false];
     doorUnlocked = false;
@@ -282,6 +409,7 @@
       x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
     }));
     radarUntil = 0;
+    scannerUntil = 0;
     floatingTexts = [];
     resetExploration();
   }
@@ -313,6 +441,7 @@
   }
 
   function applyMovement(p, ix, iy, dt) {
+    if (p.caught) return; // held fast during the catch cutscene
     if (ix === 0 && iy === 0) return;
     const len = Math.hypot(ix, iy);
     const nx = ix / len, ny = iy / len;
@@ -402,21 +531,41 @@
     }
   }
 
+  // The scanner points at the nearest button that hasn't been pressed yet --
+  // once a button's done, it drops out of consideration entirely so the
+  // scanner never wastes a reading on somewhere you've already been.
+  function nearestUnpressedButton(x, y) {
+    let best = null, bestD = Infinity;
+    LEVEL.buttons.forEach((b, i) => {
+      if (buttonsPressed[i]) return;
+      const c = tileCenter(b.x, b.y);
+      const d = Math.hypot(x - c.x, y - c.y);
+      if (d < bestD) { bestD = d; best = c; }
+    });
+    return best;
+  }
+
   function applyItemEffect(item, x, y, now) {
     if (item === 'radar') {
       radarUntil = now + RADAR_DURATION_MS;
       spawnFloatingText(x, y, 'RADAR');
       playItemChime(880);
     } else if (item === 'meat') {
-      monster.luredState = 'lured';
-      monster.lureTarget = { x, y };
-      monster.path = []; monster.pathIndex = 0;
+      monsters.forEach((m) => {
+        m.luredState = 'lured';
+        m.lureTarget = { x, y };
+        m.path = []; m.pathIndex = 0;
+      });
       spawnFloatingText(x, y, 'MEAT');
       playItemChime(220);
     } else if (item === 'co2') {
-      monster.frozenUntil = now + FREEZE_DURATION_MS;
+      monsters.forEach((m) => { m.frozenUntil = now + FREEZE_DURATION_MS; });
       spawnFloatingText(x, y, 'FROZEN');
       playItemChime(1200);
+    } else if (item === 'scanner') {
+      scannerUntil = now + SCANNER_DURATION_MS;
+      spawnFloatingText(x, y, 'SCANNER');
+      playItemChime(660);
     }
   }
 
@@ -531,20 +680,20 @@
     return true;
   }
 
-  function updateDetection(now) {
+  function updateDetection(m, now) {
     for (const p of players) {
-      if (isHidden(p)) continue;
-      const d = Math.hypot(p.x - monster.x, p.y - monster.y);
-      if (d <= FLASHLIGHT_RADIUS && hasLineOfSight(monster.x, monster.y, p.x, p.y)) {
-        monster.state = 'alert';
-        monster.alertUntil = now + ALERT_GRACE_MS;
-        monster.alertTargetTile = worldToTile(p.x, p.y);
+      if (p.caught || isHidden(p)) continue;
+      const d = Math.hypot(p.x - m.x, p.y - m.y);
+      if (d <= FLASHLIGHT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+        m.state = 'alert';
+        m.alertUntil = now + ALERT_GRACE_MS;
+        m.alertTargetTile = worldToTile(p.x, p.y);
       }
     }
-    if (monster.state === 'alert' && now >= monster.alertUntil) {
-      monster.state = 'patrol';
-      monster.path = [];
-      monster.pathIndex = 0;
+    if (m.state === 'alert' && now >= m.alertUntil) {
+      m.state = 'patrol';
+      m.path = [];
+      m.pathIndex = 0;
     }
   }
 
@@ -565,7 +714,7 @@
     return { x: c.x + off.x * 10, y: c.y + off.y * 10 };
   }
 
-  function updateTentacleTargets(tile) {
+  function updateTentacleTargets(m, tile) {
     const targets = [];
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
@@ -575,109 +724,124 @@
         }
       }
     }
-    monster.tentacleTargets = targets.slice(0, 3);
+    m.tentacleTargets = targets.slice(0, 3);
   }
 
-  function updateMonster(now, dt) {
-    if (now < monster.frozenUntil) return; // frozen solid: no movement, no perception
+  function updateMonster(m, now, dt) {
+    if (now < m.frozenUntil) return; // frozen solid: no movement, no perception
 
-    if (monster.luredState === 'eating') {
-      if (now >= monster.eatingUntil) {
-        monster.luredState = 'none';
-        monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
+    if (m.luredState === 'eating') {
+      if (now >= m.eatingUntil) {
+        m.luredState = 'none';
+        m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
       } else {
         return;
       }
     }
 
-    if (monster.luredState === 'lured') {
-      if (now >= monster.nextRepathAt) {
-        monster.nextRepathAt = now + REPATH_MS;
-        const startTile = worldToTile(monster.x, monster.y);
-        const goalTile = worldToTile(monster.lureTarget.x, monster.lureTarget.y);
+    if (m.luredState === 'lured') {
+      if (now >= m.nextRepathAt) {
+        m.nextRepathAt = now + REPATH_MS;
+        const startTile = worldToTile(m.x, m.y);
+        const goalTile = worldToTile(m.lureTarget.x, m.lureTarget.y);
         const graph = buildMonsterGraph();
         const path = bfsPath(graph, startTile, goalTile);
-        monster.path = path && path.length > 1 ? path.slice(1) : [];
-        monster.pathIndex = 0;
-        updateTentacleTargets(startTile);
+        m.path = path && path.length > 1 ? path.slice(1) : [];
+        m.pathIndex = 0;
+        updateTentacleTargets(m, startTile);
       }
-      if (monster.path && monster.pathIndex < monster.path.length) {
+      if (m.path && m.pathIndex < m.path.length) {
         const step = LURE_SPEED * dt;
-        const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
-        const dx = target.x - monster.x, dy = target.y - monster.y;
+        const target = tileTargetWithOffset(m.path[m.pathIndex]);
+        const dx = target.x - m.x, dy = target.y - m.y;
         const d = Math.hypot(dx, dy);
-        if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
+        if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
         if (d < step) {
-          monster.x = target.x; monster.y = target.y;
-          monster.pathIndex++;
+          m.x = target.x; m.y = target.y;
+          m.pathIndex++;
         } else {
-          monster.x += (dx / d) * step;
-          monster.y += (dy / d) * step;
+          m.x += (dx / d) * step;
+          m.y += (dy / d) * step;
         }
       } else {
-        monster.luredState = 'eating';
-        monster.eatingUntil = now + EAT_DURATION_MS;
+        m.luredState = 'eating';
+        m.eatingUntil = now + EAT_DURATION_MS;
       }
       return;
     }
 
-    updateDetection(now);
+    updateDetection(m, now);
 
-    if (now >= monster.nextRepathAt) {
-      monster.nextRepathAt = now + REPATH_MS;
-      const startTile = worldToTile(monster.x, monster.y);
-      const goalTile = monster.state === 'alert' ? monster.alertTargetTile : LEVEL.patrolPoints[monster.patrolIndex];
+    if (now >= m.nextRepathAt) {
+      m.nextRepathAt = now + REPATH_MS;
+      const startTile = worldToTile(m.x, m.y);
+      const goalTile = m.state === 'alert' ? m.alertTargetTile : LEVEL.patrolPoints[m.patrolIndex];
       const graph = buildMonsterGraph();
       const path = bfsPath(graph, startTile, goalTile);
       if (path && path.length > 1) {
-        monster.path = path.slice(1);
-        monster.pathIndex = 0;
+        m.path = path.slice(1);
+        m.pathIndex = 0;
       } else {
-        monster.path = [];
-        monster.pathIndex = 0;
-        if (monster.state === 'patrol') {
-          monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        m.path = [];
+        m.pathIndex = 0;
+        if (m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       }
-      updateTentacleTargets(startTile);
+      updateTentacleTargets(m, startTile);
     }
 
-    if (monster.path && monster.pathIndex < monster.path.length) {
-      const step = (monster.state === 'alert' ? MONSTER_SPEED : PATROL_SPEED) * dt;
-      const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
-      const dx = target.x - monster.x, dy = target.y - monster.y;
+    if (m.path && m.pathIndex < m.path.length) {
+      const step = (m.state === 'alert' ? MONSTER_SPEED : PATROL_SPEED) * dt;
+      const target = tileTargetWithOffset(m.path[m.pathIndex]);
+      const dx = target.x - m.x, dy = target.y - m.y;
       const d = Math.hypot(dx, dy);
-      if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
+      if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
       if (d < step) {
-        monster.x = target.x; monster.y = target.y;
-        monster.pathIndex++;
-        if (monster.pathIndex >= monster.path.length && monster.state === 'patrol') {
-          monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        m.x = target.x; m.y = target.y;
+        m.pathIndex++;
+        if (m.pathIndex >= m.path.length && m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       } else {
-        monster.x += (dx / d) * step;
-        monster.y += (dy / d) * step;
+        m.x += (dx / d) * step;
+        m.y += (dy / d) * step;
       }
     }
   }
 
   function updateCatch(now) {
-    if (now < monster.frozenUntil) return;
-    if (monster.luredState !== 'none') return;
-    if (monster.state !== 'alert') return;
-    players.forEach((p) => {
-      if (isHidden(p)) return;
-      if (now < p.invulnerableUntil) return;
-      if (Math.hypot(p.x - monster.x, p.y - monster.y) < CATCH_RADIUS) triggerCaught(p, now);
+    monsters.forEach((m) => {
+      if (now < m.frozenUntil) return;
+      if (m.luredState !== 'none') return;
+      if (m.state !== 'alert') return;
+      players.forEach((p) => {
+        if (p.caught) return;
+        if (isHidden(p)) return;
+        if (now < p.invulnerableUntil) return;
+        if (Math.hypot(p.x - m.x, p.y - m.y) < CATCH_RADIUS) triggerCaught(p, now);
+      });
     });
   }
 
   function triggerCaught(p, now) {
+    if (p.caught) return;
     catchFlash = 1;
     playCatchSting();
+    playChompThud(0.35);
     spawnBloodEffect(p.x, p.y);
-    respawnPlayer(p);
-    p.invulnerableUntil = now + 1200;
+    p.caught = true;
+    p.caughtAt = now;
+    p.invulnerableUntil = now + CATCH_CUTSCENE_MS + 1200;
+  }
+
+  function updateCutscenes(now) {
+    players.forEach((p) => {
+      if (p.caught && now - p.caughtAt >= CATCH_CUTSCENE_MS) {
+        respawnPlayer(p);
+        p.caught = false;
+      }
+    });
   }
 
   // ---- blood splatter / particles ----
@@ -926,9 +1090,10 @@
   }
 
   function drawMeatLure(g) {
-    if (monster.luredState === 'none' || !monster.lureTarget) return;
+    const lured = monsters.find((m) => m.luredState !== 'none' && m.lureTarget);
+    if (!lured) return;
     g.save();
-    g.translate(monster.lureTarget.x, monster.lureTarget.y);
+    g.translate(lured.lureTarget.x, lured.lureTarget.y);
     g.fillStyle = '#8a2a2a';
     g.beginPath();
     g.ellipse(0, 0, 9, 6, 0.3, 0, Math.PI * 2);
@@ -953,13 +1118,13 @@
     });
   }
 
-  function drawMonster(g, t) {
+  function drawMonster(g, t, m) {
     g.save();
-    g.translate(monster.x, monster.y);
+    g.translate(m.x, m.y);
 
-    monster.tentacleTargets.forEach((tt, i) => {
-      const wobble = Math.sin(t * 0.005 + i * 2.1 + monster.seed) * 6;
-      const tx = tt.x - monster.x, ty = tt.y - monster.y;
+    m.tentacleTargets.forEach((tt, i) => {
+      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * 6;
+      const tx = tt.x - m.x, ty = tt.y - m.y;
       const midX = tx / 2 + wobble;
       const midY = ty / 2 - wobble;
       g.beginPath();
@@ -975,7 +1140,7 @@
     g.beginPath();
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
-      const r = monster.radius + Math.sin(t * 0.006 + i * 1.7 + monster.seed) * 4;
+      const r = m.radius + Math.sin(t * 0.006 + i * 1.7 + m.seed) * 4;
       const px = Math.cos(a) * r, py = Math.sin(a) * r;
       if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
     }
@@ -986,13 +1151,13 @@
     g.fill();
     g.shadowBlur = 0;
 
-    drawMonsterEye(g, monster.lookDir);
+    drawMonsterEye(g, m);
 
-    if (t < monster.frozenUntil) {
+    if (t < m.frozenUntil) {
       g.beginPath();
       for (let i = 0; i <= points; i++) {
         const a = (i / points) * Math.PI * 2;
-        const r = monster.radius + 3;
+        const r = m.radius + 3;
         const px = Math.cos(a) * r, py = Math.sin(a) * r;
         if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
       }
@@ -1007,8 +1172,9 @@
     g.restore();
   }
 
-  function drawMonsterEye(g, lookDir) {
-    const eyeR = monster.radius * 0.62;
+  function drawMonsterEye(g, m) {
+    const lookDir = m.lookDir;
+    const eyeR = m.radius * 0.62;
 
     const sclera = g.createRadialGradient(0, 0, 1, 0, 0, eyeR);
     sclera.addColorStop(0, '#f2e6d8');
@@ -1026,7 +1192,7 @@
     g.strokeStyle = 'rgba(170,25,25,0.4)';
     g.lineWidth = 0.8;
     for (let i = 0; i < 6; i++) {
-      const a = i * 1.05 + monster.seed;
+      const a = i * 1.05 + m.seed;
       g.beginPath();
       g.moveTo(Math.cos(a) * eyeR, Math.sin(a) * eyeR * 0.8);
       g.lineTo(Math.cos(a) * eyeR * 0.1, Math.sin(a) * eyeR * 0.1);
@@ -1194,7 +1360,7 @@
     ctx.save();
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY);
-    drawMonster(ctx, now);
+    monsters.forEach((m) => drawMonster(ctx, now, m));
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
@@ -1202,14 +1368,18 @@
     buildDarknessMask(camX, camY);
     ctx.drawImage(maskCanvas, vx, 0);
 
-    drawProximityWarning(vx, Math.hypot(p.x - monster.x, p.y - monster.y), now);
-    drawRadar(vx, p, now);
+    const nearest = nearestMonster(p.x, p.y);
+    drawProximityWarning(vx, Math.hypot(p.x - nearest.x, p.y - nearest.y), now);
+    drawRadar(vx, p, now, nearest);
+    drawScanner(vx, p, now);
     drawMinimap(vx);
+
+    if (p.caught) drawCutsceneOverlay(vx, p, now);
 
     ctx.restore();
   }
 
-  function drawRadar(vx, p, now) {
+  function drawRadar(vx, p, now, nearest) {
     if (now > radarUntil) return;
     const cx = vx + VIEW_W - 34, cy = 34;
     ctx.save();
@@ -1220,7 +1390,7 @@
     ctx.strokeStyle = '#3ddc84';
     ctx.lineWidth = 2;
     ctx.stroke();
-    const angle = Math.atan2(monster.y - p.y, monster.x - p.x);
+    const angle = Math.atan2(nearest.y - p.y, nearest.x - p.x);
     ctx.translate(cx, cy);
     ctx.rotate(angle);
     ctx.beginPath();
@@ -1235,6 +1405,34 @@
     ctx.restore();
   }
 
+  function drawScanner(vx, p, now) {
+    if (now > scannerUntil) return;
+    const target = nearestUnpressedButton(p.x, p.y);
+    if (!target) return;
+    const cx = vx + VIEW_W - 34, cy = VIEW_H - 34;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(35,25,5,0.75)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffb43d';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    const angle = Math.atan2(target.y - p.y, target.x - p.x);
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(14, 0);
+    ctx.lineTo(-6, -6);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
+    ctx.fillStyle = '#ffb43d';
+    ctx.shadowColor = '#ffb43d';
+    ctx.shadowBlur = 6;
+    ctx.fill();
+    ctx.restore();
+  }
+
   const PROXIMITY_WARNING_RADIUS = 400;
 
   function drawProximityWarning(vx, dist, now) {
@@ -1244,6 +1442,62 @@
     const alpha = closeness * 0.6 * pulse;
     ctx.fillStyle = `rgba(200,20,20,${alpha})`;
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+  }
+
+  // A short "gotcha" cutscene rendered only in the caught player's own half:
+  // the screen reddens and shakes while a jagged pair of jaws close in from
+  // the top and bottom edges, meeting in the middle right as the bite lands.
+  function drawJaw(g, vx, direction, progress, color) {
+    const teeth = 8;
+    const toothW = VIEW_W / teeth;
+    const reach = progress * (VIEW_H / 2 + 24);
+    g.fillStyle = color;
+    g.beginPath();
+    if (direction === 1) {
+      g.moveTo(vx, 0);
+      g.lineTo(vx + VIEW_W, 0);
+      g.lineTo(vx + VIEW_W, Math.max(0, reach - 14));
+      for (let i = teeth; i >= 0; i--) {
+        const x = vx + i * toothW;
+        const y = reach + (i % 2 === 0 ? 14 : -6);
+        g.lineTo(x, y);
+      }
+      g.lineTo(vx, 0);
+    } else {
+      g.moveTo(vx, VIEW_H);
+      g.lineTo(vx + VIEW_W, VIEW_H);
+      g.lineTo(vx + VIEW_W, VIEW_H - Math.max(0, reach - 14));
+      for (let i = teeth; i >= 0; i--) {
+        const x = vx + i * toothW;
+        const y = VIEW_H - reach - (i % 2 === 0 ? 14 : -6);
+        g.lineTo(x, y);
+      }
+      g.lineTo(vx, VIEW_H);
+    }
+    g.closePath();
+    g.fill();
+  }
+
+  function drawCutsceneOverlay(vx, p, now) {
+    const t = clamp((now - p.caughtAt) / CATCH_CUTSCENE_MS, 0, 1);
+    const jawProgress = clamp(t / 0.75, 0, 1);
+
+    ctx.save();
+    ctx.fillStyle = `rgba(50,0,0,${0.25 + t * 0.35})`;
+    ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+
+    const shake = (1 - t) * 5;
+    ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+
+    drawJaw(ctx, vx, 1, jawProgress, '#3a0d16');
+    drawJaw(ctx, vx, -1, jawProgress, '#2a0810');
+
+    if (t > 0.6) {
+      const flash = clamp((t - 0.6) / 0.15, 0, 1) * (1 - clamp((t - 0.85) / 0.15, 0, 1));
+      ctx.fillStyle = `rgba(255,255,255,${flash * 0.5})`;
+      ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+    }
+    ctx.restore();
   }
 
   function drawDivider() {
@@ -1282,8 +1536,9 @@
       updateInputMovement(dt);
       updateTriggers();
       updateCrates(now);
-      updateMonster(now, dt);
+      monsters.forEach((m) => updateMonster(m, now, dt));
       updateCatch(now);
+      updateCutscenes(now);
       updateExploration();
       updateAmbientTension();
       updateSafeMusic(players.some(isInSafeZone));

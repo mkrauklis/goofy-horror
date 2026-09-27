@@ -19,8 +19,9 @@ Each half of the screen is that player's own camera into the same map.
 
 All three levels flash your screen red, pulsing faster the closer a
 creature gets, regardless of whether it's noticed you yet — your only
-warning to freeze or clear out before it does. Getting caught splatters
-blood at the spot and only respawns the one player who was caught; other
+warning to freeze or clear out before it does. Getting caught plays a
+2-second "gotcha" close-up of the creature closing in on you, then
+splatters blood at the spot and respawns just that one player; other
 players, the creature(s), and any puzzle progress are untouched.
 
 Each split-screen half also has its own **explored-areas map** in the top
@@ -35,6 +36,10 @@ minute. Each one holds one of three items, decided at random when it
 
 - **Radar** — shows a 10-second compass arrow pointing at the nearest
   creature, in the corner of each player's own screen.
+- **Scanner** — a second, separate 10-second compass (bottom-right corner)
+  pointing at whatever's left of the level's real objective — the nearest
+  un-pressed button, the fuse (or the real fuse box once it's picked up), or
+  the generator — and it never points at something you've already done.
 - **Meat** — drops right where the crate was and instantly pulls every
   creature toward it; once a creature arrives it spends 3 seconds eating,
   completely ignoring players.
@@ -45,11 +50,12 @@ minute. Each one holds one of three items, decided at random when it
 
 A huge, sprawling facility (28 rooms in a 7x4 grid linked by a ring of
 corridors) that's pitch black beyond your flashlight's glow — the only
-exception is the spawn room, which stays lit. A fleshy, wall-crawling
-creature with one very realistic eye slowly patrols the corridors. It
-can't tell you're there until your own flashlight fully lands on it — the
-instant it does, it locks onto you at 2.5x your speed for a few seconds
-before giving up and going back to patrolling.
+exception is the spawn room, which stays lit. Two identical fleshy,
+wall-crawling creatures with one very realistic eye each patrol the
+corridors independently. Neither can tell you're there until your own
+flashlight fully lands on it — the instant it does, it locks onto you at
+2.5x your speed for a few seconds before giving up and going back to
+patrolling.
 
 - **3 buttons** are scattered through the facility. Both players need to
   find and stand on all of them to unlock the big door blocking the exit.
@@ -95,10 +101,12 @@ charge starts draining back down.
 The creature itself is a slow caterpillar, one segmented body dragging
 itself along at only 0.9x your speed — outrunning it is trivial, and its
 own eyesight is short-range enough that it rarely notices you first. The
-real danger is the **meat vines** strung across the ground: step on one and
-the caterpillar rockets toward that exact spot at 20x its normal speed. If
-you're still there when it arrives, you're caught; if you've already moved
-on, it settles back into patrolling from wherever the vine was.
+real danger is the **meat vines** strung across the ground — and they're
+everywhere, dense enough that there's essentially always one somewhere on
+screen. Step on one and the caterpillar rockets toward that exact spot at
+20x its normal speed. If you're still there when it arrives, you're
+caught; if you've already moved on, it settles back into patrolling from
+wherever the vine was.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.

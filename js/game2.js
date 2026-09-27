@@ -25,10 +25,12 @@
   const ALERT_GRACE_MS = 2500;
   const PROXIMITY_WARNING_RADIUS = 400;
   const RADAR_DURATION_MS = 10000;
+  const SCANNER_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
   const EAT_DURATION_MS = 3000;
   const CRATE_RESPAWN_MS = 60000;
-  const CRATE_ITEMS = ['radar', 'meat', 'co2'];
+  const CATCH_CUTSCENE_MS = 2000;
+  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner'];
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
@@ -61,6 +63,53 @@
   let ambientOsc = null;
   let ambientGain = null;
   let safeMusicGain = null;
+  let safeGlitchGain = null;
+  let safeVoices = [];
+
+  // A stepped/quantized waveshaper curve -- crushes a smooth sine into a
+  // rougher, lower-resolution digital stair-step, for a lo-fi "glitchy"
+  // texture instead of a clean tone.
+  function makeBitcrushCurve(steps) {
+    const curve = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) {
+      const x = (i / 1023) * 2 - 1;
+      curve[i] = Math.round(x * steps) / steps;
+    }
+    return curve;
+  }
+
+  // Every several seconds, a brief, gentle flutter in the safe-room music's
+  // volume and a soft pitch dip on a couple of voices -- runs continuously
+  // in the background; it's inaudible whenever safeMusicGain itself is
+  // faded near zero. Subtle on purpose: enough to read as "not quite
+  // right" without undercutting the calming point of the music.
+  function scheduleSafeMusicGlitch() {
+    const delay = 3000 + Math.random() * 4500;
+    setTimeout(() => {
+      if (!audioCtx || !safeGlitchGain) return;
+      const t = audioCtx.currentTime;
+      safeGlitchGain.gain.cancelScheduledValues(t);
+      safeGlitchGain.gain.setValueAtTime(1, t);
+      let tt = t;
+      const stutters = 1 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < stutters; i++) {
+        tt += 0.05 + Math.random() * 0.04;
+        safeGlitchGain.gain.setValueAtTime(0.4, tt);
+        tt += 0.04 + Math.random() * 0.04;
+        safeGlitchGain.gain.setValueAtTime(1, tt);
+      }
+      if (Math.random() < 0.4) {
+        safeVoices.forEach((osc) => {
+          const base = osc.frequency.value;
+          osc.frequency.cancelScheduledValues(t);
+          osc.frequency.setValueAtTime(base, t);
+          osc.frequency.linearRampToValueAtTime(base * 0.975, t + 0.09);
+          osc.frequency.linearRampToValueAtTime(base, t + 0.22);
+        });
+      }
+      scheduleSafeMusicGlitch();
+    }, delay);
+  }
 
   function ensureAudio() {
     if (audioCtx) return;
@@ -86,16 +135,51 @@
     lfoGain.connect(ambientOsc.frequency);
     lfo.start();
 
-    // Gentle chord pad that fades in while a player is resting in the safe zone.
+    // Gentle chord pad that fades in while a player is resting in the safe
+    // zone -- pitched down a bit, softly bitcrushed and lightly echoed for
+    // a lower, dreamier "liminal elevator music" character, with an
+    // occasional subtle flutter (see scheduleSafeMusicGlitch) rather than
+    // anything harsh.
     safeMusicGain = audioCtx.createGain();
     safeMusicGain.gain.value = 0.0001;
     safeMusicGain.connect(audioCtx.destination);
-    [261.6, 329.6, 392.0, 523.2].forEach((freq, i) => {
+
+    const safeCrusher = audioCtx.createWaveShaper();
+    safeCrusher.curve = makeBitcrushCurve(14);
+    safeCrusher.oversample = '2x';
+
+    const safeFilter = audioCtx.createBiquadFilter();
+    safeFilter.type = 'lowpass';
+    safeFilter.frequency.value = 1600;
+    safeFilter.Q.value = 0.3;
+
+    // A soft echo gives the pad some room/space instead of sounding dry
+    // and flat, like a real elevator's reverberant little box.
+    const safeDelay = audioCtx.createDelay(1.0);
+    safeDelay.delayTime.value = 0.24;
+    const safeDelayFeedback = audioCtx.createGain();
+    safeDelayFeedback.gain.value = 0.25;
+    const safeDelayMix = audioCtx.createGain();
+    safeDelayMix.gain.value = 0.3;
+    safeDelay.connect(safeDelayFeedback);
+    safeDelayFeedback.connect(safeDelay);
+    safeDelay.connect(safeDelayMix);
+    safeDelayMix.connect(safeMusicGain);
+
+    safeGlitchGain = audioCtx.createGain();
+    safeGlitchGain.gain.value = 1;
+    safeGlitchGain.connect(safeCrusher);
+    safeCrusher.connect(safeFilter);
+    safeFilter.connect(safeMusicGain);
+    safeFilter.connect(safeDelay);
+
+    safeVoices = [];
+    [261.6, 329.6, 392.0, 523.2].map((f) => f * 0.8).forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
       osc.type = 'sine';
       osc.frequency.value = freq;
       const voiceGain = audioCtx.createGain();
-      voiceGain.gain.value = 0.2;
+      voiceGain.gain.value = 0.16;
       const vibrato = audioCtx.createOscillator();
       vibrato.frequency.value = 0.1 + i * 0.03;
       const vibratoGain = audioCtx.createGain();
@@ -104,9 +188,11 @@
       vibratoGain.connect(osc.frequency);
       vibrato.start();
       osc.connect(voiceGain);
-      voiceGain.connect(safeMusicGain);
+      voiceGain.connect(safeGlitchGain);
       osc.start();
+      safeVoices.push(osc);
     });
+    scheduleSafeMusicGlitch();
   }
 
   function updateSafeMusic(inSafeZone) {
@@ -158,6 +244,22 @@
     gain.connect(audioCtx.destination);
     osc.start(start);
     osc.stop(start + 0.55);
+  }
+
+  function playChompThud(delay) {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime + (delay || 0);
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(90, start);
+    osc.frequency.exponentialRampToValueAtTime(40, start + 0.18);
+    gain.gain.setValueAtTime(0.35, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.25);
   }
 
   function playWinJingle() {
@@ -318,7 +420,10 @@
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
-    return { x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0, isMoving: false };
+    return {
+      x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0, isMoving: false,
+      caught: false, caughtAt: 0,
+    };
   }
 
   const players = [
@@ -352,6 +457,7 @@
 
   let crates = [];
   let radarUntil = 0;
+  let scannerUntil = 0;
   let floatingTexts = [];
 
   function respawnPlayer(p) {
@@ -360,7 +466,12 @@
   }
 
   function resetLevel() {
-    players.forEach(respawnPlayer);
+    players.forEach((p) => {
+      respawnPlayer(p);
+      p.caught = false;
+      p.caughtAt = 0;
+      p.invulnerableUntil = 0;
+    });
 
     const spawns = [LEVEL.monsterSpawn, LEVEL.monsterSpawn2 || LEVEL.monsterSpawn];
     monsters.forEach((mon, i) => {
@@ -385,6 +496,7 @@
       x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
     }));
     radarUntil = 0;
+    scannerUntil = 0;
     floatingTexts = [];
     resetExploration();
   }
@@ -416,6 +528,7 @@
   }
 
   function applyMovement(p, ix, iy, dt) {
+    if (p.caught) { p.isMoving = false; return; } // held fast during the catch cutscene
     p.isMoving = ix !== 0 || iy !== 0;
     if (!p.isMoving) return;
     const len = Math.hypot(ix, iy);
@@ -432,6 +545,16 @@
   function isHidden(p) {
     const t = worldToTile(p.x, p.y);
     return tileChar(t.x, t.y) === 'S';
+  }
+
+  // The scanner points at the fuse while it's still sitting on the ground,
+  // or at the real fuse box once someone's carrying it -- never anywhere
+  // that's already done (installed), same "don't point at what's finished"
+  // rule as Level 1's button scanner.
+  function scannerTarget() {
+    if (fuseState === 'ground') return fuseWorldPos;
+    if (fuseState === 'carried') return tileCenter(activeFuseBox.x, activeFuseBox.y);
+    return null;
   }
 
   function resetExploration() {
@@ -516,6 +639,10 @@
       monsters.forEach((m) => { m.frozenUntil = now + FREEZE_DURATION_MS; });
       spawnFloatingText(x, y, 'FROZEN');
       playItemChime(1200);
+    } else if (item === 'scanner') {
+      scannerUntil = now + SCANNER_DURATION_MS;
+      spawnFloatingText(x, y, 'SCANNER');
+      playItemChime(660);
     }
   }
 
@@ -624,7 +751,7 @@
 
   function updateDetection(m, now) {
     for (const p of players) {
-      if (isHidden(p) || !p.isMoving) continue;
+      if (p.caught || isHidden(p) || !p.isMoving) continue;
       const d = Math.hypot(p.x - m.x, p.y - m.y);
       if (d <= DETECT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
         m.state = 'alert';
@@ -728,6 +855,7 @@
       if (m.luredState !== 'none') return;
       if (m.state !== 'alert') return;
       players.forEach((p) => {
+        if (p.caught) return;
         if (isHidden(p)) return;
         if (!p.isMoving) return; // standing still keeps you safe even once it's alerted
         if (now < p.invulnerableUntil) return;
@@ -737,16 +865,28 @@
   }
 
   function triggerCaught(p, now) {
+    if (p.caught) return;
     catchFlash = 1;
     playCatchSting();
+    playChompThud(0.35);
     spawnBloodEffect(p.x, p.y);
     if (fuseCarrier === p) {
       fuseState = 'ground';
       fuseCarrier = null;
       fuseWorldPos = { x: p.x, y: p.y };
     }
-    respawnPlayer(p);
-    p.invulnerableUntil = now + 1200;
+    p.caught = true;
+    p.caughtAt = now;
+    p.invulnerableUntil = now + CATCH_CUTSCENE_MS + 1200;
+  }
+
+  function updateCutscenes(now) {
+    players.forEach((p) => {
+      if (p.caught && now - p.caughtAt >= CATCH_CUTSCENE_MS) {
+        respawnPlayer(p);
+        p.caught = false;
+      }
+    });
   }
 
   // ---- blood splatter / particles ----
@@ -1308,7 +1448,10 @@
     const nearest = nearestMonster(p.x, p.y);
     drawProximityWarning(vx, Math.hypot(p.x - nearest.x, p.y - nearest.y), now);
     drawRadar(vx, p, now, nearest);
+    drawScanner(vx, p, now);
     drawMinimap(vx);
+
+    if (p.caught) drawCutsceneOverlay(vx, p, now);
 
     ctx.restore();
   }
@@ -1336,6 +1479,90 @@
     ctx.shadowColor = '#3ddc84';
     ctx.shadowBlur = 6;
     ctx.fill();
+    ctx.restore();
+  }
+
+  function drawScanner(vx, p, now) {
+    if (now > scannerUntil) return;
+    const target = scannerTarget();
+    if (!target) return;
+    const cx = vx + VIEW_W - 34, cy = VIEW_H - 34;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(35,25,5,0.75)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffb43d';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    const angle = Math.atan2(target.y - p.y, target.x - p.x);
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(14, 0);
+    ctx.lineTo(-6, -6);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
+    ctx.fillStyle = '#ffb43d';
+    ctx.shadowColor = '#ffb43d';
+    ctx.shadowBlur = 6;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // A short "gotcha" cutscene rendered only in the caught player's own half:
+  // the screen greens and shakes while a jagged pair of jaws close in from
+  // the top and bottom edges, meeting in the middle right as the bite lands.
+  function drawJaw(g, vx, direction, progress, color) {
+    const teeth = 8;
+    const toothW = VIEW_W / teeth;
+    const reach = progress * (VIEW_H / 2 + 24);
+    g.fillStyle = color;
+    g.beginPath();
+    if (direction === 1) {
+      g.moveTo(vx, 0);
+      g.lineTo(vx + VIEW_W, 0);
+      g.lineTo(vx + VIEW_W, Math.max(0, reach - 14));
+      for (let i = teeth; i >= 0; i--) {
+        const x = vx + i * toothW;
+        const y = reach + (i % 2 === 0 ? 14 : -6);
+        g.lineTo(x, y);
+      }
+      g.lineTo(vx, 0);
+    } else {
+      g.moveTo(vx, VIEW_H);
+      g.lineTo(vx + VIEW_W, VIEW_H);
+      g.lineTo(vx + VIEW_W, VIEW_H - Math.max(0, reach - 14));
+      for (let i = teeth; i >= 0; i--) {
+        const x = vx + i * toothW;
+        const y = VIEW_H - reach - (i % 2 === 0 ? 14 : -6);
+        g.lineTo(x, y);
+      }
+      g.lineTo(vx, VIEW_H);
+    }
+    g.closePath();
+    g.fill();
+  }
+
+  function drawCutsceneOverlay(vx, p, now) {
+    const t = clamp((now - p.caughtAt) / CATCH_CUTSCENE_MS, 0, 1);
+    const jawProgress = clamp(t / 0.75, 0, 1);
+
+    ctx.save();
+    ctx.fillStyle = `rgba(10,40,15,${0.25 + t * 0.35})`;
+    ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+
+    const shake = (1 - t) * 5;
+    ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+
+    drawJaw(ctx, vx, 1, jawProgress, '#0d2a12');
+    drawJaw(ctx, vx, -1, jawProgress, '#08200c');
+
+    if (t > 0.6) {
+      const flash = clamp((t - 0.6) / 0.15, 0, 1) * (1 - clamp((t - 0.85) / 0.15, 0, 1));
+      ctx.fillStyle = `rgba(255,255,255,${flash * 0.5})`;
+      ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+    }
     ctx.restore();
   }
 
@@ -1379,6 +1606,7 @@
       updateCrates(now);
       monsters.forEach((m) => updateMonster(m, now, dt));
       updateCatch(now);
+      updateCutscenes(now);
       updateExploration();
       updateAmbientTension();
       updateSafeMusic(players.some(isHidden));

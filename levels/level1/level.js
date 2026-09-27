@@ -138,6 +138,7 @@
     spawn1: { x: 13, y: 13 },
     spawn2: { x: 15, y: 13 },
     monsterSpawn: { x: 127, y: 76 },
+    monsterSpawn2: { x: 127, y: 46 },
     buttons: [
       { x: 236, y: 14 },
       { x: 20, y: 107 },
