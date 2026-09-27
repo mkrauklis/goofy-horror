@@ -18,6 +18,14 @@
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
   const messageEl = document.getElementById('game-message');
+
+  // Darkness is composited from a separate offscreen mask so that punching
+  // light holes (globalCompositeOperation 'destination-out') erases only the
+  // mask's own darkness pixels, not the scene already drawn on the main canvas.
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = VIEW_W;
+  maskCanvas.height = VIEW_H;
+  const maskCtx = maskCanvas.getContext('2d');
   const hudButtonsEl = document.getElementById('hud-buttons');
   const hudDoorEl = document.getElementById('hud-door');
 
@@ -171,7 +179,7 @@
     tentacleTargets: [],
   };
 
-  function resetLevel() {
+  function respawnPlayers() {
     const p1 = tileCenter(LEVEL.spawn1.x, LEVEL.spawn1.y);
     const p2 = tileCenter(LEVEL.spawn2.x, LEVEL.spawn2.y);
     players[0].x = p1.x; players[0].y = p1.y; players[0].facing = { x: 0, y: 1 };
@@ -180,7 +188,10 @@
     const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
     monster.x = m.x; monster.y = m.y;
     monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0; monster.tentacleTargets = [];
+  }
 
+  function resetLevel() {
+    respawnPlayers();
     buttonsPressed = [false, false, false];
     doorUnlocked = false;
   }
@@ -391,7 +402,7 @@
     catchFlash = 1;
     playCatchSting();
     setTimeout(() => {
-      resetLevel();
+      respawnPlayers();
       gameState = 'playing';
     }, 1400);
   }
@@ -404,12 +415,12 @@
         const px = x * TILE, py = y * TILE;
         let color;
         switch (ch) {
-          case '#': color = '#241c2c'; break;
-          case 'S': color = '#1c2a1e'; break;
-          case 'V': color = '#141018'; break;
-          case 'E': color = '#241a10'; break;
-          case 'D': color = doorUnlocked ? '#1a1420' : '#3a4552'; break;
-          default: color = '#1a1420';
+          case '#': color = '#262629'; break;
+          case 'S': color = '#26301f'; break;
+          case 'V': color = '#3a3a40'; break;
+          case 'E': color = '#3a301f'; break;
+          case 'D': color = doorUnlocked ? '#58585f' : '#3a4552'; break;
+          default: color = '#58585f';
         }
         g.fillStyle = color;
         g.fillRect(px, py, TILE, TILE);
@@ -516,32 +527,41 @@
     g.restore();
   }
 
-  function punchCone(g, x, y, angle, halfAngle, length, intensity) {
-    g.save();
-    g.beginPath();
-    g.moveTo(x, y);
-    const steps = 10;
-    for (let i = 0; i <= steps; i++) {
-      const a = angle - halfAngle + (halfAngle * 2 * i) / steps;
-      g.lineTo(x + Math.cos(a) * length, y + Math.sin(a) * length);
-    }
-    g.closePath();
-    g.clip();
-    g.globalCompositeOperation = 'destination-out';
-    const grad = g.createRadialGradient(x, y, 0, x, y, length);
-    grad.addColorStop(0, `rgba(0,0,0,${intensity})`);
-    grad.addColorStop(0.7, `rgba(0,0,0,${intensity * 0.6})`);
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = grad;
-    g.fillRect(x - length, y - length, length * 2, length * 2);
-    g.restore();
-  }
-
   function flickerIntensity(seed, t) {
     const n = Math.sin(t * 0.0025 + seed * 12.9) * Math.sin(t * 0.011 + seed * 3.7);
     let v = 0.5 + 0.5 * n;
     if (Math.sin(t * 0.03 + seed * 5.5) > 0.93) v *= 0.1;
     return v;
+  }
+
+  function buildDarknessMask(camX, camY, now) {
+    const worldToScreen = (wx, wy) => ({ x: wx - camX + VIEW_W / 2, y: wy - camY + VIEW_H / 2 });
+
+    maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
+    maskCtx.globalCompositeOperation = 'source-over';
+    maskCtx.fillStyle = 'rgba(3,2,6,0.95)';
+    maskCtx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+    const sz = LEVEL.safeZone;
+    const s0 = worldToScreen(sz.x0 * TILE, sz.y0 * TILE);
+    maskCtx.save();
+    maskCtx.globalCompositeOperation = 'destination-out';
+    maskCtx.fillStyle = 'rgba(0,0,0,1)';
+    maskCtx.fillRect(s0.x, s0.y, (sz.x1 - sz.x0 + 1) * TILE, (sz.y1 - sz.y0 + 1) * TILE);
+    maskCtx.restore();
+
+    players.forEach((pl) => {
+      const s = worldToScreen(pl.x, pl.y);
+      punchLight(maskCtx, s.x, s.y, 90, 1);
+      punchLight(maskCtx, s.x, s.y, 230, 0.85);
+    });
+
+    LEVEL.lights.forEach((l, i) => {
+      const c = tileCenter(l.x, l.y);
+      const s = worldToScreen(c.x, c.y);
+      const inten = flickerIntensity(i, now);
+      punchLight(maskCtx, s.x, s.y, 40 + 30 * inten, 0.15 + 0.55 * inten);
+    });
   }
 
   function renderViewport(index, now) {
@@ -556,32 +576,16 @@
     ctx.clip();
     ctx.fillStyle = '#050308';
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
-    ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
 
+    ctx.save();
+    ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx);
     drawMonster(ctx, now);
     drawPlayers(ctx);
-
-    ctx.fillStyle = 'rgba(3,2,6,0.95)';
-    ctx.fillRect(camX - VIEW_W / 2 - 4, camY - VIEW_H / 2 - 4, VIEW_W + 8, VIEW_H + 8);
-
-    const sz = LEVEL.safeZone;
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = 'rgba(0,0,0,1)';
-    ctx.fillRect(sz.x0 * TILE, sz.y0 * TILE, (sz.x1 - sz.x0 + 1) * TILE, (sz.y1 - sz.y0 + 1) * TILE);
     ctx.restore();
 
-    players.forEach((pl) => {
-      punchLight(ctx, pl.x, pl.y, 55, 0.95);
-      punchCone(ctx, pl.x, pl.y, Math.atan2(pl.facing.y, pl.facing.x), 0.5, 230, 0.95);
-    });
-
-    LEVEL.lights.forEach((l, i) => {
-      const c = tileCenter(l.x, l.y);
-      const inten = flickerIntensity(i, now);
-      punchLight(ctx, c.x, c.y, 40 + 30 * inten, 0.15 + 0.55 * inten);
-    });
+    buildDarknessMask(camX, camY, now);
+    ctx.drawImage(maskCanvas, vx, 0);
 
     ctx.restore();
   }
@@ -598,7 +602,7 @@
   function updateOverlay() {
     if (gameState === 'caught') {
       messageEl.style.display = 'flex';
-      messageEl.textContent = 'CAUGHT — resetting…';
+      messageEl.textContent = 'CAUGHT — respawning…';
     } else if (gameState === 'complete') {
       messageEl.style.display = 'flex';
       messageEl.textContent = 'FACILITY CLEARED — press Enter to play again';
