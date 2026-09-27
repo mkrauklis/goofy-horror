@@ -19,21 +19,22 @@ Each half of the screen is that player's own camera into the same map.
 
 ## Level 1 — The Facility
 
-The only light sources are each player's own flashlight (a directional
-cone that follows your last move) and a handful of dim, flickering wall
-lights. Somewhere in the dark, a fleshy tentacle creature is hunting
-whichever player it can currently see — it's about 10% faster than you,
-crawls along the walls as it moves, and re-routes toward you every half
-second.
+Beyond your flashlight's glow, the facility is pitch black — the only
+exception is the spawn room, which stays lit. Somewhere in the dark, a
+fleshy, wall-crawling creature with one very realistic eye is hunting
+whichever player it can currently see. It's twice your speed and
+re-routes toward you every half second, so once it's found you, outrunning
+it isn't an option — breaking its line of sight (or reaching the safe
+room) is.
 
 - **3 buttons** are scattered through the facility. Both players need to
-  find and stand on all of them to unlock the door blocking the exit.
-- **Vents** are small dead-end alcoves the creature can't enter — duck
-  into one to break a chase.
+  find and stand on all of them to unlock the big door blocking the exit.
 - **The spawn room** is a permanently lit safe zone the creature can't
-  enter either.
-- Getting caught resets the level (buttons, door, and both players).
-  Reaching the exit past the unlocked door clears it.
+  enter.
+- Getting caught only respawns that one player back at the spawn room
+  (with a brief moment of safety) — button and door progress is never
+  lost.
+- Reaching the exit past the unlocked door clears the level.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.

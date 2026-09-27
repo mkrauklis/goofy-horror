@@ -11,7 +11,7 @@
 
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 2.5;
-  const MONSTER_SPEED = PLAYER_SPEED * 1.1;
+  const MONSTER_SPEED = PLAYER_SPEED * 2;
   const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
 
@@ -155,12 +155,12 @@
   // ---- game state ----
   let buttonsPressed = [false, false, false];
   let doorUnlocked = false;
-  let gameState = 'playing'; // 'playing' | 'caught' | 'complete'
+  let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
-    return { x: c.x, y: c.y, color, facing: { x: 0, y: 1 } };
+    return { x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0 };
   }
 
   const players = [
@@ -176,22 +176,22 @@
     path: [],
     pathIndex: 0,
     nextRepathAt: 0,
+    lookDir: { x: 1, y: 0 },
     tentacleTargets: [],
   };
 
-  function respawnPlayers() {
-    const p1 = tileCenter(LEVEL.spawn1.x, LEVEL.spawn1.y);
-    const p2 = tileCenter(LEVEL.spawn2.x, LEVEL.spawn2.y);
-    players[0].x = p1.x; players[0].y = p1.y; players[0].facing = { x: 0, y: 1 };
-    players[1].x = p2.x; players[1].y = p2.y; players[1].facing = { x: 0, y: 1 };
-
-    const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
-    monster.x = m.x; monster.y = m.y;
-    monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0; monster.tentacleTargets = [];
+  function respawnPlayer(p) {
+    const c = tileCenter(p.spawn.x, p.spawn.y);
+    p.x = c.x; p.y = c.y; p.facing = { x: 0, y: 1 };
   }
 
   function resetLevel() {
-    respawnPlayers();
+    players.forEach(respawnPlayer);
+
+    const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
+    monster.x = m.x; monster.y = m.y;
+    monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
+
     buttonsPressed = [false, false, false];
     doorUnlocked = false;
   }
@@ -237,8 +237,7 @@
 
   function isHidden(p) {
     const t = worldToTile(p.x, p.y);
-    const ch = tileChar(t.x, t.y);
-    return ch === 'S' || ch === 'V';
+    return tileChar(t.x, t.y) === 'S';
   }
 
   function updateTriggers() {
@@ -265,7 +264,7 @@
 
   // ---- monster AI ----
   function monsterCanOccupy(ch) {
-    if (ch === '#' || ch === 'S' || ch === 'V') return false;
+    if (ch === '#' || ch === 'S') return false;
     if (ch === 'D') return doorUnlocked;
     return true;
   }
@@ -379,6 +378,7 @@
       const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
       const dx = target.x - monster.x, dy = target.y - monster.y;
       const d = Math.hypot(dx, dy);
+      if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
       if (d < MONSTER_SPEED) {
         monster.x = target.x; monster.y = target.y;
         monster.pathIndex++;
@@ -389,25 +389,35 @@
     }
   }
 
-  function updateCatch() {
+  function updateCatch(now) {
     players.forEach((p) => {
       if (isHidden(p)) return;
-      if (Math.hypot(p.x - monster.x, p.y - monster.y) < CATCH_RADIUS) triggerCaught();
+      if (now < p.invulnerableUntil) return;
+      if (Math.hypot(p.x - monster.x, p.y - monster.y) < CATCH_RADIUS) triggerCaught(p, now);
     });
   }
 
-  function triggerCaught() {
-    if (gameState !== 'playing') return;
-    gameState = 'caught';
+  function triggerCaught(p, now) {
     catchFlash = 1;
     playCatchSting();
-    setTimeout(() => {
-      respawnPlayers();
-      gameState = 'playing';
-    }, 1400);
+    respawnPlayer(p);
+    p.invulnerableUntil = now + 1200;
   }
 
   // ---- rendering ----
+  const doorBounds = (() => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (LEVEL.grid[y][x] === 'D') {
+          x0 = Math.min(x0, x); y0 = Math.min(y0, y);
+          x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+        }
+      }
+    }
+    return { x0, y0, x1, y1 };
+  })();
+
   function drawTiles(g) {
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
@@ -417,7 +427,6 @@
         switch (ch) {
           case '#': color = '#262629'; break;
           case 'S': color = '#26301f'; break;
-          case 'V': color = '#3a3a40'; break;
           case 'E': color = '#3a301f'; break;
           case 'D': color = doorUnlocked ? '#58585f' : '#3a4552'; break;
           default: color = '#58585f';
@@ -429,20 +438,27 @@
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
         }
-        if (ch === 'V') {
-          g.strokeStyle = 'rgba(255,255,255,0.08)';
-          g.lineWidth = 2;
-          for (let i = 1; i < 4; i++) {
-            const gy = py + (TILE / 4) * i;
-            g.beginPath(); g.moveTo(px + 4, gy); g.lineTo(px + TILE - 4, gy); g.stroke();
-          }
-        }
-        if (ch === 'D' && !doorUnlocked) {
-          g.strokeStyle = '#0d1114';
-          g.lineWidth = 3;
-          g.strokeRect(px + 3, py + 3, TILE - 6, TILE - 6);
-        }
       }
+    }
+
+    const dx0 = doorBounds.x0 * TILE, dy0 = doorBounds.y0 * TILE;
+    const dw = (doorBounds.x1 - doorBounds.x0 + 1) * TILE;
+    const dh = (doorBounds.y1 - doorBounds.y0 + 1) * TILE;
+    if (!doorUnlocked) {
+      g.strokeStyle = '#0d1114';
+      g.lineWidth = 4;
+      g.strokeRect(dx0 + 3, dy0 + 3, dw - 6, dh - 6);
+      g.strokeStyle = 'rgba(255,190,60,0.5)';
+      g.lineWidth = 3;
+      g.strokeRect(dx0 + 9, dy0 + 9, dw - 18, dh - 18);
+      g.beginPath();
+      g.moveTo(dx0 + dw / 2, dy0 + 4);
+      g.lineTo(dx0 + dw / 2, dy0 + dh - 4);
+      g.stroke();
+    } else {
+      g.strokeStyle = 'rgba(255,255,255,0.18)';
+      g.lineWidth = 3;
+      g.strokeRect(dx0 + 2, dy0 + 2, dw - 4, dh - 4);
     }
 
     LEVEL.buttons.forEach((b, i) => {
@@ -495,7 +511,65 @@
     g.shadowBlur = 14;
     g.fill();
     g.shadowBlur = 0;
+
+    drawMonsterEye(g, monster.lookDir);
+
     g.restore();
+  }
+
+  function drawMonsterEye(g, lookDir) {
+    const eyeR = monster.radius * 0.62;
+
+    const sclera = g.createRadialGradient(0, 0, 1, 0, 0, eyeR);
+    sclera.addColorStop(0, '#f2e6d8');
+    sclera.addColorStop(0.75, '#dcc4b2');
+    sclera.addColorStop(1, '#7a6252');
+    g.beginPath();
+    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
+    g.fillStyle = sclera;
+    g.fill();
+
+    g.save();
+    g.beginPath();
+    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
+    g.clip();
+    g.strokeStyle = 'rgba(170,25,25,0.4)';
+    g.lineWidth = 0.8;
+    for (let i = 0; i < 6; i++) {
+      const a = i * 1.05 + monster.seed;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * eyeR, Math.sin(a) * eyeR * 0.8);
+      g.lineTo(Math.cos(a) * eyeR * 0.1, Math.sin(a) * eyeR * 0.1);
+      g.stroke();
+    }
+    g.restore();
+
+    const ix = lookDir.x * eyeR * 0.32, iy = lookDir.y * eyeR * 0.26;
+    const irisR = eyeR * 0.48;
+    const iris = g.createRadialGradient(ix, iy, 1, ix, iy, irisR);
+    iris.addColorStop(0, '#c96a2e');
+    iris.addColorStop(0.6, '#7a2f10');
+    iris.addColorStop(1, '#200a05');
+    g.beginPath();
+    g.arc(ix, iy, irisR, 0, Math.PI * 2);
+    g.fillStyle = iris;
+    g.fill();
+
+    g.beginPath();
+    g.arc(ix, iy, irisR * 0.42, 0, Math.PI * 2);
+    g.fillStyle = '#050202';
+    g.fill();
+
+    g.beginPath();
+    g.arc(ix - irisR * 0.3, iy - irisR * 0.3, irisR * 0.16, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.85)';
+    g.fill();
+
+    g.beginPath();
+    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
+    g.strokeStyle = 'rgba(15,4,4,0.7)';
+    g.lineWidth = 1.5;
+    g.stroke();
   }
 
   function drawPlayers(g) {
@@ -527,19 +601,12 @@
     g.restore();
   }
 
-  function flickerIntensity(seed, t) {
-    const n = Math.sin(t * 0.0025 + seed * 12.9) * Math.sin(t * 0.011 + seed * 3.7);
-    let v = 0.5 + 0.5 * n;
-    if (Math.sin(t * 0.03 + seed * 5.5) > 0.93) v *= 0.1;
-    return v;
-  }
-
-  function buildDarknessMask(camX, camY, now) {
+  function buildDarknessMask(camX, camY) {
     const worldToScreen = (wx, wy) => ({ x: wx - camX + VIEW_W / 2, y: wy - camY + VIEW_H / 2 });
 
     maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
     maskCtx.globalCompositeOperation = 'source-over';
-    maskCtx.fillStyle = 'rgba(3,2,6,0.95)';
+    maskCtx.fillStyle = '#000000';
     maskCtx.fillRect(0, 0, VIEW_W, VIEW_H);
 
     const sz = LEVEL.safeZone;
@@ -554,13 +621,6 @@
       const s = worldToScreen(pl.x, pl.y);
       punchLight(maskCtx, s.x, s.y, 90, 1);
       punchLight(maskCtx, s.x, s.y, 230, 0.85);
-    });
-
-    LEVEL.lights.forEach((l, i) => {
-      const c = tileCenter(l.x, l.y);
-      const s = worldToScreen(c.x, c.y);
-      const inten = flickerIntensity(i, now);
-      punchLight(maskCtx, s.x, s.y, 40 + 30 * inten, 0.15 + 0.55 * inten);
     });
   }
 
@@ -584,7 +644,7 @@
     drawPlayers(ctx);
     ctx.restore();
 
-    buildDarknessMask(camX, camY, now);
+    buildDarknessMask(camX, camY);
     ctx.drawImage(maskCanvas, vx, 0);
 
     ctx.restore();
@@ -600,10 +660,7 @@
   }
 
   function updateOverlay() {
-    if (gameState === 'caught') {
-      messageEl.style.display = 'flex';
-      messageEl.textContent = 'CAUGHT — respawning…';
-    } else if (gameState === 'complete') {
+    if (gameState === 'complete') {
       messageEl.style.display = 'flex';
       messageEl.textContent = 'FACILITY CLEARED — press Enter to play again';
     } else {
@@ -624,7 +681,7 @@
       updateInputMovement();
       updateTriggers();
       updateMonster(now);
-      updateCatch();
+      updateCatch(now);
       updateAmbientTension();
     }
 
