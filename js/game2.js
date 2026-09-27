@@ -1,5 +1,5 @@
 (function () {
-  const LEVEL = window.LEVEL1;
+  const LEVEL = window.LEVEL2;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
@@ -11,16 +11,17 @@
 
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 1.25;
-  const MONSTER_SPEED = PLAYER_SPEED * 2;
-  const PATROL_SPEED = PLAYER_SPEED * 0.5;
+  const MONSTER_SPEED = PLAYER_SPEED * 0.7;
   const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
+  const DETECT_RADIUS = 150;
   const ALERT_GRACE_MS = 2500;
-  const FLASHLIGHT_RADIUS = 230;
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
   const messageEl = document.getElementById('game-message');
+  const hudFuseEl = document.getElementById('hud-fuse');
+  const hudDoorEl = document.getElementById('hud-door');
 
   // Darkness is composited from a separate offscreen mask so that punching
   // light holes (globalCompositeOperation 'destination-out') erases only the
@@ -29,8 +30,6 @@
   maskCanvas.width = VIEW_W;
   maskCanvas.height = VIEW_H;
   const maskCtx = maskCanvas.getContext('2d');
-  const hudButtonsEl = document.getElementById('hud-buttons');
-  const hudDoorEl = document.getElementById('hud-door');
 
   // ---- procedural audio (no asset files) ----
   let audioCtx = null;
@@ -78,8 +77,12 @@
     osc.stop(start + duration + 0.05);
   }
 
-  function playButtonChime() {
-    playTone(880, 0.18, 'sine', 0.2);
+  function playPickupChime() {
+    playTone(660, 0.16, 'sine', 0.2);
+  }
+
+  function playWrongSocketBuzz() {
+    playTone(140, 0.2, 'square', 0.15);
   }
 
   function playDoorUnlockChime() {
@@ -155,15 +158,28 @@
     return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
   }
 
+  function hasLineOfSight(x0, y0, x1, y1) {
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const steps = Math.ceil(dist / (TILE / 2));
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const t2 = worldToTile(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+      if (tileChar(t2.x, t2.y) === '#') return false;
+    }
+    return true;
+  }
+
   // ---- game state ----
-  let buttonsPressed = [false, false, false];
+  let fuseState = 'ground'; // 'ground' | 'carried' | 'installed'
+  let fuseCarrier = null; // player object currently holding it
+  let activeFuseBox = null; // the randomly chosen real candidate this playthrough
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
-    return { x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0 };
+    return { x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0, isMoving: false };
   }
 
   const players = [
@@ -200,8 +216,10 @@
     monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
     monster.state = 'patrol'; monster.alertUntil = 0; monster.alertTargetTile = null; monster.patrolIndex = 0;
 
-    buttonsPressed = [false, false, false];
+    fuseState = 'ground';
+    fuseCarrier = null;
     doorUnlocked = false;
+    activeFuseBox = LEVEL.fuseBoxCandidates[Math.floor(Math.random() * LEVEL.fuseBoxCandidates.length)];
   }
   resetLevel();
 
@@ -231,7 +249,8 @@
   }
 
   function applyMovement(p, ix, iy) {
-    if (ix === 0 && iy === 0) return;
+    p.isMoving = ix !== 0 || iy !== 0;
+    if (!p.isMoving) return;
     const len = Math.hypot(ix, iy);
     const nx = ix / len, ny = iy / len;
     p.facing = { x: nx, y: ny };
@@ -252,17 +271,24 @@
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
       const ch = tileChar(t.x, t.y);
-      if (ch === 'B') {
-        const idx = LEVEL.buttons.findIndex((b) => b.x === t.x && b.y === t.y);
-        if (idx >= 0 && !buttonsPressed[idx]) {
-          buttonsPressed[idx] = true;
-          playButtonChime();
-          if (buttonsPressed.every(Boolean)) {
-            doorUnlocked = true;
-            playDoorUnlockChime();
-          }
+
+      if (ch === 'F' && fuseState === 'ground') {
+        fuseState = 'carried';
+        fuseCarrier = p;
+        playPickupChime();
+      }
+
+      if (ch === 'K' && fuseState === 'carried' && fuseCarrier === p) {
+        if (t.x === activeFuseBox.x && t.y === activeFuseBox.y) {
+          fuseState = 'installed';
+          fuseCarrier = null;
+          doorUnlocked = true;
+          playDoorUnlockChime();
+        } else {
+          playWrongSocketBuzz();
         }
       }
+
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
         playWinJingle();
@@ -328,34 +354,6 @@
     return path;
   }
 
-  function hasLineOfSight(x0, y0, x1, y1) {
-    const dist = Math.hypot(x1 - x0, y1 - y0);
-    const steps = Math.ceil(dist / (TILE / 2));
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps;
-      const t2 = worldToTile(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
-      if (tileChar(t2.x, t2.y) === '#') return false;
-    }
-    return true;
-  }
-
-  function updateDetection(now) {
-    for (const p of players) {
-      if (isHidden(p)) continue;
-      const d = Math.hypot(p.x - monster.x, p.y - monster.y);
-      if (d <= FLASHLIGHT_RADIUS && hasLineOfSight(monster.x, monster.y, p.x, p.y)) {
-        monster.state = 'alert';
-        monster.alertUntil = now + ALERT_GRACE_MS;
-        monster.alertTargetTile = worldToTile(p.x, p.y);
-      }
-    }
-    if (monster.state === 'alert' && now >= monster.alertUntil) {
-      monster.state = 'patrol';
-      monster.path = [];
-      monster.pathIndex = 0;
-    }
-  }
-
   function wallOffsetDir(tx, ty) {
     let dx = 0, dy = 0;
     if (tileChar(tx - 1, ty) === '#') dx += 1;
@@ -386,13 +384,35 @@
     monster.tentacleTargets = targets.slice(0, 3);
   }
 
+  function updateDetection(now) {
+    for (const p of players) {
+      if (isHidden(p) || !p.isMoving) continue;
+      const d = Math.hypot(p.x - monster.x, p.y - monster.y);
+      if (d <= DETECT_RADIUS && hasLineOfSight(monster.x, monster.y, p.x, p.y)) {
+        monster.state = 'alert';
+        monster.alertUntil = now + ALERT_GRACE_MS;
+        monster.alertTargetTile = worldToTile(p.x, p.y);
+      }
+    }
+    if (monster.state === 'alert' && now >= monster.alertUntil) {
+      monster.state = 'patrol';
+      monster.path = [];
+      monster.pathIndex = 0;
+    }
+  }
+
   function updateMonster(now) {
     updateDetection(now);
 
     if (now >= monster.nextRepathAt) {
       monster.nextRepathAt = now + REPATH_MS;
       const startTile = worldToTile(monster.x, monster.y);
-      const goalTile = monster.state === 'alert' ? monster.alertTargetTile : LEVEL.patrolPoints[monster.patrolIndex];
+      let goalTile;
+      if (monster.state === 'alert') {
+        goalTile = monster.alertTargetTile;
+      } else {
+        goalTile = LEVEL.patrolPoints[monster.patrolIndex];
+      }
       const graph = buildMonsterGraph();
       const path = bfsPath(graph, startTile, goalTile);
       if (path && path.length > 1) {
@@ -409,20 +429,19 @@
     }
 
     if (monster.path && monster.pathIndex < monster.path.length) {
-      const speed = monster.state === 'alert' ? MONSTER_SPEED : PATROL_SPEED;
       const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
       const dx = target.x - monster.x, dy = target.y - monster.y;
       const d = Math.hypot(dx, dy);
       if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
-      if (d < speed) {
+      if (d < MONSTER_SPEED) {
         monster.x = target.x; monster.y = target.y;
         monster.pathIndex++;
         if (monster.pathIndex >= monster.path.length && monster.state === 'patrol') {
           monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       } else {
-        monster.x += (dx / d) * speed;
-        monster.y += (dy / d) * speed;
+        monster.x += (dx / d) * MONSTER_SPEED;
+        monster.y += (dy / d) * MONSTER_SPEED;
       }
     }
   }
@@ -439,6 +458,10 @@
   function triggerCaught(p, now) {
     catchFlash = 1;
     playCatchSting();
+    if (fuseCarrier === p) {
+      fuseState = 'ground';
+      fuseCarrier = null;
+    }
     respawnPlayer(p);
     p.invulnerableUntil = now + 1200;
   }
@@ -500,16 +523,39 @@
       g.strokeRect(dx0 + 2, dy0 + 2, dw - 4, dh - 4);
     }
 
-    LEVEL.buttons.forEach((b, i) => {
-      const c = tileCenter(b.x, b.y);
+    // fuse-box sockets (visually identical so the real one can't be spotted from afar)
+    LEVEL.fuseBoxCandidates.forEach((k) => {
+      const c = tileCenter(k.x, k.y);
+      const isThisOneLit = doorUnlocked && k.x === activeFuseBox.x && k.y === activeFuseBox.y;
+      g.fillStyle = '#141418';
+      g.fillRect(c.x - 10, c.y - 12, 20, 24);
+      g.fillStyle = isThisOneLit ? '#3ddc84' : '#555';
       g.beginPath();
-      g.arc(c.x, c.y, 9, 0, Math.PI * 2);
-      g.fillStyle = buttonsPressed[i] ? '#3ddc84' : '#e0546b';
+      g.arc(c.x, c.y, 4, 0, Math.PI * 2);
       g.shadowColor = g.fillStyle;
-      g.shadowBlur = 10;
+      g.shadowBlur = isThisOneLit ? 10 : 0;
       g.fill();
       g.shadowBlur = 0;
     });
+
+    if (fuseState === 'ground') {
+      const c = tileCenter(LEVEL.fuse.x, LEVEL.fuse.y);
+      g.save();
+      g.translate(c.x, c.y);
+      g.fillStyle = '#e0b23d';
+      g.fillRect(-4, -10, 8, 20);
+      g.fillStyle = '#c9a02f';
+      g.fillRect(-6, -12, 12, 4);
+      g.fillRect(-6, 8, 12, 4);
+      g.shadowColor = '#ffd76b';
+      g.shadowBlur = 10;
+      g.fillStyle = 'rgba(255,215,107,0.5)';
+      g.beginPath();
+      g.arc(0, 0, 3, 0, Math.PI * 2);
+      g.fill();
+      g.shadowBlur = 0;
+      g.restore();
+    }
 
     const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
     g.beginPath();
@@ -624,6 +670,11 @@
       g.arc(fx, fy, 3, 0, Math.PI * 2);
       g.fillStyle = '#fff8e6';
       g.fill();
+
+      if (fuseState === 'carried' && fuseCarrier === p) {
+        g.fillStyle = '#e0b23d';
+        g.fillRect(p.x - 3, p.y - PLAYER_RADIUS - 12, 6, 10);
+      }
     });
   }
 
@@ -714,16 +765,18 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'FACILITY CLEARED &mdash; press Enter to replay, or <a href="level2.html" style="color:var(--accent)">continue to Level 2 &rarr;</a>';
+      messageEl.innerHTML = 'FACILITY CLEARED &mdash; press Enter to replay, or <a href="index.html" style="color:var(--accent)">back to Level 1</a>';
     } else {
       messageEl.style.display = 'none';
     }
   }
 
   function updateHud() {
-    const pressedCount = buttonsPressed.filter(Boolean).length;
-    hudButtonsEl.textContent = `Buttons: ${pressedCount} / ${LEVEL.buttons.length}`;
-    hudButtonsEl.classList.toggle('done', pressedCount === LEVEL.buttons.length);
+    const fuseLabel = fuseState === 'ground' ? 'on the ground'
+      : fuseState === 'carried' ? `carried by ${fuseCarrier === players[0] ? 'P1' : 'P2'}`
+      : 'installed';
+    hudFuseEl.textContent = `Fuse: ${fuseLabel}`;
+    hudFuseEl.classList.toggle('done', fuseState === 'installed');
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
   }

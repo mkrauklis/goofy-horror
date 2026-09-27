@@ -25,6 +25,25 @@ a {
   color: var(--accent);
 }
 
+.level-nav {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1.5rem 0;
+  font-size: 0.9rem;
+  color: var(--dim);
+}
+
+.level-nav a {
+  color: var(--dim);
+  text-decoration: none;
+}
+
+.level-nav a:hover,
+.level-nav a.active {
+  color: var(--accent);
+}
+
 header.hero {
   padding: 3rem 1.5rem 2rem;
   text-align: center;
