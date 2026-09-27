@@ -1,5 +1,5 @@
 (function () {
-  const LEVEL = window.LEVEL2;
+  const LEVEL = window.LEVEL3;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
@@ -10,44 +10,35 @@
   const VIEW_H = 340;
 
   // Speeds are px/second and movement is scaled by the real elapsed time
-  // each frame (see `dt` in loop()) rather than a fixed px/frame step --
-  // fixed-per-frame movement made real-world speed drift with the frame
-  // rate, which showed up as random-feeling slowdowns whenever a frame
-  // took longer than usual (e.g. a big tile grid redraw).
+  // each frame (see `dt` in loop()) rather than a fixed px/frame step.
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  const PATROL_SPEED = PLAYER_SPEED * 0.7;
-  const CHARGE_SPEED = PLAYER_SPEED * 8;
+  const PATROL_SPEED = PLAYER_SPEED * 0.9; // the caterpillar is a slow roamer...
+  const CHARGE_SPEED = PLAYER_SPEED * 20; // ...until something sets it off
   const LURE_SPEED = PLAYER_SPEED * 0.6;
-  const CATCH_RADIUS = 20;
+  const CATCH_RADIUS = 22;
   const REPATH_MS = 500;
-  const DETECT_RADIUS = 150;
-  const ALERT_GRACE_MS = 2500;
-  const PROXIMITY_WARNING_RADIUS = 400;
+  const ALERT_GRACE_MS = 3000;
+  const DETECT_RADIUS = 70; // very short range of "vision"
+  const GENERATOR_FILL_MS = 5000;
+  const VINE_RESPAWN_MS = 45000;
   const RADAR_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
   const EAT_DURATION_MS = 3000;
   const CRATE_RESPAWN_MS = 60000;
   const CRATE_ITEMS = ['radar', 'meat', 'co2'];
+  const SEGMENT_COUNT = 7;
+  const SEGMENT_SPACING = 15;
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
   const messageEl = document.getElementById('game-message');
-  const hudFuseEl = document.getElementById('hud-fuse');
-  const hudDoorEl = document.getElementById('hud-door');
 
-  // Darkness is composited from a separate offscreen mask so that punching
-  // light holes (globalCompositeOperation 'destination-out') erases only the
-  // mask's own darkness pixels, not the scene already drawn on the main canvas.
   const maskCanvas = document.createElement('canvas');
   maskCanvas.width = VIEW_W;
   maskCanvas.height = VIEW_H;
   const maskCtx = maskCanvas.getContext('2d');
 
-  // Explored-tiles minimap: an offscreen 1px-per-tile canvas that only ever
-  // gets painted to (never cleared), so it builds up a fog-of-war record of
-  // what each session has actually walked near, rather than showing the
-  // whole huge map from the start.
   const exploredCanvas = document.createElement('canvas');
   exploredCanvas.width = COLS;
   exploredCanvas.height = ROWS;
@@ -55,6 +46,9 @@
   let explored = new Uint8Array(COLS * ROWS);
   const EXPLORE_RADIUS = 7;
   const MINIMAP_W = 90;
+
+  const hudGeneratorEl = document.getElementById('hud-generator');
+  const hudDoorEl = document.getElementById('hud-door');
 
   // ---- procedural audio (no asset files) ----
   let audioCtx = null;
@@ -86,7 +80,6 @@
     lfoGain.connect(ambientOsc.frequency);
     lfo.start();
 
-    // Gentle chord pad that fades in while a player is resting in the safe zone.
     safeMusicGain = audioCtx.createGain();
     safeMusicGain.gain.value = 0.0001;
     safeMusicGain.connect(audioCtx.destination);
@@ -130,10 +123,6 @@
     osc.stop(start + duration + 0.05);
   }
 
-  function playPickupChime() {
-    playTone(660, 0.16, 'sine', 0.2);
-  }
-
   function playItemChime(freq) {
     playTone(freq, 0.25, 'square', 0.18);
   }
@@ -142,6 +131,23 @@
     playTone(440, 0.2, 'triangle', 0.22, 0);
     playTone(660, 0.2, 'triangle', 0.22, 0.12);
     playTone(880, 0.3, 'triangle', 0.22, 0.24);
+  }
+
+  function playVineShriek() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(180, start);
+    osc.frequency.exponentialRampToValueAtTime(900, start + 0.3);
+    gain.gain.setValueAtTime(0.001, start);
+    gain.gain.exponentialRampToValueAtTime(0.25, start + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.4);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.45);
   }
 
   function playCatchSting() {
@@ -164,18 +170,9 @@
     [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
   }
 
-  function nearestMonster(x, y) {
-    let best = monsters[0], bestD = Infinity;
-    monsters.forEach((m) => {
-      const d = Math.hypot(x - m.x, y - m.y);
-      if (d < bestD) { bestD = d; best = m; }
-    });
-    return best;
-  }
-
   function updateAmbientTension() {
     if (!audioCtx) return;
-    const minDist = Math.min(...players.flatMap((p) => monsters.map((m) => Math.hypot(p.x - m.x, p.y - m.y))));
+    const minDist = Math.min(...players.map((p) => Math.hypot(p.x - monster.x, p.y - monster.y)));
     const proximity = clamp(1 - minDist / 380, 0, 1);
     ambientGain.gain.setTargetAtTime(0.05 + proximity * 0.18, audioCtx.currentTime, 0.3);
     ambientOsc.frequency.setTargetAtTime(55 + proximity * 45, audioCtx.currentTime, 0.3);
@@ -222,8 +219,7 @@
 
   // A handful of near-identical grays, picked per-tile by hashing its
   // coordinates, so plain floor reads as worn/mottled concrete instead of
-  // one flat color -- stable across frames since it's a function of (x, y),
-  // not random noise re-rolled every draw.
+  // one flat color.
   const FLOOR_SHADES = ['#4c4c53', '#525258', '#58585f', '#5e5e66', '#54545c', '#605f68'];
   function floorShade(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
@@ -231,94 +227,23 @@
     return FLOOR_SHADES[idx];
   }
 
-  function hasLineOfSight(x0, y0, x1, y1) {
-    const dist = Math.hypot(x1 - x0, y1 - y0);
-    const steps = Math.ceil(dist / (TILE / 2));
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps;
-      const t2 = worldToTile(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
-      if (tileChar(t2.x, t2.y) === '#') return false;
-    }
-    return true;
-  }
-
-  const doorBounds = (() => {
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        if (LEVEL.grid[y][x] === 'D') {
-          x0 = Math.min(x0, x); y0 = Math.min(y0, y);
-          x1 = Math.max(x1, x); y1 = Math.max(y1, y);
-        }
-      }
-    }
-    return { x0, y0, x1, y1 };
-  })();
-
-  function bfsPath(graph, start, goal) {
-    const key = (t) => t.y * COLS + t.x;
-    const startKey = key(start), goalKey = key(goal);
-    if (!graph.has(startKey) || !graph.has(goalKey)) return null;
-    if (startKey === goalKey) return [start];
-    const visited = new Set([startKey]);
-    const prev = new Map();
-    const queue = [start];
-    let found = false;
-    while (queue.length) {
-      const cur = queue.shift();
-      if (key(cur) === goalKey) { found = true; break; }
-      const neighbors = graph.get(key(cur)) || [];
-      for (const n of neighbors) {
-        const k = key(n);
-        if (!visited.has(k)) {
-          visited.add(k);
-          prev.set(k, cur);
-          queue.push(n);
-        }
-      }
-    }
-    if (!found) return null;
-    const path = [goal];
-    let curKey = goalKey;
-    while (curKey !== startKey) {
-      const p = prev.get(curKey);
-      path.push(p);
-      curKey = key(p);
-    }
-    path.reverse();
-    return path;
-  }
-
-  function buildGenericGraph() {
-    const graph = new Map();
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        if (LEVEL.grid[y][x] === '#') continue;
-        const list = [];
-        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) return;
-          if (LEVEL.grid[ny][nx] !== '#') list.push({ x: nx, y: ny });
-        });
-        graph.set(y * COLS + x, list);
-      }
-    }
-    return graph;
+  const DIRT_SHADES = ['#5a4127', '#63482b', '#4e3a22', '#6b4f30'];
+  function dirtShade(x, y) {
+    const h = Math.imul(x + 91, 374761393) ^ Math.imul(y - 17, 668265263);
+    const idx = ((h ^ (h >>> 13)) >>> 0) % DIRT_SHADES.length;
+    return DIRT_SHADES[idx];
   }
 
   // ---- game state ----
-  let fuseState = 'ground'; // 'ground' | 'carried' | 'installed'
-  let fuseCarrier = null; // player object currently holding it
-  let fuseWorldPos = { x: 0, y: 0 }; // where the fuse currently sits, if on the ground
-  let activeFuseBox = null; // the randomly chosen real socket this playthrough
-  let wirePath = []; // world-space points tracing the wire from the socket to the door
+  let generatorProgress = 0;
+  let generatorActive = false;
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
-    return { x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0, isMoving: false };
+    return { x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0 };
   }
 
   const players = [
@@ -326,31 +251,29 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
-  function makeMonster(patrolStartIndex) {
-    return {
-      x: 0,
-      y: 0,
-      radius: 24,
-      seed: Math.random() * 100,
-      path: [],
-      pathIndex: 0,
-      nextRepathAt: 0,
-      lookDir: { x: 1, y: 0 },
-      tentacleTargets: [],
-      state: 'patrol', // 'patrol' | 'alert'
-      alertUntil: 0,
-      alertTargetTile: null,
-      patrolIndex: patrolStartIndex,
-      frozenUntil: 0,
-      luredState: 'none', // 'none' | 'lured' | 'eating'
-      lureTarget: null,
-      eatingUntil: 0,
-    };
-  }
-
-  const monsters = [makeMonster(0), makeMonster(Math.floor(LEVEL.patrolPoints.length / 2))];
+  const monster = {
+    x: 0,
+    y: 0,
+    radius: 12,
+    seed: Math.random() * 100,
+    path: [],
+    pathIndex: 0,
+    nextRepathAt: 0,
+    lookDir: { x: 1, y: 0 },
+    state: 'patrol', // 'patrol' | 'alert'
+    alertUntil: 0,
+    alertTargetTile: null,
+    patrolIndex: 0,
+    frozenUntil: 0,
+    luredState: 'none', // 'none' | 'lured' | 'eating'
+    lureTarget: null,
+    eatingUntil: 0,
+    trail: [],
+    segments: [],
+  };
 
   let crates = [];
+  let vines = [];
   let radarUntil = 0;
   let floatingTexts = [];
 
@@ -359,31 +282,29 @@
     p.x = c.x; p.y = c.y; p.facing = { x: 0, y: 1 };
   }
 
+  function resetExploration() {
+    explored = new Uint8Array(COLS * ROWS);
+    exploredCtx.clearRect(0, 0, COLS, ROWS);
+  }
+
   function resetLevel() {
     players.forEach(respawnPlayer);
 
-    const spawns = [LEVEL.monsterSpawn, LEVEL.monsterSpawn2 || LEVEL.monsterSpawn];
-    monsters.forEach((mon, i) => {
-      const m = tileCenter(spawns[i].x, spawns[i].y);
-      mon.x = m.x; mon.y = m.y;
-      mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
-      mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
-      mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.eatingUntil = 0;
-    });
+    const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
+    monster.x = m.x; monster.y = m.y;
+    monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
+    monster.state = 'patrol'; monster.alertUntil = 0; monster.alertTargetTile = null; monster.patrolIndex = 0;
+    monster.frozenUntil = 0; monster.luredState = 'none'; monster.lureTarget = null; monster.eatingUntil = 0;
+    monster.trail = []; monster.segments = [];
 
-    fuseState = 'ground';
-    fuseCarrier = null;
-    fuseWorldPos = tileCenter(LEVEL.fuse.x, LEVEL.fuse.y);
+    generatorProgress = 0;
+    generatorActive = false;
     doorUnlocked = false;
-    activeFuseBox = LEVEL.fuseBoxCandidates[Math.floor(Math.random() * LEVEL.fuseBoxCandidates.length)];
-
-    const graph = buildGenericGraph();
-    const path = bfsPath(graph, activeFuseBox, { x: doorBounds.x0, y: doorBounds.y0 });
-    wirePath = path ? path.map((t) => tileCenter(t.x, t.y)) : [];
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
       x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
     }));
+    vines = (LEVEL.vineSpawns || []).map((v) => ({ x: v.x, y: v.y, triggered: false, triggeredAt: 0 }));
     radarUntil = 0;
     floatingTexts = [];
     resetExploration();
@@ -416,8 +337,7 @@
   }
 
   function applyMovement(p, ix, iy, dt) {
-    p.isMoving = ix !== 0 || iy !== 0;
-    if (!p.isMoving) return;
+    if (ix === 0 && iy === 0) return;
     const len = Math.hypot(ix, iy);
     const nx = ix / len, ny = iy / len;
     p.facing = { x: nx, y: ny };
@@ -429,20 +349,17 @@
     applyMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), dt);
   }
 
-  function isHidden(p) {
+  function isInSafeZone(p) {
     const t = worldToTile(p.x, p.y);
     return tileChar(t.x, t.y) === 'S';
-  }
-
-  function resetExploration() {
-    explored = new Uint8Array(COLS * ROWS);
-    exploredCtx.clearRect(0, 0, COLS, ROWS);
   }
 
   function minimapColorFor(ch) {
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
     if (ch === 'S') return '#3ddc84';
+    if (ch === 'P') return '#5ec9e8';
+    if (ch === 'T') return '#7a5a34';
     return '#3c3c46';
   }
 
@@ -505,15 +422,13 @@
       spawnFloatingText(x, y, 'RADAR');
       playItemChime(880);
     } else if (item === 'meat') {
-      monsters.forEach((m) => {
-        m.luredState = 'lured';
-        m.lureTarget = { x, y };
-        m.path = []; m.pathIndex = 0;
-      });
+      monster.luredState = 'lured';
+      monster.lureTarget = { x, y };
+      monster.path = []; monster.pathIndex = 0;
       spawnFloatingText(x, y, 'MEAT');
       playItemChime(220);
     } else if (item === 'co2') {
-      monsters.forEach((m) => { m.frozenUntil = now + FREEZE_DURATION_MS; });
+      monster.frozenUntil = now + FREEZE_DURATION_MS;
       spawnFloatingText(x, y, 'FROZEN');
       playItemChime(1200);
     }
@@ -539,33 +454,67 @@
     });
   }
 
+  function updateVines(now) {
+    players.forEach((p) => {
+      const t = worldToTile(p.x, p.y);
+      vines.forEach((v) => {
+        if (v.triggered) return;
+        if (v.x === t.x && v.y === t.y) {
+          v.triggered = true;
+          v.triggeredAt = now;
+          const target = tileCenter(v.x, v.y);
+          monster.state = 'alert';
+          monster.alertUntil = now + ALERT_GRACE_MS;
+          monster.alertTargetTile = { x: v.x, y: v.y };
+          monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
+          spawnFloatingText(target.x, target.y, 'SNARE!');
+          playVineShriek();
+        }
+      });
+    });
+    vines.forEach((v) => {
+      if (v.triggered && now - v.triggeredAt >= VINE_RESPAWN_MS) {
+        v.triggered = false;
+      }
+    });
+  }
+
   function updateTriggers() {
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
       const ch = tileChar(t.x, t.y);
-
-      if (fuseState === 'ground') {
-        const fuseTile = worldToTile(fuseWorldPos.x, fuseWorldPos.y);
-        if (t.x === fuseTile.x && t.y === fuseTile.y) {
-          fuseState = 'carried';
-          fuseCarrier = p;
-          playPickupChime();
-        }
-      }
-
-      if (ch === 'K' && fuseState === 'carried' && fuseCarrier === p &&
-          t.x === activeFuseBox.x && t.y === activeFuseBox.y) {
-        fuseState = 'installed';
-        fuseCarrier = null;
-        doorUnlocked = true;
-        playDoorUnlockChime();
-      }
-
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
         playWinJingle();
       }
     });
+  }
+
+  function updateGenerator(dt) {
+    if (generatorActive) return;
+    const onPlate1 = players.some((p) => {
+      const t = worldToTile(p.x, p.y);
+      return t.x === LEVEL.plate1.x && t.y === LEVEL.plate1.y;
+    });
+    const onPlate2 = players.some((p) => {
+      const t = worldToTile(p.x, p.y);
+      return t.x === LEVEL.plate2.x && t.y === LEVEL.plate2.y;
+    });
+    const p0t = worldToTile(players[0].x, players[0].y);
+    const p1t = worldToTile(players[1].x, players[1].y);
+    const samePlayerTile = p0t.x === p1t.x && p0t.y === p1t.y;
+    const bothHeld = onPlate1 && onPlate2 && !samePlayerTile;
+
+    if (bothHeld) {
+      generatorProgress = Math.min(1, generatorProgress + dt / (GENERATOR_FILL_MS / 1000));
+      if (generatorProgress >= 1) {
+        generatorActive = true;
+        doorUnlocked = true;
+        playDoorUnlockChime();
+      }
+    } else {
+      generatorProgress = Math.max(0, generatorProgress - dt / (GENERATOR_FILL_MS / 1000 / 2));
+    }
   }
 
   // ---- monster AI ----
@@ -592,6 +541,68 @@
     return graph;
   }
 
+  function bfsPath(graph, start, goal) {
+    const key = (t) => t.y * COLS + t.x;
+    const startKey = key(start), goalKey = key(goal);
+    if (!graph.has(startKey) || !graph.has(goalKey)) return null;
+    if (startKey === goalKey) return [start];
+    const visited = new Set([startKey]);
+    const prev = new Map();
+    const queue = [start];
+    let found = false;
+    while (queue.length) {
+      const cur = queue.shift();
+      if (key(cur) === goalKey) { found = true; break; }
+      const neighbors = graph.get(key(cur)) || [];
+      for (const n of neighbors) {
+        const k = key(n);
+        if (!visited.has(k)) {
+          visited.add(k);
+          prev.set(k, cur);
+          queue.push(n);
+        }
+      }
+    }
+    if (!found) return null;
+    const path = [goal];
+    let curKey = goalKey;
+    while (curKey !== startKey) {
+      const p = prev.get(curKey);
+      path.push(p);
+      curKey = key(p);
+    }
+    path.reverse();
+    return path;
+  }
+
+  function hasLineOfSight(x0, y0, x1, y1) {
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const steps = Math.ceil(dist / (TILE / 2));
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const t2 = worldToTile(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+      if (tileChar(t2.x, t2.y) === '#') return false;
+    }
+    return true;
+  }
+
+  function updateDetection(now) {
+    for (const p of players) {
+      if (isInSafeZone(p)) continue;
+      const d = Math.hypot(p.x - monster.x, p.y - monster.y);
+      if (d <= DETECT_RADIUS && hasLineOfSight(monster.x, monster.y, p.x, p.y)) {
+        monster.state = 'alert';
+        monster.alertUntil = now + ALERT_GRACE_MS;
+        monster.alertTargetTile = worldToTile(p.x, p.y);
+      }
+    }
+    if (monster.state === 'alert' && now >= monster.alertUntil) {
+      monster.state = 'patrol';
+      monster.path = [];
+      monster.pathIndex = 0;
+    }
+  }
+
   function wallOffsetDir(tx, ty) {
     let dx = 0, dy = 0;
     if (tileChar(tx - 1, ty) === '#') dx += 1;
@@ -609,130 +620,122 @@
     return { x: c.x + off.x * 10, y: c.y + off.y * 10 };
   }
 
-  function updateTentacleTargets(m, tile) {
-    const targets = [];
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        if (tileChar(tile.x + dx, tile.y + dy) === '#') {
-          targets.push(tileCenter(tile.x + dx, tile.y + dy));
-        }
+  function updateCaterpillarSegments(m) {
+    m.trail.unshift({ x: m.x, y: m.y });
+    if (m.trail.length > 600) m.trail.length = 600;
+    const segPositions = [];
+    let distAccum = 0;
+    let targetDist = SEGMENT_SPACING;
+    let segIndex = 0;
+    for (let i = 1; i < m.trail.length && segIndex < SEGMENT_COUNT; i++) {
+      const a = m.trail[i - 1], b = m.trail[i];
+      const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+      while (distAccum + segLen >= targetDist && segIndex < SEGMENT_COUNT) {
+        const t = segLen > 0.0001 ? (targetDist - distAccum) / segLen : 0;
+        segPositions.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+        segIndex++;
+        targetDist += SEGMENT_SPACING;
       }
+      distAccum += segLen;
     }
-    m.tentacleTargets = targets.slice(0, 3);
+    const last = m.trail[m.trail.length - 1] || { x: m.x, y: m.y };
+    while (segPositions.length < SEGMENT_COUNT) segPositions.push(last);
+    m.segments = segPositions;
   }
 
-  function updateDetection(m, now) {
-    for (const p of players) {
-      if (isHidden(p) || !p.isMoving) continue;
-      const d = Math.hypot(p.x - m.x, p.y - m.y);
-      if (d <= DETECT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
-        m.state = 'alert';
-        m.alertUntil = now + ALERT_GRACE_MS;
-        m.alertTargetTile = worldToTile(p.x, p.y);
-      }
-    }
-    if (m.state === 'alert' && now >= m.alertUntil) {
-      m.state = 'patrol';
-      m.path = [];
-      m.pathIndex = 0;
-    }
-  }
+  function updateMonster(now, dt) {
+    if (now < monster.frozenUntil) { updateCaterpillarSegments(monster); return; }
 
-  function updateMonster(m, now, dt) {
-    if (now < m.frozenUntil) return; // frozen solid: no movement, no perception
-
-    if (m.luredState === 'eating') {
-      if (now >= m.eatingUntil) {
-        m.luredState = 'none';
-        m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
+    if (monster.luredState === 'eating') {
+      if (now >= monster.eatingUntil) {
+        monster.luredState = 'none';
+        monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
       } else {
+        updateCaterpillarSegments(monster);
         return;
       }
     }
 
-    if (m.luredState === 'lured') {
-      if (now >= m.nextRepathAt) {
-        m.nextRepathAt = now + REPATH_MS;
-        const startTile = worldToTile(m.x, m.y);
-        const goalTile = worldToTile(m.lureTarget.x, m.lureTarget.y);
+    if (monster.luredState === 'lured') {
+      if (now >= monster.nextRepathAt) {
+        monster.nextRepathAt = now + REPATH_MS;
+        const startTile = worldToTile(monster.x, monster.y);
+        const goalTile = worldToTile(monster.lureTarget.x, monster.lureTarget.y);
         const graph = buildMonsterGraph();
         const path = bfsPath(graph, startTile, goalTile);
-        m.path = path && path.length > 1 ? path.slice(1) : [];
-        m.pathIndex = 0;
-        updateTentacleTargets(m, startTile);
+        monster.path = path && path.length > 1 ? path.slice(1) : [];
+        monster.pathIndex = 0;
       }
-      if (m.path && m.pathIndex < m.path.length) {
+      if (monster.path && monster.pathIndex < monster.path.length) {
         const step = LURE_SPEED * dt;
-        const target = tileTargetWithOffset(m.path[m.pathIndex]);
-        const dx = target.x - m.x, dy = target.y - m.y;
+        const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
+        const dx = target.x - monster.x, dy = target.y - monster.y;
         const d = Math.hypot(dx, dy);
-        if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
+        if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
         if (d < step) {
-          m.x = target.x; m.y = target.y;
-          m.pathIndex++;
+          monster.x = target.x; monster.y = target.y;
+          monster.pathIndex++;
         } else {
-          m.x += (dx / d) * step;
-          m.y += (dy / d) * step;
+          monster.x += (dx / d) * step;
+          monster.y += (dy / d) * step;
         }
       } else {
-        m.luredState = 'eating';
-        m.eatingUntil = now + EAT_DURATION_MS;
+        monster.luredState = 'eating';
+        monster.eatingUntil = now + EAT_DURATION_MS;
       }
+      updateCaterpillarSegments(monster);
       return;
     }
 
-    updateDetection(m, now);
+    updateDetection(now);
 
-    if (now >= m.nextRepathAt) {
-      m.nextRepathAt = now + REPATH_MS;
-      const startTile = worldToTile(m.x, m.y);
-      const goalTile = m.state === 'alert' ? m.alertTargetTile : LEVEL.patrolPoints[m.patrolIndex];
+    if (now >= monster.nextRepathAt) {
+      monster.nextRepathAt = now + REPATH_MS;
+      const startTile = worldToTile(monster.x, monster.y);
+      const goalTile = monster.state === 'alert' ? monster.alertTargetTile : LEVEL.patrolPoints[monster.patrolIndex];
       const graph = buildMonsterGraph();
       const path = bfsPath(graph, startTile, goalTile);
       if (path && path.length > 1) {
-        m.path = path.slice(1);
-        m.pathIndex = 0;
+        monster.path = path.slice(1);
+        monster.pathIndex = 0;
       } else {
-        m.path = [];
-        m.pathIndex = 0;
-        if (m.state === 'patrol') {
-          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        monster.path = [];
+        monster.pathIndex = 0;
+        if (monster.state === 'patrol') {
+          monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       }
-      updateTentacleTargets(m, startTile);
     }
 
-    if (m.path && m.pathIndex < m.path.length) {
-      const step = (m.state === 'alert' ? CHARGE_SPEED : PATROL_SPEED) * dt;
-      const target = tileTargetWithOffset(m.path[m.pathIndex]);
-      const dx = target.x - m.x, dy = target.y - m.y;
+    if (monster.path && monster.pathIndex < monster.path.length) {
+      const step = (monster.state === 'alert' ? CHARGE_SPEED : PATROL_SPEED) * dt;
+      const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
+      const dx = target.x - monster.x, dy = target.y - monster.y;
       const d = Math.hypot(dx, dy);
-      if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
+      if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
       if (d < step) {
-        m.x = target.x; m.y = target.y;
-        m.pathIndex++;
-        if (m.pathIndex >= m.path.length && m.state === 'patrol') {
-          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        monster.x = target.x; monster.y = target.y;
+        monster.pathIndex++;
+        if (monster.pathIndex >= monster.path.length && monster.state === 'patrol') {
+          monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       } else {
-        m.x += (dx / d) * step;
-        m.y += (dy / d) * step;
+        monster.x += (dx / d) * step;
+        monster.y += (dy / d) * step;
       }
     }
+
+    updateCaterpillarSegments(monster);
   }
 
   function updateCatch(now) {
-    monsters.forEach((m) => {
-      if (now < m.frozenUntil) return;
-      if (m.luredState !== 'none') return;
-      if (m.state !== 'alert') return;
-      players.forEach((p) => {
-        if (isHidden(p)) return;
-        if (!p.isMoving) return; // standing still keeps you safe even once it's alerted
-        if (now < p.invulnerableUntil) return;
-        if (Math.hypot(p.x - m.x, p.y - m.y) < CATCH_RADIUS) triggerCaught(p, now);
-      });
+    if (now < monster.frozenUntil) return;
+    if (monster.luredState !== 'none') return;
+    if (monster.state !== 'alert') return;
+    players.forEach((p) => {
+      if (isInSafeZone(p)) return;
+      if (now < p.invulnerableUntil) return;
+      if (Math.hypot(p.x - monster.x, p.y - monster.y) < CATCH_RADIUS) triggerCaught(p, now);
     });
   }
 
@@ -740,11 +743,6 @@
     catchFlash = 1;
     playCatchSting();
     spawnBloodEffect(p.x, p.y);
-    if (fuseCarrier === p) {
-      fuseState = 'ground';
-      fuseCarrier = null;
-      fuseWorldPos = { x: p.x, y: p.y };
-    }
     respawnPlayer(p);
     p.invulnerableUntil = now + 1200;
   }
@@ -822,24 +820,18 @@
   }
 
   // ---- rendering ----
-  function drawWire(g) {
-    if (wirePath.length < 2) return;
-    g.save();
-    g.strokeStyle = doorUnlocked ? '#3ddc84' : '#7a2f10';
-    g.lineWidth = 3;
-    g.lineCap = 'round';
-    g.lineJoin = 'round';
-    if (doorUnlocked) {
-      g.shadowColor = '#3ddc84';
-      g.shadowBlur = 6;
+  const doorBounds = (() => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (LEVEL.grid[y][x] === 'D') {
+          x0 = Math.min(x0, x); y0 = Math.min(y0, y);
+          x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+        }
+      }
     }
-    g.beginPath();
-    g.moveTo(wirePath[0].x, wirePath[0].y);
-    for (let i = 1; i < wirePath.length; i++) g.lineTo(wirePath[i].x, wirePath[i].y);
-    g.stroke();
-    g.shadowBlur = 0;
-    g.restore();
-  }
+    return { x0, y0, x1, y1 };
+  })();
 
   function drawTiles(g, camX, camY) {
     const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
@@ -854,7 +846,9 @@
         switch (ch) {
           case '#': color = '#262629'; break;
           case 'S': color = floorShade(x, y); break;
+          case 'T': color = dirtShade(x, y); break;
           case 'E': color = '#3a301f'; break;
+          case 'P': color = floorShade(x, y); break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
@@ -865,10 +859,18 @@
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
         }
+        if (ch === 'T') {
+          g.fillStyle = 'rgba(0,0,0,0.15)';
+          const pebbles = 3;
+          for (let i = 0; i < pebbles; i++) {
+            const seed = (x * 7 + y * 13 + i * 31) % 17;
+            g.beginPath();
+            g.arc(px + 6 + (seed % 5) * 5, py + 6 + ((seed * 3) % 5) * 5, 1.5, 0, Math.PI * 2);
+            g.fill();
+          }
+        }
       }
     }
-
-    drawWire(g);
 
     const dx0 = doorBounds.x0 * TILE, dy0 = doorBounds.y0 * TILE;
     const dw = (doorBounds.x1 - doorBounds.x0 + 1) * TILE;
@@ -890,48 +892,117 @@
       g.strokeRect(dx0 + 2, dy0 + 2, dw - 4, dh - 4);
     }
 
-    // the one real fuse-box socket (the other candidate rooms are just empty now)
-    const bc = tileCenter(activeFuseBox.x, activeFuseBox.y);
-    g.fillStyle = '#141418';
-    g.fillRect(bc.x - 10, bc.y - 12, 20, 24);
-    g.fillStyle = doorUnlocked ? '#3ddc84' : '#555';
-    g.beginPath();
-    g.arc(bc.x, bc.y, 4, 0, Math.PI * 2);
-    g.shadowColor = g.fillStyle;
-    g.shadowBlur = doorUnlocked ? 10 : 0;
-    g.fill();
-    g.shadowBlur = 0;
-
-    if (fuseState === 'ground') {
-      g.save();
-      g.translate(fuseWorldPos.x, fuseWorldPos.y);
-      g.fillStyle = '#e0b23d';
-      g.fillRect(-4, -10, 8, 20);
-      g.fillStyle = '#c9a02f';
-      g.fillRect(-6, -12, 12, 4);
-      g.fillRect(-6, 8, 12, 4);
-      g.shadowColor = '#ffd76b';
-      g.shadowBlur = 10;
-      g.fillStyle = 'rgba(255,215,107,0.5)';
-      g.beginPath();
-      g.arc(0, 0, 3, 0, Math.PI * 2);
-      g.fill();
-      g.shadowBlur = 0;
-      g.restore();
-    }
-
     const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
     g.beginPath();
     g.arc(ex.x, ex.y, doorUnlocked ? 12 : 6, 0, Math.PI * 2);
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
 
+    drawGeneratorRoom(g);
     drawSafeZone(g);
     drawCorpses(g);
     drawBloodSplatters(g);
+    drawVines(g);
     drawCrates(g);
     drawMeatLure(g);
     drawFloatingTexts(g);
+  }
+
+  function drawWireSegment(g, x0, y0, x1, y1, active) {
+    g.save();
+    g.strokeStyle = active ? '#3ddc84' : '#7a2f10';
+    g.lineWidth = 3;
+    g.lineCap = 'round';
+    if (active) { g.shadowColor = '#3ddc84'; g.shadowBlur = 6; }
+    g.beginPath();
+    g.moveTo(x0, y0);
+    g.lineTo(x1, y1);
+    g.stroke();
+    g.shadowBlur = 0;
+    g.restore();
+  }
+
+  function drawGeneratorRoom(g) {
+    const genC = tileCenter(LEVEL.generator.x, LEVEL.generator.y);
+    const p1C = tileCenter(LEVEL.plate1.x, LEVEL.plate1.y);
+    const p2C = tileCenter(LEVEL.plate2.x, LEVEL.plate2.y);
+
+    drawWireSegment(g, p1C.x, p1C.y, genC.x, genC.y, generatorActive);
+    drawWireSegment(g, p2C.x, p2C.y, genC.x, genC.y, generatorActive);
+
+    [[p1C, onPlateNow(LEVEL.plate1)], [p2C, onPlateNow(LEVEL.plate2)]].forEach(([c, pressed]) => {
+      g.save();
+      g.translate(c.x, c.y);
+      g.fillStyle = pressed ? '#5ec9e8' : '#3a4048';
+      g.fillRect(-11, -11, 22, 22);
+      g.strokeStyle = '#1c2226';
+      g.lineWidth = 2;
+      g.strokeRect(-11, -11, 22, 22);
+      if (pressed) {
+        g.shadowColor = '#5ec9e8';
+        g.shadowBlur = 10;
+        g.fillStyle = 'rgba(94,201,232,0.5)';
+        g.fillRect(-7, -7, 14, 14);
+        g.shadowBlur = 0;
+      }
+      g.restore();
+    });
+
+    g.save();
+    g.translate(genC.x, genC.y);
+    g.fillStyle = '#33363c';
+    g.fillRect(-16, -14, 32, 28);
+    g.strokeStyle = '#181a1e';
+    g.lineWidth = 2;
+    g.strokeRect(-16, -14, 32, 28);
+    const litColor = generatorActive ? '#3ddc84' : `rgba(255,200,60,${0.3 + generatorProgress * 0.6})`;
+    g.fillStyle = litColor;
+    g.shadowColor = litColor;
+    g.shadowBlur = generatorActive ? 12 : 4 + generatorProgress * 8;
+    for (let i = 0; i < 3; i++) {
+      g.beginPath();
+      g.arc(-9 + i * 9, -6, 2.4, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.shadowBlur = 0;
+    if (!generatorActive) {
+      g.fillStyle = '#1c1e22';
+      g.fillRect(-12, 4, 24, 6);
+      g.fillStyle = '#ffd27a';
+      g.fillRect(-12, 4, 24 * generatorProgress, 6);
+    }
+    g.restore();
+  }
+
+  function onPlateNow(plate) {
+    return players.some((p) => {
+      const t = worldToTile(p.x, p.y);
+      return t.x === plate.x && t.y === plate.y;
+    });
+  }
+
+  function drawVines(g) {
+    vines.forEach((v) => {
+      if (v.triggered) return;
+      const c = tileCenter(v.x, v.y);
+      g.save();
+      g.translate(c.x, c.y);
+      g.strokeStyle = '#3a6b2a';
+      g.lineWidth = 2.5;
+      g.lineCap = 'round';
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2 + v.x * 0.3;
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.quadraticCurveTo(Math.cos(a) * 6, Math.sin(a) * 6, Math.cos(a) * 11, Math.sin(a) * 11);
+        g.stroke();
+      }
+      g.fillStyle = '#5a2a3a';
+      g.beginPath();
+      g.arc(0, 0, 3.5, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+    });
   }
 
   function drawTable(g, cx, cy) {
@@ -1013,10 +1084,9 @@
   }
 
   function drawMeatLure(g) {
-    const lured = monsters.find((m) => m.luredState !== 'none' && m.lureTarget);
-    if (!lured) return;
+    if (monster.luredState === 'none' || !monster.lureTarget) return;
     g.save();
-    g.translate(lured.lureTarget.x, lured.lureTarget.y);
+    g.translate(monster.lureTarget.x, monster.lureTarget.y);
     g.fillStyle = '#8a2a2a';
     g.beginPath();
     g.ellipse(0, 0, 9, 6, 0.3, 0, Math.PI * 2);
@@ -1041,46 +1111,48 @@
     });
   }
 
-  function drawMonster(g, t, m) {
-    g.save();
-    g.translate(m.x, m.y);
-
-    m.tentacleTargets.forEach((tt, i) => {
-      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * 6;
-      const tx = tt.x - m.x, ty = tt.y - m.y;
-      const midX = tx / 2 + wobble;
-      const midY = ty / 2 - wobble;
+  function drawMonster(g, t) {
+    // Body segments, tail first so the head draws on top.
+    for (let i = monster.segments.length - 1; i >= 0; i--) {
+      const seg = monster.segments[i];
+      const r = monster.radius * (1 - i * 0.06);
+      g.save();
+      g.translate(seg.x, seg.y);
       g.beginPath();
-      g.moveTo(0, 0);
-      g.quadraticCurveTo(midX, midY, tx, ty);
-      g.strokeStyle = '#1a6a2e';
-      g.lineWidth = 4;
-      g.lineCap = 'round';
-      g.stroke();
-    });
+      g.arc(0, 0, Math.max(4, r), 0, Math.PI * 2);
+      g.fillStyle = i % 2 === 0 ? '#4a3a1e' : '#5a4726';
+      g.shadowColor = '#2a2010';
+      g.shadowBlur = 6;
+      g.fill();
+      g.shadowBlur = 0;
+      g.restore();
+    }
+
+    g.save();
+    g.translate(monster.x, monster.y);
 
     const points = 10;
     g.beginPath();
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
-      const r = m.radius + Math.sin(t * 0.006 + i * 1.7 + m.seed) * 4;
+      const r = monster.radius + Math.sin(t * 0.006 + i * 1.7 + monster.seed) * 2.5;
       const px = Math.cos(a) * r, py = Math.sin(a) * r;
       if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
     }
     g.closePath();
-    g.fillStyle = '#0f4a1c';
-    g.shadowColor = '#2f7a3f';
-    g.shadowBlur = 14;
+    g.fillStyle = '#3a2e16';
+    g.shadowColor = '#6b5228';
+    g.shadowBlur = 12;
     g.fill();
     g.shadowBlur = 0;
 
-    drawMonsterEye(g, m);
+    drawMonsterEye(g, monster.lookDir);
 
-    if (t < m.frozenUntil) {
+    if (t < monster.frozenUntil) {
       g.beginPath();
       for (let i = 0; i <= points; i++) {
         const a = (i / points) * Math.PI * 2;
-        const r = m.radius + 3;
+        const r = monster.radius + 3;
         const px = Math.cos(a) * r, py = Math.sin(a) * r;
         if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
       }
@@ -1095,9 +1167,8 @@
     g.restore();
   }
 
-  function drawMonsterEye(g, m) {
-    const lookDir = m.lookDir;
-    const eyeR = m.radius * 0.62;
+  function drawMonsterEye(g, lookDir) {
+    const eyeR = monster.radius * 0.62;
 
     const sclera = g.createRadialGradient(0, 0, 1, 0, 0, eyeR);
     sclera.addColorStop(0, '#f2e6d8');
@@ -1108,27 +1179,12 @@
     g.fillStyle = sclera;
     g.fill();
 
-    g.save();
-    g.beginPath();
-    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
-    g.clip();
-    g.strokeStyle = 'rgba(170,25,25,0.4)';
-    g.lineWidth = 0.8;
-    for (let i = 0; i < 6; i++) {
-      const a = i * 1.05 + m.seed;
-      g.beginPath();
-      g.moveTo(Math.cos(a) * eyeR, Math.sin(a) * eyeR * 0.8);
-      g.lineTo(Math.cos(a) * eyeR * 0.1, Math.sin(a) * eyeR * 0.1);
-      g.stroke();
-    }
-    g.restore();
-
     const ix = lookDir.x * eyeR * 0.32, iy = lookDir.y * eyeR * 0.26;
     const irisR = eyeR * 0.48;
     const iris = g.createRadialGradient(ix, iy, 1, ix, iy, irisR);
-    iris.addColorStop(0, '#c96a2e');
-    iris.addColorStop(0.6, '#7a2f10');
-    iris.addColorStop(1, '#200a05');
+    iris.addColorStop(0, '#8a6a2e');
+    iris.addColorStop(0.6, '#4a3210');
+    iris.addColorStop(1, '#150a05');
     g.beginPath();
     g.arc(ix, iy, irisR, 0, Math.PI * 2);
     g.fillStyle = iris;
@@ -1158,12 +1214,10 @@
       g.translate(p.x, p.y);
       g.rotate(Math.atan2(p.facing.y, p.facing.x));
 
-      // boots, peeking out from under the suit
       g.fillStyle = '#2b2b28';
       g.beginPath(); g.ellipse(-R * 0.9, -R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
       g.beginPath(); g.ellipse(-R * 0.9, R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
 
-      // oxygen tank + hose up to the collar
       g.strokeStyle = '#54544c';
       g.lineWidth = 2.5;
       g.beginPath();
@@ -1173,7 +1227,6 @@
       g.fillStyle = '#54544c';
       g.fillRect(-R * 1.5, -4.5, 7, 9);
 
-      // bulky coverall body
       g.beginPath();
       g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
       g.fillStyle = p.color;
@@ -1182,7 +1235,6 @@
       g.lineWidth = 1.5;
       g.stroke();
 
-      // hazard chevron stripe across the chest
       g.save();
       g.beginPath();
       g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
@@ -1193,19 +1245,16 @@
       g.fillRect(-R * 1.3, -R * 0.1, R * 2.6, R * 0.1);
       g.restore();
 
-      // rubber gloves
       g.fillStyle = '#e8d94a';
       g.beginPath(); g.arc(-R * 0.15, -R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
       g.beginPath(); g.arc(-R * 0.15, R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
 
-      // sealed collar ring
       g.beginPath();
       g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
       g.strokeStyle = '#1c1c18';
       g.lineWidth = 3;
       g.stroke();
 
-      // helmet dome
       g.beginPath();
       g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
       g.fillStyle = 'rgba(220,222,210,0.95)';
@@ -1214,7 +1263,6 @@
       g.lineWidth = 1.5;
       g.stroke();
 
-      // big face visor, facing forward
       g.beginPath();
       g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
       g.fillStyle = '#0d1418';
@@ -1228,11 +1276,6 @@
       g.fill();
 
       g.restore();
-
-      if (fuseState === 'carried' && fuseCarrier === p) {
-        g.fillStyle = '#e0b23d';
-        g.fillRect(p.x - 3, p.y - PLAYER_RADIUS - 12, 6, 10);
-      }
     });
   }
 
@@ -1272,15 +1315,6 @@
     });
   }
 
-  function drawProximityWarning(vx, dist, now) {
-    if (dist > PROXIMITY_WARNING_RADIUS) return;
-    const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
-    const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
-    const alpha = closeness * 0.6 * pulse;
-    ctx.fillStyle = `rgba(200,20,20,${alpha})`;
-    ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
-  }
-
   function renderViewport(index, now) {
     const p = players[index];
     const vx = index * VIEW_W;
@@ -1297,7 +1331,7 @@
     ctx.save();
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY);
-    monsters.forEach((m) => drawMonster(ctx, now, m));
+    drawMonster(ctx, now);
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
@@ -1305,15 +1339,14 @@
     buildDarknessMask(camX, camY);
     ctx.drawImage(maskCanvas, vx, 0);
 
-    const nearest = nearestMonster(p.x, p.y);
-    drawProximityWarning(vx, Math.hypot(p.x - nearest.x, p.y - nearest.y), now);
-    drawRadar(vx, p, now, nearest);
+    drawProximityWarning(vx, Math.hypot(p.x - monster.x, p.y - monster.y), now);
+    drawRadar(vx, p, now);
     drawMinimap(vx);
 
     ctx.restore();
   }
 
-  function drawRadar(vx, p, now, nearest) {
+  function drawRadar(vx, p, now) {
     if (now > radarUntil) return;
     const cx = vx + VIEW_W - 34, cy = 34;
     ctx.save();
@@ -1324,7 +1357,7 @@
     ctx.strokeStyle = '#3ddc84';
     ctx.lineWidth = 2;
     ctx.stroke();
-    const angle = Math.atan2(nearest.y - p.y, nearest.x - p.x);
+    const angle = Math.atan2(monster.y - p.y, monster.x - p.x);
     ctx.translate(cx, cy);
     ctx.rotate(angle);
     ctx.beginPath();
@@ -1339,6 +1372,17 @@
     ctx.restore();
   }
 
+  const PROXIMITY_WARNING_RADIUS = 400;
+
+  function drawProximityWarning(vx, dist, now) {
+    if (dist > PROXIMITY_WARNING_RADIUS) return;
+    const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+    const alpha = closeness * 0.6 * pulse;
+    ctx.fillStyle = `rgba(200,20,20,${alpha})`;
+    ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+  }
+
   function drawDivider() {
     ctx.strokeStyle = '#3a2a44';
     ctx.lineWidth = 2;
@@ -1351,18 +1395,16 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'FACILITY CLEARED &mdash; press Enter to replay, or <a href="level3.html" style="color:var(--accent)">continue to Level 3 &rarr;</a>';
+      messageEl.innerHTML = 'FACILITY CLEARED &mdash; press Enter to replay, or <a href="index.html" style="color:var(--accent)">back to Level 1</a>';
     } else {
       messageEl.style.display = 'none';
     }
   }
 
   function updateHud() {
-    const fuseLabel = fuseState === 'ground' ? 'on the ground'
-      : fuseState === 'carried' ? `carried by ${fuseCarrier === players[0] ? 'P1' : 'P2'}`
-      : 'installed';
-    hudFuseEl.textContent = `Fuse: ${fuseLabel}`;
-    hudFuseEl.classList.toggle('done', fuseState === 'installed');
+    const genLabel = generatorActive ? 'online' : `charging ${Math.round(generatorProgress * 100)}%`;
+    hudGeneratorEl.textContent = `Generator: ${genLabel}`;
+    hudGeneratorEl.classList.toggle('done', generatorActive);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
   }
@@ -1376,12 +1418,14 @@
     if (gameState === 'playing') {
       updateInputMovement(dt);
       updateTriggers();
+      updateGenerator(dt);
       updateCrates(now);
-      monsters.forEach((m) => updateMonster(m, now, dt));
+      updateVines(now);
+      updateMonster(now, dt);
       updateCatch(now);
       updateExploration();
       updateAmbientTension();
-      updateSafeMusic(players.some(isHidden));
+      updateSafeMusic(players.some(isInSafeZone));
     }
     updateParticles(dt);
     updateFloatingTexts(dt);

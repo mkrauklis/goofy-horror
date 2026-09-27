@@ -17,18 +17,18 @@ Split-screen local 2-player, sharing one dark facility. Player 1 (orange)
 moves with `W` `A` `S` `D`; Player 2 (green) moves with the arrow keys.
 Each half of the screen is that player's own camera into the same map.
 
-Both levels flash your screen red, pulsing faster the closer a creature
-gets, regardless of whether it's noticed you yet — your only warning to
-freeze or clear out before it does. Getting caught splatters blood at the
-spot and only respawns the one player who was caught; other players, the
-creature(s), and any puzzle progress are untouched.
+All three levels flash your screen red, pulsing faster the closer a
+creature gets, regardless of whether it's noticed you yet — your only
+warning to freeze or clear out before it does. Getting caught splatters
+blood at the spot and only respawns the one player who was caught; other
+players, the creature(s), and any puzzle progress are untouched.
 
 Each split-screen half also has its own **explored-areas map** in the top
 corner — it only fills in the parts of the huge facility you've actually
 walked near, building up a personal record of the layout instead of
 spoiling the whole thing up front.
 
-Both levels also scatter **item crates** you open just by walking into
+Every level also scatters **item crates** you open just by walking into
 them, and a used crate quietly restocks with a new random item after a
 minute. Each one holds one of three items, decided at random when it
 (re)loads:
@@ -82,6 +82,23 @@ one; move while one is within range and it locks on and charges at 8x
 your speed for a few seconds. Standing still is always safe, even
 mid-charge. Getting caught while carrying the fuse drops it right where
 you died, not back at its original spot.
+
+## Level 3 — Sinkhole
+
+An older facility that's started sinking into whatever's underneath it —
+patches of floor tile have crumbled away to bare dirt throughout. There's
+no button panel or fuse this time: find the generator room and get both
+players standing on its two pressure plates *at the same time*, wired
+straight to the generator, and hold for 5 seconds. Step off early and the
+charge starts draining back down.
+
+The creature itself is a slow caterpillar, one segmented body dragging
+itself along at only 0.9x your speed — outrunning it is trivial, and its
+own eyesight is short-range enough that it rarely notices you first. The
+real danger is the **meat vines** strung across the ground: step on one and
+the caterpillar rockets toward that exact spot at 20x its normal speed. If
+you're still there when it arrives, you're caught; if you've already moved
+on, it settles back into patrolling from wherever the vine was.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.
