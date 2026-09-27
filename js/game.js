@@ -9,8 +9,13 @@
   const VIEW_W = 460;
   const VIEW_H = 340;
 
+  // Speeds are px/second and movement is scaled by the real elapsed time
+  // each frame (see `dt` in loop()) rather than a fixed px/frame step --
+  // fixed-per-frame movement made real-world speed drift with the frame
+  // rate, which showed up as random-feeling slowdowns whenever a frame
+  // took longer than usual (e.g. a big tile grid redraw).
   const PLAYER_RADIUS = 10;
-  const PLAYER_SPEED = 1.25;
+  const PLAYER_SPEED = 75;
   const MONSTER_SPEED = PLAYER_SPEED * 2;
   const PATROL_SPEED = PLAYER_SPEED * 0.5;
   const CATCH_RADIUS = 20;
@@ -230,17 +235,17 @@
     if (dy !== 0 && canStandAt(p.x, p.y + dy)) p.y += dy;
   }
 
-  function applyMovement(p, ix, iy) {
+  function applyMovement(p, ix, iy, dt) {
     if (ix === 0 && iy === 0) return;
     const len = Math.hypot(ix, iy);
     const nx = ix / len, ny = iy / len;
     p.facing = { x: nx, y: ny };
-    movePlayer(p, nx * PLAYER_SPEED, ny * PLAYER_SPEED);
+    movePlayer(p, nx * PLAYER_SPEED * dt, ny * PLAYER_SPEED * dt);
   }
 
-  function updateInputMovement() {
-    applyMovement(players[0], (keys.d ? 1 : 0) - (keys.a ? 1 : 0), (keys.s ? 1 : 0) - (keys.w ? 1 : 0));
-    applyMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0));
+  function updateInputMovement(dt) {
+    applyMovement(players[0], (keys.d ? 1 : 0) - (keys.a ? 1 : 0), (keys.s ? 1 : 0) - (keys.w ? 1 : 0), dt);
+    applyMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), dt);
   }
 
   function isHidden(p) {
@@ -386,7 +391,7 @@
     monster.tentacleTargets = targets.slice(0, 3);
   }
 
-  function updateMonster(now) {
+  function updateMonster(now, dt) {
     updateDetection(now);
 
     if (now >= monster.nextRepathAt) {
@@ -409,20 +414,20 @@
     }
 
     if (monster.path && monster.pathIndex < monster.path.length) {
-      const speed = monster.state === 'alert' ? MONSTER_SPEED : PATROL_SPEED;
+      const step = (monster.state === 'alert' ? MONSTER_SPEED : PATROL_SPEED) * dt;
       const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
       const dx = target.x - monster.x, dy = target.y - monster.y;
       const d = Math.hypot(dx, dy);
       if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
-      if (d < speed) {
+      if (d < step) {
         monster.x = target.x; monster.y = target.y;
         monster.pathIndex++;
         if (monster.pathIndex >= monster.path.length && monster.state === 'patrol') {
           monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       } else {
-        monster.x += (dx / d) * speed;
-        monster.y += (dy / d) * speed;
+        monster.x += (dx / d) * step;
+        monster.y += (dy / d) * step;
       }
     }
   }
@@ -439,8 +444,81 @@
   function triggerCaught(p, now) {
     catchFlash = 1;
     playCatchSting();
+    spawnBloodEffect(p.x, p.y);
     respawnPlayer(p);
     p.invulnerableUntil = now + 1200;
+  }
+
+  // ---- blood splatter / particles ----
+  let bloodSplatters = [];
+  let particles = [];
+
+  function spawnBloodEffect(x, y) {
+    bloodSplatters.push({ x, y, seed: Math.random() * 1000 });
+    if (bloodSplatters.length > 24) bloodSplatters.shift();
+
+    for (let i = 0; i < 18; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 40 + Math.random() * 140;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0,
+        maxLife: 0.35 + Math.random() * 0.45,
+        size: 2 + Math.random() * 2.5,
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const pt = particles[i];
+      pt.life += dt;
+      if (pt.life >= pt.maxLife) { particles.splice(i, 1); continue; }
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      const drag = Math.min(1, dt * 4);
+      pt.vx *= 1 - drag;
+      pt.vy *= 1 - drag;
+    }
+  }
+
+  function drawBloodSplatters(g) {
+    bloodSplatters.forEach((b) => {
+      g.save();
+      g.translate(b.x, b.y);
+      const points = 8;
+      g.beginPath();
+      for (let i = 0; i <= points; i++) {
+        const a = (i / points) * Math.PI * 2;
+        const r = 6 + Math.abs(Math.sin(a * 3 + b.seed)) * 8;
+        const px = Math.cos(a) * r, py = Math.sin(a) * r * 0.7;
+        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      }
+      g.closePath();
+      g.fillStyle = 'rgba(90,10,14,0.75)';
+      g.fill();
+      for (let i = 0; i < 4; i++) {
+        const a = b.seed * (i + 1);
+        const dist = 10 + (i * 5);
+        g.beginPath();
+        g.arc(Math.cos(a) * dist, Math.sin(a) * dist * 0.7, 1.5 + (i % 2), 0, Math.PI * 2);
+        g.fillStyle = 'rgba(90,10,14,0.6)';
+        g.fill();
+      }
+      g.restore();
+    });
+  }
+
+  function drawParticles(g) {
+    particles.forEach((pt) => {
+      const alpha = 1 - pt.life / pt.maxLife;
+      g.beginPath();
+      g.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+      g.fillStyle = `rgba(160,15,20,${alpha})`;
+      g.fill();
+    });
   }
 
   // ---- rendering ----
@@ -516,6 +594,8 @@
     g.arc(ex.x, ex.y, doorUnlocked ? 12 : 6, 0, Math.PI * 2);
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
+
+    drawBloodSplatters(g);
   }
 
   function drawMonster(g, t) {
@@ -612,18 +692,82 @@
   }
 
   function drawPlayers(g) {
+    const R = PLAYER_RADIUS;
     players.forEach((p) => {
+      g.save();
+      g.translate(p.x, p.y);
+      g.rotate(Math.atan2(p.facing.y, p.facing.x));
+
+      // boots, peeking out from under the suit
+      g.fillStyle = '#2b2b28';
+      g.beginPath(); g.ellipse(-R * 0.9, -R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.ellipse(-R * 0.9, R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
+
+      // oxygen tank + hose up to the collar
+      g.strokeStyle = '#54544c';
+      g.lineWidth = 2.5;
       g.beginPath();
-      g.arc(p.x, p.y, PLAYER_RADIUS, 0, Math.PI * 2);
+      g.moveTo(-R * 1.3, -3);
+      g.quadraticCurveTo(-R * 1.1, -R * 0.9, -R * 0.55, -R * 0.55);
+      g.stroke();
+      g.fillStyle = '#54544c';
+      g.fillRect(-R * 1.5, -4.5, 7, 9);
+
+      // bulky coverall body
+      g.beginPath();
+      g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
       g.fillStyle = p.color;
       g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.4)';
+      g.lineWidth = 1.5;
+      g.stroke();
 
-      const fx = p.x + p.facing.x * PLAYER_RADIUS * 1.6;
-      const fy = p.y + p.facing.y * PLAYER_RADIUS * 1.6;
+      // hazard chevron stripe across the chest
+      g.save();
       g.beginPath();
-      g.arc(fx, fy, 3, 0, Math.PI * 2);
-      g.fillStyle = '#fff8e6';
+      g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+      g.clip();
+      g.fillStyle = 'rgba(20,20,15,0.85)';
+      g.fillRect(-R * 1.3, -R * 0.28, R * 2.6, R * 0.2);
+      g.fillStyle = 'rgba(255,200,40,0.9)';
+      g.fillRect(-R * 1.3, -R * 0.1, R * 2.6, R * 0.1);
+      g.restore();
+
+      // rubber gloves
+      g.fillStyle = '#e8d94a';
+      g.beginPath(); g.arc(-R * 0.15, -R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(-R * 0.15, R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
+
+      // sealed collar ring
+      g.beginPath();
+      g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
+      g.strokeStyle = '#1c1c18';
+      g.lineWidth = 3;
+      g.stroke();
+
+      // helmet dome
+      g.beginPath();
+      g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(220,222,210,0.95)';
       g.fill();
+      g.strokeStyle = '#1c1c18';
+      g.lineWidth = 1.5;
+      g.stroke();
+
+      // big face visor, facing forward
+      g.beginPath();
+      g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
+      g.fillStyle = '#0d1418';
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 1;
+      g.stroke();
+      g.beginPath();
+      g.ellipse(R * 0.28, -R * 0.14, R * 0.14, R * 0.08, -0.4, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,255,255,0.55)';
+      g.fill();
+
+      g.restore();
     });
   }
 
@@ -681,6 +825,7 @@
     drawTiles(ctx);
     drawMonster(ctx, now);
     drawPlayers(ctx);
+    drawParticles(ctx);
     ctx.restore();
 
     buildDarknessMask(camX, camY);
@@ -728,14 +873,20 @@
     hudDoorEl.classList.toggle('done', doorUnlocked);
   }
 
+  let lastFrameTime = null;
+
   function loop(now) {
+    const dt = lastFrameTime === null ? 1 / 60 : Math.min((now - lastFrameTime) / 1000, 0.05);
+    lastFrameTime = now;
+
     if (gameState === 'playing') {
-      updateInputMovement();
+      updateInputMovement(dt);
       updateTriggers();
-      updateMonster(now);
+      updateMonster(now, dt);
       updateCatch(now);
       updateAmbientTension();
     }
+    updateParticles(dt);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     renderViewport(0, now);
@@ -745,7 +896,7 @@
     if (catchFlash > 0) {
       ctx.fillStyle = `rgba(180,20,30,${catchFlash * 0.5})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      catchFlash -= 0.02;
+      catchFlash -= dt * 1.2;
     }
 
     updateOverlay();

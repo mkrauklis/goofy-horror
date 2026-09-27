@@ -19,7 +19,9 @@ Each half of the screen is that player's own camera into the same map.
 
 Both levels flash your screen red, pulsing faster the closer the creature
 gets, regardless of whether it's noticed you yet — your only warning to
-freeze or clear out before it does.
+freeze or clear out before it does. Getting caught splatters blood at the
+spot and only respawns the one player who was caught; the other player,
+the creature, and any puzzle progress are untouched.
 
 ## Level 1 — The Facility
 
@@ -42,17 +44,19 @@ going back to patrolling.
 
 ## Level 2 — Blackout
 
-A different building entirely — one long spine corridor with rooms
-branching off it, rather than Level 1's ring layout. There's no button
-panel this time, just a fuse lying somewhere and several identical
-fuse-box sockets scattered around — only one of them is actually wired to
-the door, chosen at random each playthrough, so both players have to find
-the fuse and try sockets until one works.
+A different building entirely and a much bigger one — a cross-shaped
+spine (one long corridor crossing another) with rooms branching off both
+arms, rather than Level 1's ring-of-rooms. There's no button panel this
+time: find the fuse, then find which one of several rooms actually has a
+fuse box in it — its location (and a visible wire running from it to the
+door once you spot it) is chosen at random each playthrough, so there's
+nothing to see in the other rooms.
 
 A second, slower creature patrols on its own schedule. It's not listening
-for light — it's listening for movement. Stand still while it's nearby
-and it has no idea you're there; move, and if it's close enough with a
-clear line to you, it locks on for a few seconds.
+for light — it's listening for movement. Stand still and it has no idea
+you're there, even standing right next to it; move while it's within
+range and it locks on and charges at 4x your speed for a few seconds.
+Standing still is always safe, even mid-chase.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.
