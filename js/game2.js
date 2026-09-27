@@ -15,14 +15,19 @@
   // rate, which showed up as random-feeling slowdowns whenever a frame
   // took longer than usual (e.g. a big tile grid redraw).
   const PLAYER_RADIUS = 10;
-  const PLAYER_SPEED = 75;
+  const PLAYER_SPEED = 112.5;
   const PATROL_SPEED = PLAYER_SPEED * 0.7;
-  const CHARGE_SPEED = PLAYER_SPEED * 4;
+  const CHARGE_SPEED = PLAYER_SPEED * 8;
+  const LURE_SPEED = PLAYER_SPEED * 0.6;
   const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
   const DETECT_RADIUS = 150;
   const ALERT_GRACE_MS = 2500;
   const PROXIMITY_WARNING_RADIUS = 400;
+  const RADAR_DURATION_MS = 10000;
+  const FREEZE_DURATION_MS = 10000;
+  const EAT_DURATION_MS = 3000;
+  const CRATE_ITEMS = ['radar', 'meat', 'co2'];
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
@@ -42,6 +47,7 @@
   let audioCtx = null;
   let ambientOsc = null;
   let ambientGain = null;
+  let safeMusicGain = null;
 
   function ensureAudio() {
     if (audioCtx) return;
@@ -66,6 +72,33 @@
     lfo.connect(lfoGain);
     lfoGain.connect(ambientOsc.frequency);
     lfo.start();
+
+    // Gentle chord pad that fades in while a player is resting in the safe zone.
+    safeMusicGain = audioCtx.createGain();
+    safeMusicGain.gain.value = 0.0001;
+    safeMusicGain.connect(audioCtx.destination);
+    [261.6, 329.6, 392.0, 523.2].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const voiceGain = audioCtx.createGain();
+      voiceGain.gain.value = 0.2;
+      const vibrato = audioCtx.createOscillator();
+      vibrato.frequency.value = 0.1 + i * 0.03;
+      const vibratoGain = audioCtx.createGain();
+      vibratoGain.gain.value = 1.5;
+      vibrato.connect(vibratoGain);
+      vibratoGain.connect(osc.frequency);
+      vibrato.start();
+      osc.connect(voiceGain);
+      voiceGain.connect(safeMusicGain);
+      osc.start();
+    });
+  }
+
+  function updateSafeMusic(inSafeZone) {
+    if (!audioCtx) return;
+    safeMusicGain.gain.setTargetAtTime(inSafeZone ? 0.09 : 0.0001, audioCtx.currentTime, 0.8);
   }
 
   function playTone(freq, duration, type, peakGain, delay) {
@@ -86,6 +119,10 @@
 
   function playPickupChime() {
     playTone(660, 0.16, 'sine', 0.2);
+  }
+
+  function playItemChime(freq) {
+    playTone(freq, 0.25, 'square', 0.18);
   }
 
   function playDoorUnlockChime() {
@@ -114,9 +151,18 @@
     [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
   }
 
+  function nearestMonster(x, y) {
+    let best = monsters[0], bestD = Infinity;
+    monsters.forEach((m) => {
+      const d = Math.hypot(x - m.x, y - m.y);
+      if (d < bestD) { bestD = d; best = m; }
+    });
+    return best;
+  }
+
   function updateAmbientTension() {
     if (!audioCtx) return;
-    const minDist = Math.min(...players.map((p) => Math.hypot(p.x - monster.x, p.y - monster.y)));
+    const minDist = Math.min(...players.flatMap((p) => monsters.map((m) => Math.hypot(p.x - m.x, p.y - m.y))));
     const proximity = clamp(1 - minDist / 380, 0, 1);
     ambientGain.gain.setTargetAtTime(0.05 + proximity * 0.18, audioCtx.currentTime, 0.3);
     ambientOsc.frequency.setTargetAtTime(55 + proximity * 45, audioCtx.currentTime, 0.3);
@@ -256,21 +302,33 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
-  const monster = {
-    x: 0,
-    y: 0,
-    radius: 16,
-    seed: Math.random() * 100,
-    path: [],
-    pathIndex: 0,
-    nextRepathAt: 0,
-    lookDir: { x: 1, y: 0 },
-    tentacleTargets: [],
-    state: 'patrol', // 'patrol' | 'alert'
-    alertUntil: 0,
-    alertTargetTile: null,
-    patrolIndex: 0,
-  };
+  function makeMonster(patrolStartIndex) {
+    return {
+      x: 0,
+      y: 0,
+      radius: 24,
+      seed: Math.random() * 100,
+      path: [],
+      pathIndex: 0,
+      nextRepathAt: 0,
+      lookDir: { x: 1, y: 0 },
+      tentacleTargets: [],
+      state: 'patrol', // 'patrol' | 'alert'
+      alertUntil: 0,
+      alertTargetTile: null,
+      patrolIndex: patrolStartIndex,
+      frozenUntil: 0,
+      luredState: 'none', // 'none' | 'lured' | 'eating'
+      lureTarget: null,
+      eatingUntil: 0,
+    };
+  }
+
+  const monsters = [makeMonster(0), makeMonster(Math.floor(LEVEL.patrolPoints.length / 2))];
+
+  let crates = [];
+  let radarUntil = 0;
+  let floatingTexts = [];
 
   function respawnPlayer(p) {
     const c = tileCenter(p.spawn.x, p.spawn.y);
@@ -280,10 +338,14 @@
   function resetLevel() {
     players.forEach(respawnPlayer);
 
-    const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
-    monster.x = m.x; monster.y = m.y;
-    monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
-    monster.state = 'patrol'; monster.alertUntil = 0; monster.alertTargetTile = null; monster.patrolIndex = 0;
+    const spawns = [LEVEL.monsterSpawn, LEVEL.monsterSpawn2 || LEVEL.monsterSpawn];
+    monsters.forEach((mon, i) => {
+      const m = tileCenter(spawns[i].x, spawns[i].y);
+      mon.x = m.x; mon.y = m.y;
+      mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
+      mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
+      mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.eatingUntil = 0;
+    });
 
     fuseState = 'ground';
     fuseCarrier = null;
@@ -294,6 +356,12 @@
     const graph = buildGenericGraph();
     const path = bfsPath(graph, activeFuseBox, { x: doorBounds.x0, y: doorBounds.y0 });
     wirePath = path ? path.map((t) => tileCenter(t.x, t.y)) : [];
+
+    crates = (LEVEL.crateSpawns || []).map((c) => ({
+      x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false,
+    }));
+    radarUntil = 0;
+    floatingTexts = [];
   }
   resetLevel();
 
@@ -339,6 +407,50 @@
   function isHidden(p) {
     const t = worldToTile(p.x, p.y);
     return tileChar(t.x, t.y) === 'S';
+  }
+
+  function spawnFloatingText(x, y, text) {
+    floatingTexts.push({ x, y, text, life: 0, maxLife: 1.4 });
+  }
+
+  function updateFloatingTexts(dt) {
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+      floatingTexts[i].life += dt;
+      if (floatingTexts[i].life >= floatingTexts[i].maxLife) floatingTexts.splice(i, 1);
+    }
+  }
+
+  function applyItemEffect(item, x, y, now) {
+    if (item === 'radar') {
+      radarUntil = now + RADAR_DURATION_MS;
+      spawnFloatingText(x, y, 'RADAR');
+      playItemChime(880);
+    } else if (item === 'meat') {
+      monsters.forEach((m) => {
+        m.luredState = 'lured';
+        m.lureTarget = { x, y };
+        m.path = []; m.pathIndex = 0;
+      });
+      spawnFloatingText(x, y, 'MEAT');
+      playItemChime(220);
+    } else if (item === 'co2') {
+      monsters.forEach((m) => { m.frozenUntil = now + FREEZE_DURATION_MS; });
+      spawnFloatingText(x, y, 'FROZEN');
+      playItemChime(1200);
+    }
+  }
+
+  function updateCrates(now) {
+    players.forEach((p) => {
+      const t = worldToTile(p.x, p.y);
+      crates.forEach((c) => {
+        if (c.opened) return;
+        if (c.x === t.x && c.y === t.y) {
+          c.opened = true;
+          applyItemEffect(c.item, tileCenter(c.x, c.y).x, tileCenter(c.x, c.y).y, now);
+        }
+      });
+    });
   }
 
   function updateTriggers() {
@@ -411,7 +523,7 @@
     return { x: c.x + off.x * 10, y: c.y + off.y * 10 };
   }
 
-  function updateTentacleTargets(tile) {
+  function updateTentacleTargets(m, tile) {
     const targets = [];
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
@@ -421,74 +533,120 @@
         }
       }
     }
-    monster.tentacleTargets = targets.slice(0, 3);
+    m.tentacleTargets = targets.slice(0, 3);
   }
 
-  function updateDetection(now) {
+  function updateDetection(m, now) {
     for (const p of players) {
       if (isHidden(p) || !p.isMoving) continue;
-      const d = Math.hypot(p.x - monster.x, p.y - monster.y);
-      if (d <= DETECT_RADIUS && hasLineOfSight(monster.x, monster.y, p.x, p.y)) {
-        monster.state = 'alert';
-        monster.alertUntil = now + ALERT_GRACE_MS;
-        monster.alertTargetTile = worldToTile(p.x, p.y);
+      const d = Math.hypot(p.x - m.x, p.y - m.y);
+      if (d <= DETECT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+        m.state = 'alert';
+        m.alertUntil = now + ALERT_GRACE_MS;
+        m.alertTargetTile = worldToTile(p.x, p.y);
       }
     }
-    if (monster.state === 'alert' && now >= monster.alertUntil) {
-      monster.state = 'patrol';
-      monster.path = [];
-      monster.pathIndex = 0;
+    if (m.state === 'alert' && now >= m.alertUntil) {
+      m.state = 'patrol';
+      m.path = [];
+      m.pathIndex = 0;
     }
   }
 
-  function updateMonster(now, dt) {
-    updateDetection(now);
+  function updateMonster(m, now, dt) {
+    if (now < m.frozenUntil) return; // frozen solid: no movement, no perception
 
-    if (now >= monster.nextRepathAt) {
-      monster.nextRepathAt = now + REPATH_MS;
-      const startTile = worldToTile(monster.x, monster.y);
-      const goalTile = monster.state === 'alert' ? monster.alertTargetTile : LEVEL.patrolPoints[monster.patrolIndex];
+    if (m.luredState === 'eating') {
+      if (now >= m.eatingUntil) {
+        m.luredState = 'none';
+        m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
+      } else {
+        return;
+      }
+    }
+
+    if (m.luredState === 'lured') {
+      if (now >= m.nextRepathAt) {
+        m.nextRepathAt = now + REPATH_MS;
+        const startTile = worldToTile(m.x, m.y);
+        const goalTile = worldToTile(m.lureTarget.x, m.lureTarget.y);
+        const graph = buildMonsterGraph();
+        const path = bfsPath(graph, startTile, goalTile);
+        m.path = path && path.length > 1 ? path.slice(1) : [];
+        m.pathIndex = 0;
+        updateTentacleTargets(m, startTile);
+      }
+      if (m.path && m.pathIndex < m.path.length) {
+        const step = LURE_SPEED * dt;
+        const target = tileTargetWithOffset(m.path[m.pathIndex]);
+        const dx = target.x - m.x, dy = target.y - m.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
+        if (d < step) {
+          m.x = target.x; m.y = target.y;
+          m.pathIndex++;
+        } else {
+          m.x += (dx / d) * step;
+          m.y += (dy / d) * step;
+        }
+      } else {
+        m.luredState = 'eating';
+        m.eatingUntil = now + EAT_DURATION_MS;
+      }
+      return;
+    }
+
+    updateDetection(m, now);
+
+    if (now >= m.nextRepathAt) {
+      m.nextRepathAt = now + REPATH_MS;
+      const startTile = worldToTile(m.x, m.y);
+      const goalTile = m.state === 'alert' ? m.alertTargetTile : LEVEL.patrolPoints[m.patrolIndex];
       const graph = buildMonsterGraph();
       const path = bfsPath(graph, startTile, goalTile);
       if (path && path.length > 1) {
-        monster.path = path.slice(1);
-        monster.pathIndex = 0;
+        m.path = path.slice(1);
+        m.pathIndex = 0;
       } else {
-        monster.path = [];
-        monster.pathIndex = 0;
-        if (monster.state === 'patrol') {
-          monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        m.path = [];
+        m.pathIndex = 0;
+        if (m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       }
-      updateTentacleTargets(startTile);
+      updateTentacleTargets(m, startTile);
     }
 
-    if (monster.path && monster.pathIndex < monster.path.length) {
-      const step = (monster.state === 'alert' ? CHARGE_SPEED : PATROL_SPEED) * dt;
-      const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
-      const dx = target.x - monster.x, dy = target.y - monster.y;
+    if (m.path && m.pathIndex < m.path.length) {
+      const step = (m.state === 'alert' ? CHARGE_SPEED : PATROL_SPEED) * dt;
+      const target = tileTargetWithOffset(m.path[m.pathIndex]);
+      const dx = target.x - m.x, dy = target.y - m.y;
       const d = Math.hypot(dx, dy);
-      if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
+      if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
       if (d < step) {
-        monster.x = target.x; monster.y = target.y;
-        monster.pathIndex++;
-        if (monster.pathIndex >= monster.path.length && monster.state === 'patrol') {
-          monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        m.x = target.x; m.y = target.y;
+        m.pathIndex++;
+        if (m.pathIndex >= m.path.length && m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       } else {
-        monster.x += (dx / d) * step;
-        monster.y += (dy / d) * step;
+        m.x += (dx / d) * step;
+        m.y += (dy / d) * step;
       }
     }
   }
 
   function updateCatch(now) {
-    if (monster.state !== 'alert') return;
-    players.forEach((p) => {
-      if (isHidden(p)) return;
-      if (!p.isMoving) return; // standing still keeps you safe even once it's alerted
-      if (now < p.invulnerableUntil) return;
-      if (Math.hypot(p.x - monster.x, p.y - monster.y) < CATCH_RADIUS) triggerCaught(p, now);
+    monsters.forEach((m) => {
+      if (now < m.frozenUntil) return;
+      if (m.luredState !== 'none') return;
+      if (m.state !== 'alert') return;
+      players.forEach((p) => {
+        if (isHidden(p)) return;
+        if (!p.isMoving) return; // standing still keeps you safe even once it's alerted
+        if (now < p.invulnerableUntil) return;
+        if (Math.hypot(p.x - m.x, p.y - m.y) < CATCH_RADIUS) triggerCaught(p, now);
+      });
     });
   }
 
@@ -597,15 +755,19 @@
     g.restore();
   }
 
-  function drawTiles(g) {
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
+  function drawTiles(g, camX, camY) {
+    const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
+    const maxTX = Math.min(COLS - 1, Math.ceil((camX + VIEW_W / 2) / TILE) + 1);
+    const minTY = Math.max(0, Math.floor((camY - VIEW_H / 2) / TILE) - 1);
+    const maxTY = Math.min(ROWS - 1, Math.ceil((camY + VIEW_H / 2) / TILE) + 1);
+    for (let y = minTY; y <= maxTY; y++) {
+      for (let x = minTX; x <= maxTX; x++) {
         const ch = LEVEL.grid[y][x];
         const px = x * TILE, py = y * TILE;
         let color;
         switch (ch) {
           case '#': color = '#262629'; break;
-          case 'S': color = '#26301f'; break;
+          case 'S': color = '#58585f'; break;
           case 'E': color = '#3a301f'; break;
           case 'D': color = doorUnlocked ? '#58585f' : '#3a4552'; break;
           default: color = '#58585f';
@@ -678,16 +840,128 @@
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
 
+    drawSafeZone(g);
+    drawCorpses(g);
     drawBloodSplatters(g);
+    drawCrates(g);
+    drawMeatLure(g);
+    drawFloatingTexts(g);
   }
 
-  function drawMonster(g, t) {
-    g.save();
-    g.translate(monster.x, monster.y);
+  function drawTable(g, cx, cy) {
+    g.fillStyle = '#5a4530';
+    g.fillRect(cx - 12, cy - 8, 24, 16);
+    g.strokeStyle = '#382a1c';
+    g.lineWidth = 1.5;
+    g.strokeRect(cx - 12, cy - 8, 24, 16);
+    g.fillStyle = '#4a3826';
+    [[-10, -6], [10, -6], [-10, 6], [10, 6]].forEach(([dx, dy]) => {
+      g.fillRect(cx + dx - 1.5, cy + dy - 1.5, 3, 3);
+    });
+  }
 
-    monster.tentacleTargets.forEach((tt, i) => {
-      const wobble = Math.sin(t * 0.005 + i * 2.1 + monster.seed) * 6;
-      const tx = tt.x - monster.x, ty = tt.y - monster.y;
+  function drawSafeZone(g) {
+    const sz = LEVEL.safeZone;
+    const x0 = sz.x0 * TILE, y0 = sz.y0 * TILE;
+    const w = (sz.x1 - sz.x0 + 1) * TILE, h = (sz.y1 - sz.y0 + 1) * TILE;
+
+    g.strokeStyle = '#3ddc84';
+    g.lineWidth = 3;
+    g.shadowColor = '#3ddc84';
+    g.shadowBlur = 6;
+    g.strokeRect(x0 + 1.5, y0 + 1.5, w - 3, h - 3);
+    g.shadowBlur = 0;
+
+    const cx = x0 + w / 2, cy = y0 + h / 2;
+    drawTable(g, cx - w / 4, cy);
+    drawTable(g, cx + w / 4, cy);
+  }
+
+  function drawCorpses(g) {
+    (LEVEL.corpseSpawns || []).forEach((cs) => {
+      const c = tileCenter(cs.x, cs.y);
+      g.save();
+      g.translate(c.x, c.y);
+      g.rotate(cs.angle || 0);
+      g.fillStyle = '#3a2f38';
+      g.beginPath();
+      g.ellipse(0, 0, 13, 6, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = 'rgba(210,220,214,0.85)';
+      g.beginPath();
+      g.arc(-11, 0, 4.5, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = 'rgba(0,0,0,0.4)';
+      g.beginPath();
+      g.arc(-12, -1, 1.2, 0, Math.PI * 2);
+      g.arc(-10, -1, 1.2, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+    });
+  }
+
+  function drawCrates(g) {
+    crates.forEach((c) => {
+      const center = tileCenter(c.x, c.y);
+      g.save();
+      g.translate(center.x, center.y);
+      if (c.opened) {
+        g.fillStyle = '#4a3826';
+        g.fillRect(-9, -6, 18, 12);
+        g.strokeStyle = '#2a1e14';
+        g.lineWidth = 1.5;
+        g.strokeRect(-9, -6, 18, 12);
+      } else {
+        g.fillStyle = '#7a5a34';
+        g.fillRect(-10, -10, 20, 20);
+        g.strokeStyle = '#4a3520';
+        g.lineWidth = 2;
+        g.strokeRect(-10, -10, 20, 20);
+        g.beginPath();
+        g.moveTo(-10, 0); g.lineTo(10, 0);
+        g.moveTo(0, -10); g.lineTo(0, 10);
+        g.stroke();
+      }
+      g.restore();
+    });
+  }
+
+  function drawMeatLure(g) {
+    const lured = monsters.find((m) => m.luredState !== 'none' && m.lureTarget);
+    if (!lured) return;
+    g.save();
+    g.translate(lured.lureTarget.x, lured.lureTarget.y);
+    g.fillStyle = '#8a2a2a';
+    g.beginPath();
+    g.ellipse(0, 0, 9, 6, 0.3, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.25)';
+    g.beginPath();
+    g.ellipse(-2, -1, 3, 1.6, 0.3, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+
+  function drawFloatingTexts(g) {
+    floatingTexts.forEach((f) => {
+      const t = f.life / f.maxLife;
+      g.save();
+      g.globalAlpha = 1 - t;
+      g.fillStyle = '#ffe27a';
+      g.font = 'bold 11px monospace';
+      g.textAlign = 'center';
+      g.fillText(f.text, f.x, f.y - 18 - t * 20);
+      g.restore();
+    });
+  }
+
+  function drawMonster(g, t, m) {
+    g.save();
+    g.translate(m.x, m.y);
+
+    m.tentacleTargets.forEach((tt, i) => {
+      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * 6;
+      const tx = tt.x - m.x, ty = tt.y - m.y;
       const midX = tx / 2 + wobble;
       const midY = ty / 2 - wobble;
       g.beginPath();
@@ -703,7 +977,7 @@
     g.beginPath();
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
-      const r = monster.radius + Math.sin(t * 0.006 + i * 1.7 + monster.seed) * 4;
+      const r = m.radius + Math.sin(t * 0.006 + i * 1.7 + m.seed) * 4;
       const px = Math.cos(a) * r, py = Math.sin(a) * r;
       if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
     }
@@ -714,13 +988,30 @@
     g.fill();
     g.shadowBlur = 0;
 
-    drawMonsterEye(g, monster.lookDir);
+    drawMonsterEye(g, m);
+
+    if (t < m.frozenUntil) {
+      g.beginPath();
+      for (let i = 0; i <= points; i++) {
+        const a = (i / points) * Math.PI * 2;
+        const r = m.radius + 3;
+        const px = Math.cos(a) * r, py = Math.sin(a) * r;
+        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      }
+      g.closePath();
+      g.fillStyle = 'rgba(140,220,255,0.45)';
+      g.fill();
+      g.strokeStyle = 'rgba(220,250,255,0.8)';
+      g.lineWidth = 1.5;
+      g.stroke();
+    }
 
     g.restore();
   }
 
-  function drawMonsterEye(g, lookDir) {
-    const eyeR = monster.radius * 0.62;
+  function drawMonsterEye(g, m) {
+    const lookDir = m.lookDir;
+    const eyeR = m.radius * 0.62;
 
     const sclera = g.createRadialGradient(0, 0, 1, 0, 0, eyeR);
     sclera.addColorStop(0, '#f2e6d8');
@@ -738,7 +1029,7 @@
     g.strokeStyle = 'rgba(170,25,25,0.4)';
     g.lineWidth = 0.8;
     for (let i = 0; i < 6; i++) {
-      const a = i * 1.05 + monster.seed;
+      const a = i * 1.05 + m.seed;
       g.beginPath();
       g.moveTo(Math.cos(a) * eyeR, Math.sin(a) * eyeR * 0.8);
       g.lineTo(Math.cos(a) * eyeR * 0.1, Math.sin(a) * eyeR * 0.1);
@@ -919,8 +1210,8 @@
 
     ctx.save();
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
-    drawTiles(ctx);
-    drawMonster(ctx, now);
+    drawTiles(ctx, camX, camY);
+    monsters.forEach((m) => drawMonster(ctx, now, m));
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
@@ -928,8 +1219,36 @@
     buildDarknessMask(camX, camY);
     ctx.drawImage(maskCanvas, vx, 0);
 
-    drawProximityWarning(vx, Math.hypot(p.x - monster.x, p.y - monster.y), now);
+    const nearest = nearestMonster(p.x, p.y);
+    drawProximityWarning(vx, Math.hypot(p.x - nearest.x, p.y - nearest.y), now);
+    drawRadar(vx, p, now, nearest);
 
+    ctx.restore();
+  }
+
+  function drawRadar(vx, p, now, nearest) {
+    if (now > radarUntil) return;
+    const cx = vx + VIEW_W - 34, cy = 34;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10,25,15,0.75)';
+    ctx.fill();
+    ctx.strokeStyle = '#3ddc84';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    const angle = Math.atan2(nearest.y - p.y, nearest.x - p.x);
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(14, 0);
+    ctx.lineTo(-6, -6);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
+    ctx.fillStyle = '#3ddc84';
+    ctx.shadowColor = '#3ddc84';
+    ctx.shadowBlur = 6;
+    ctx.fill();
     ctx.restore();
   }
 
@@ -970,11 +1289,14 @@
     if (gameState === 'playing') {
       updateInputMovement(dt);
       updateTriggers();
-      updateMonster(now, dt);
+      updateCrates(now);
+      monsters.forEach((m) => updateMonster(m, now, dt));
       updateCatch(now);
       updateAmbientTension();
+      updateSafeMusic(players.some(isHidden));
     }
     updateParticles(dt);
+    updateFloatingTexts(dt);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     renderViewport(0, now);
