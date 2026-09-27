@@ -576,7 +576,7 @@
       g.beginPath();
       g.moveTo(0, 0);
       g.quadraticCurveTo(midX, midY, tx, ty);
-      g.strokeStyle = '#6a1826';
+      g.strokeStyle = '#1a6a2e';
       g.lineWidth = 4;
       g.lineCap = 'round';
       g.stroke();
@@ -591,8 +591,8 @@
       if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
     }
     g.closePath();
-    g.fillStyle = '#4a0f1c';
-    g.shadowColor = '#7a1f2f';
+    g.fillStyle = '#0f4a1c';
+    g.shadowColor = '#2f7a3f';
     g.shadowBlur = 14;
     g.fill();
     g.shadowBlur = 0;
@@ -742,13 +742,13 @@
     ctx.restore();
   }
 
-  const PROXIMITY_WARNING_RADIUS = 260;
+  const PROXIMITY_WARNING_RADIUS = 400;
 
   function drawProximityWarning(vx, dist, now) {
     if (dist > PROXIMITY_WARNING_RADIUS) return;
     const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
     const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
-    const alpha = closeness * closeness * 0.55 * pulse;
+    const alpha = closeness * 0.6 * pulse;
     ctx.fillStyle = `rgba(200,20,20,${alpha})`;
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
   }

@@ -691,13 +691,13 @@
     ctx.restore();
   }
 
-  const PROXIMITY_WARNING_RADIUS = 260;
+  const PROXIMITY_WARNING_RADIUS = 400;
 
   function drawProximityWarning(vx, dist, now) {
     if (dist > PROXIMITY_WARNING_RADIUS) return;
     const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
     const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
-    const alpha = closeness * closeness * 0.55 * pulse;
+    const alpha = closeness * 0.6 * pulse;
     ctx.fillStyle = `rgba(200,20,20,${alpha})`;
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
   }
