@@ -77,6 +77,7 @@ header.hero p {
 }
 
 #game-canvas-holder {
+  position: relative;
   display: flex;
   justify-content: center;
 }
@@ -86,6 +87,23 @@ header.hero p {
   border-radius: 6px;
   border: 1px solid var(--border);
   background: #08050b;
+  max-width: 100%;
+  height: auto;
+}
+
+#game-message {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1.5rem;
+  background: rgba(8, 5, 11, 0.72);
+  color: var(--ink);
+  font-size: 1.2rem;
+  letter-spacing: 0.03em;
+  border-radius: 6px;
 }
 
 .hint {
