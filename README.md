@@ -23,9 +23,15 @@ freeze or clear out before it does. Getting caught splatters blood at the
 spot and only respawns the one player who was caught; other players, the
 creature(s), and any puzzle progress are untouched.
 
+Each split-screen half also has its own **explored-areas map** in the top
+corner — it only fills in the parts of the huge facility you've actually
+walked near, building up a personal record of the layout instead of
+spoiling the whole thing up front.
+
 Both levels also scatter **item crates** you open just by walking into
-them. Each one holds one of three items, decided at random when the level
-loads:
+them, and a used crate quietly restocks with a new random item after a
+minute. Each one holds one of three items, decided at random when it
+(re)loads:
 
 - **Radar** — shows a 10-second compass arrow pointing at the nearest
   creature, in the corner of each player's own screen.
@@ -50,8 +56,10 @@ before giving up and going back to patrolling.
 - **The spawn room** is a permanently lit safe zone the creature can't
   enter — marked with a green outline, with a couple of tables inside, and
   a calm little tune plays while a player is resting in it.
-- **Ventilation ducts** are scattered single-tile alcoves off the
-  corridors — another safe spot the creature can't follow you into.
+- **Ventilation ducts** form a real connected network threaded through the
+  facility's walls, entered from several scattered alcoves — crawl in one
+  side and come out somewhere else entirely, always safe since the creature
+  can't follow you in.
 - Getting caught only respawns that one player back at the spawn room
   (with a brief moment of safety) — button and door progress is never
   lost.

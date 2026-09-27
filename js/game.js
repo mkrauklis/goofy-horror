@@ -26,6 +26,7 @@
   const RADAR_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
   const EAT_DURATION_MS = 3000;
+  const CRATE_RESPAWN_MS = 60000;
   const CRATE_ITEMS = ['radar', 'meat', 'co2'];
 
   const canvas = document.getElementById('game-canvas');
@@ -41,6 +42,18 @@
   const maskCtx = maskCanvas.getContext('2d');
   const hudButtonsEl = document.getElementById('hud-buttons');
   const hudDoorEl = document.getElementById('hud-door');
+
+  // Explored-tiles minimap: an offscreen 1px-per-tile canvas that only ever
+  // gets painted to (never cleared), so it builds up a fog-of-war record of
+  // what each session has actually walked near, rather than showing the
+  // whole huge map from the start.
+  const exploredCanvas = document.createElement('canvas');
+  exploredCanvas.width = COLS;
+  exploredCanvas.height = ROWS;
+  const exploredCtx = exploredCanvas.getContext('2d');
+  let explored = new Uint8Array(COLS * ROWS);
+  const EXPLORE_RADIUS = 7;
+  const MINIMAP_W = 90;
 
   // ---- procedural audio (no asset files) ----
   let audioCtx = null;
@@ -197,6 +210,17 @@
     return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
   }
 
+  // A handful of near-identical grays, picked per-tile by hashing its
+  // coordinates, so plain floor reads as worn/mottled concrete instead of
+  // one flat color -- stable across frames since it's a function of (x, y),
+  // not random noise re-rolled every draw.
+  const FLOOR_SHADES = ['#4c4c53', '#525258', '#58585f', '#5e5e66', '#54545c', '#605f68'];
+  function floorShade(x, y) {
+    const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
+    const idx = ((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length;
+    return FLOOR_SHADES[idx];
+  }
+
   // ---- game state ----
   let buttonsPressed = [false, false, false];
   let doorUnlocked = false;
@@ -255,10 +279,11 @@
     doorUnlocked = false;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
-      x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false,
+      x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
     }));
     radarUntil = 0;
     floatingTexts = [];
+    resetExploration();
   }
   resetLevel();
 
@@ -311,6 +336,61 @@
     return tileChar(t.x, t.y) === 'S';
   }
 
+  function resetExploration() {
+    explored = new Uint8Array(COLS * ROWS);
+    exploredCtx.clearRect(0, 0, COLS, ROWS);
+  }
+
+  function minimapColorFor(ch) {
+    if (ch === '#') return '#8f8f9a';
+    if (ch === 'D') return '#d9ac4a';
+    if (ch === 'S') return '#3ddc84';
+    if (ch === 'V') return '#4a6a86';
+    return '#3c3c46';
+  }
+
+  function updateExploration() {
+    players.forEach((p) => {
+      const t = worldToTile(p.x, p.y);
+      for (let dy = -EXPLORE_RADIUS; dy <= EXPLORE_RADIUS; dy++) {
+        const ty = t.y + dy;
+        if (ty < 0 || ty >= ROWS) continue;
+        for (let dx = -EXPLORE_RADIUS; dx <= EXPLORE_RADIUS; dx++) {
+          const tx = t.x + dx;
+          if (tx < 0 || tx >= COLS) continue;
+          if (dx * dx + dy * dy > EXPLORE_RADIUS * EXPLORE_RADIUS) continue;
+          const idx = ty * COLS + tx;
+          if (explored[idx]) continue;
+          explored[idx] = 1;
+          exploredCtx.fillStyle = minimapColorFor(LEVEL.grid[ty][tx]);
+          exploredCtx.fillRect(tx, ty, 1, 1);
+        }
+      }
+    });
+  }
+
+  function drawMinimap(vx) {
+    const mh = Math.round(MINIMAP_W * ROWS / COLS);
+    const mx = vx + 8, my = 8;
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,5,8,0.65)';
+    ctx.fillRect(mx - 3, my - 3, MINIMAP_W + 6, mh + 6);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(exploredCanvas, mx, my, MINIMAP_W, mh);
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx + 0.5, my + 0.5, MINIMAP_W - 1, mh - 1);
+    players.forEach((pl) => {
+      const px = mx + (pl.x / WORLD_W) * MINIMAP_W;
+      const py = my + (pl.y / WORLD_H) * mh;
+      ctx.beginPath();
+      ctx.arc(px, py, 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = pl.color;
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
   function spawnFloatingText(x, y, text) {
     floatingTexts.push({ x, y, text, life: 0, maxLife: 1.4 });
   }
@@ -347,9 +427,16 @@
         if (c.opened) return;
         if (c.x === t.x && c.y === t.y) {
           c.opened = true;
+          c.openedAt = now;
           applyItemEffect(c.item, tileCenter(c.x, c.y).x, tileCenter(c.x, c.y).y, now);
         }
       });
+    });
+    crates.forEach((c) => {
+      if (c.opened && now - c.openedAt >= CRATE_RESPAWN_MS) {
+        c.opened = false;
+        c.item = CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)];
+      }
     });
   }
 
@@ -691,11 +778,11 @@
         let color;
         switch (ch) {
           case '#': color = '#262629'; break;
-          case 'S': color = '#58585f'; break;
+          case 'S': color = floorShade(x, y); break;
           case 'V': color = '#2a3038'; break;
           case 'E': color = '#3a301f'; break;
-          case 'D': color = doorUnlocked ? '#58585f' : '#3a4552'; break;
-          default: color = '#58585f';
+          case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
+          default: color = floorShade(x, y);
         }
         g.fillStyle = color;
         g.fillRect(px, py, TILE, TILE);
@@ -1117,6 +1204,7 @@
 
     drawProximityWarning(vx, Math.hypot(p.x - monster.x, p.y - monster.y), now);
     drawRadar(vx, p, now);
+    drawMinimap(vx);
 
     ctx.restore();
   }
@@ -1196,6 +1284,7 @@
       updateCrates(now);
       updateMonster(now, dt);
       updateCatch(now);
+      updateExploration();
       updateAmbientTension();
       updateSafeMusic(players.some(isInSafeZone));
     }
