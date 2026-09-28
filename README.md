@@ -15,7 +15,10 @@ npx serve .
 
 Split-screen local 2-player, sharing one dark facility. Player 1 (orange)
 moves with `W` `A` `S` `D`; Player 2 (green) moves with the arrow keys.
-Each half of the screen is that player's own camera into the same map.
+Each half of the screen is that player's own camera into the same map. A
+**Music** button in the HUD mutes/unmutes the ambient drone and safe-room
+tune (sound effects like chimes and the catch sting keep playing either
+way).
 
 All three levels flash your screen red, pulsing faster the closer a
 creature gets, regardless of whether it's noticed you yet — your only

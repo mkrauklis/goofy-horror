@@ -54,8 +54,11 @@
 
   // ---- procedural audio (no asset files) ----
   let audioCtx = null;
-  let ambientOsc = null;
+  let musicMasterGain = null; // both the ambient drone and the safe-room pad route through this
+  let musicEnabled = true;
   let ambientGain = null;
+  let ambientSubOsc = null;
+  let ambientMidGain = null;
   let safeMusicGain = null;
   let safeGlitchGain = null;
   let safeVoices = [];
@@ -111,23 +114,57 @@
     if (!AudioCtor) return;
     audioCtx = new AudioCtor();
 
+    musicMasterGain = audioCtx.createGain();
+    musicMasterGain.gain.value = musicEnabled ? 1 : 0;
+    musicMasterGain.connect(audioCtx.destination);
+
+    // A layered drone instead of one flat tone: two closely-detuned low
+    // sines beat slowly against each other, a sub-octave adds weight, a
+    // muffled lowpass "breathes" via its own slow LFO, and a faint high
+    // triangle drifts by like a distant ringing. Each voice has its own
+    // independent vibrato rate so nothing ever locks into a static pitch.
     ambientGain = audioCtx.createGain();
     ambientGain.gain.value = 0.05;
-    ambientGain.connect(audioCtx.destination);
+    ambientGain.connect(musicMasterGain);
 
-    ambientOsc = audioCtx.createOscillator();
-    ambientOsc.type = 'sine';
-    ambientOsc.frequency.value = 55;
-    ambientOsc.connect(ambientGain);
-    ambientOsc.start();
+    const ambientFilter = audioCtx.createBiquadFilter();
+    ambientFilter.type = 'lowpass';
+    ambientFilter.frequency.value = 340;
+    ambientFilter.Q.value = 0.6;
+    ambientFilter.connect(ambientGain);
 
-    const lfo = audioCtx.createOscillator();
-    lfo.frequency.value = 0.15;
-    const lfoGain = audioCtx.createGain();
-    lfoGain.gain.value = 4;
-    lfo.connect(lfoGain);
-    lfoGain.connect(ambientOsc.frequency);
-    lfo.start();
+    const filterLfo = audioCtx.createOscillator();
+    filterLfo.frequency.value = 0.07;
+    const filterLfoGain = audioCtx.createGain();
+    filterLfoGain.gain.value = 90;
+    filterLfo.connect(filterLfoGain);
+    filterLfoGain.connect(ambientFilter.frequency);
+    filterLfo.start();
+
+    function addDroneVoice(freq, type, gainValue, vibratoRate, vibratoDepth) {
+      const osc = audioCtx.createOscillator();
+      osc.type = type;
+      osc.frequency.value = freq;
+      const gain = audioCtx.createGain();
+      gain.gain.value = gainValue;
+      const vibrato = audioCtx.createOscillator();
+      vibrato.frequency.value = vibratoRate;
+      const vibratoGain = audioCtx.createGain();
+      vibratoGain.gain.value = vibratoDepth;
+      vibrato.connect(vibratoGain);
+      vibratoGain.connect(osc.frequency);
+      vibrato.start();
+      osc.connect(gain);
+      gain.connect(ambientFilter);
+      osc.start();
+      return { osc, gain };
+    }
+
+    ambientSubOsc = addDroneVoice(41.2, 'sine', 0.6, 0.05, 1.5).osc; // low foundation
+    addDroneVoice(43.7, 'sine', 0.5, 0.08, 2); // slow beat against the foundation
+    addDroneVoice(20.6, 'sine', 0.4, 0.03, 0.8); // sub-octave rumble
+    ambientMidGain = addDroneVoice(97, 'sawtooth', 0, 0.15, 6).gain; // dissonant edge, fades in with tension
+    addDroneVoice(660, 'triangle', 0.05, 0.02, 40); // faint distant ringing
 
     // Gentle chord pad that fades in while a player is resting in the safe
     // zone -- pitched down a bit, softly bitcrushed and lightly echoed for
@@ -136,7 +173,7 @@
     // anything harsh.
     safeMusicGain = audioCtx.createGain();
     safeMusicGain.gain.value = 0.0001;
-    safeMusicGain.connect(audioCtx.destination);
+    safeMusicGain.connect(musicMasterGain);
 
     const safeCrusher = audioCtx.createWaveShaper();
     safeCrusher.curve = makeBitcrushCurve(14);
@@ -278,7 +315,25 @@
     const minDist = Math.min(...players.map((p) => Math.hypot(p.x - monster.x, p.y - monster.y)));
     const proximity = clamp(1 - minDist / 380, 0, 1);
     ambientGain.gain.setTargetAtTime(0.05 + proximity * 0.18, audioCtx.currentTime, 0.3);
-    ambientOsc.frequency.setTargetAtTime(55 + proximity * 45, audioCtx.currentTime, 0.3);
+    ambientSubOsc.frequency.setTargetAtTime(41.2 + proximity * 12, audioCtx.currentTime, 0.3);
+    ambientMidGain.gain.setTargetAtTime(proximity * 0.06, audioCtx.currentTime, 0.4);
+  }
+
+  function setMusicEnabled(on) {
+    musicEnabled = on;
+    ensureAudio();
+    if (audioCtx && musicMasterGain) {
+      musicMasterGain.gain.setTargetAtTime(on ? 1 : 0, audioCtx.currentTime, 0.15);
+    }
+  }
+
+  const musicToggleEl = document.getElementById('music-toggle');
+  if (musicToggleEl) {
+    musicToggleEl.addEventListener('click', () => {
+      setMusicEnabled(!musicEnabled);
+      musicToggleEl.textContent = musicEnabled ? '♪ Music: On' : '♪ Music: Off';
+      musicToggleEl.classList.toggle('muted', !musicEnabled);
+    });
   }
 
   const TRACKED_KEYS = new Set(['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
