@@ -1,5 +1,5 @@
 (function () {
-  const LEVEL = window.LEVEL3;
+  const LEVEL = window.LEVEL4;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
@@ -13,15 +13,13 @@
   // each frame (see `dt` in loop()) rather than a fixed px/frame step.
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  const PATROL_SPEED = PLAYER_SPEED * 0.9; // the caterpillar is a slow roamer...
-  const CHARGE_SPEED = PLAYER_SPEED * 20; // ...until something sets it off
+  const PATROL_SPEED = PLAYER_SPEED * 0.85; // disguised, walking like a person
+  const CHARGE_SPEED = PLAYER_SPEED * 2; // revealed, twice your speed
   const LURE_SPEED = PLAYER_SPEED * 0.6;
-  const CATCH_RADIUS = 22;
+  const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
-  const ALERT_GRACE_MS = 3000;
-  const DETECT_RADIUS = 70; // very short range of "vision"
-  const GENERATOR_FILL_MS = 5000;
-  const VINE_RESPAWN_MS = 45000;
+  const ALERT_GRACE_MS = 2500;
+  const DETECT_RADIUS = 140; // how close before the disguise drops
   const RADAR_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
@@ -29,8 +27,6 @@
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
   const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner'];
-  const SEGMENT_COUNT = 7;
-  const SEGMENT_SPACING = 15;
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
@@ -49,7 +45,7 @@
   const EXPLORE_RADIUS = 7;
   const MINIMAP_W = 90;
 
-  const hudGeneratorEl = document.getElementById('hud-generator');
+  const hudPowerEl = document.getElementById('hud-power');
   const hudDoorEl = document.getElementById('hud-door');
 
   // ---- procedural audio (no asset files) ----
@@ -78,8 +74,7 @@
   // Every several seconds, a brief, gentle flutter in the safe-room music's
   // volume and a soft pitch dip on a couple of voices -- runs continuously
   // in the background; it's inaudible whenever safeMusicGain itself is
-  // faded near zero. Subtle on purpose: enough to read as "not quite
-  // right" without undercutting the calming point of the music.
+  // faded near zero.
   function scheduleSafeMusicGlitch() {
     const delay = 3000 + Math.random() * 4500;
     setTimeout(() => {
@@ -257,21 +252,21 @@
     playTone(880, 0.3, 'triangle', 0.22, 0.24);
   }
 
-  function playVineShriek() {
+  function playRevealScreech() {
     if (!audioCtx) return;
     const start = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(180, start);
-    osc.frequency.exponentialRampToValueAtTime(900, start + 0.3);
+    osc.frequency.setValueAtTime(220, start);
+    osc.frequency.exponentialRampToValueAtTime(1100, start + 0.25);
     gain.gain.setValueAtTime(0.001, start);
-    gain.gain.exponentialRampToValueAtTime(0.25, start + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.4);
+    gain.gain.exponentialRampToValueAtTime(0.22, start + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start(start);
-    osc.stop(start + 0.45);
+    osc.stop(start + 0.4);
   }
 
   function playCatchSting() {
@@ -385,16 +380,22 @@
     return FLOOR_SHADES[idx];
   }
 
+  const OVERGROWTH_SHADES = ['#33421f', '#3c4d24', '#2c391a', '#445a28'];
+  function overgrowthShade(x, y) {
+    const h = Math.imul(x + 91, 374761393) ^ Math.imul(y - 17, 668265263);
+    const idx = ((h ^ (h >>> 13)) >>> 0) % OVERGROWTH_SHADES.length;
+    return OVERGROWTH_SHADES[idx];
+  }
+
   const DIRT_SHADES = ['#5a4127', '#63482b', '#4e3a22', '#6b4f30'];
   function dirtShade(x, y) {
-    const h = Math.imul(x + 91, 374761393) ^ Math.imul(y - 17, 668265263);
+    const h = Math.imul(x - 53, 374761393) ^ Math.imul(y + 29, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % DIRT_SHADES.length;
     return DIRT_SHADES[idx];
   }
 
   // ---- game state ----
-  let generatorProgress = 0;
-  let generatorActive = false;
+  let leverPulled = false;
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
@@ -412,15 +413,20 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
+  // The mimic patrols disguised as a person (state 'patrol'); once a player
+  // gets close it drops the act, becomes a small toothy tentacle thing, and
+  // charges at 2x player speed (state 'alert') until it gives up or catches
+  // someone, then goes back to wandering in disguise.
   const monster = {
     x: 0,
     y: 0,
-    radius: 12,
+    radius: 13,
     seed: Math.random() * 100,
     path: [],
     pathIndex: 0,
     nextRepathAt: 0,
     lookDir: { x: 1, y: 0 },
+    tentacleTargets: [],
     state: 'patrol', // 'patrol' | 'alert'
     alertUntil: 0,
     alertTargetTile: null,
@@ -429,12 +435,14 @@
     luredState: 'none', // 'none' | 'lured' | 'eating'
     lureTarget: null,
     eatingUntil: 0,
-    trail: [],
-    segments: [],
   };
 
+  function isRevealed(m) {
+    return m.state === 'alert' || m.luredState !== 'none';
+  }
+
   let crates = [];
-  let vines = [];
+  let fires = [];
   let radarUntil = 0;
   let scannerUntil = 0;
   let floatingTexts = [];
@@ -462,16 +470,16 @@
     monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
     monster.state = 'patrol'; monster.alertUntil = 0; monster.alertTargetTile = null; monster.patrolIndex = 0;
     monster.frozenUntil = 0; monster.luredState = 'none'; monster.lureTarget = null; monster.eatingUntil = 0;
-    monster.trail = []; monster.segments = [];
 
-    generatorProgress = 0;
-    generatorActive = false;
+    leverPulled = false;
     doorUnlocked = false;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
       x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
     }));
-    vines = (LEVEL.vineSpawns || []).map((v) => ({ x: v.x, y: v.y, triggered: false, triggeredAt: 0 }));
+    fires = (LEVEL.fireSpawns || []).map((f, i) => ({
+      x: f.x, y: f.y, seed: i * 1471.7 + Math.random() * 5000,
+    }));
     radarUntil = 0;
     scannerUntil = 0;
     floatingTexts = [];
@@ -523,18 +531,20 @@
     return tileChar(t.x, t.y) === 'S';
   }
 
-  // The scanner points at the generator until it's finished charging --
-  // nothing left to find after that, so it just stops showing anything.
+  // The scanner points at the lever until it's pulled, then at the train
+  // itself so there's still something to follow once the power's on.
   function scannerTarget() {
-    if (generatorActive) return null;
-    return tileCenter(LEVEL.generator.x, LEVEL.generator.y);
+    if (!leverPulled) return tileCenter(LEVEL.lever.x, LEVEL.lever.y);
+    if (gameState === 'playing') return tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
+    return null;
   }
 
   function minimapColorFor(ch) {
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
     if (ch === 'S') return '#3ddc84';
-    if (ch === 'P') return '#5ec9e8';
+    if (ch === 'L') return '#5ec9e8';
+    if (ch === 'G') return '#3c5223';
     if (ch === 'T') return '#7a5a34';
     return '#3c3c46';
   }
@@ -634,67 +644,22 @@
     });
   }
 
-  function updateVines(now) {
-    players.forEach((p) => {
-      const t = worldToTile(p.x, p.y);
-      vines.forEach((v) => {
-        if (v.triggered) return;
-        if (v.x === t.x && v.y === t.y) {
-          v.triggered = true;
-          v.triggeredAt = now;
-          const target = tileCenter(v.x, v.y);
-          monster.state = 'alert';
-          monster.alertUntil = now + ALERT_GRACE_MS;
-          monster.alertTargetTile = { x: v.x, y: v.y };
-          monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
-          spawnFloatingText(target.x, target.y, 'SNARE!');
-          playVineShriek();
-        }
-      });
-    });
-    vines.forEach((v) => {
-      if (v.triggered && now - v.triggeredAt >= VINE_RESPAWN_MS) {
-        v.triggered = false;
-      }
-    });
-  }
-
   function updateTriggers() {
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
       const ch = tileChar(t.x, t.y);
+      if (ch === 'L' && !leverPulled) {
+        leverPulled = true;
+        doorUnlocked = true;
+        const c = tileCenter(t.x, t.y);
+        spawnFloatingText(c.x, c.y, 'POWER ON');
+        playDoorUnlockChime();
+      }
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
         playWinJingle();
       }
     });
-  }
-
-  function updateGenerator(dt) {
-    if (generatorActive) return;
-    const onPlate1 = players.some((p) => {
-      const t = worldToTile(p.x, p.y);
-      return t.x === LEVEL.plate1.x && t.y === LEVEL.plate1.y;
-    });
-    const onPlate2 = players.some((p) => {
-      const t = worldToTile(p.x, p.y);
-      return t.x === LEVEL.plate2.x && t.y === LEVEL.plate2.y;
-    });
-    const p0t = worldToTile(players[0].x, players[0].y);
-    const p1t = worldToTile(players[1].x, players[1].y);
-    const samePlayerTile = p0t.x === p1t.x && p0t.y === p1t.y;
-    const bothHeld = onPlate1 && onPlate2 && !samePlayerTile;
-
-    if (bothHeld) {
-      generatorProgress = Math.min(1, generatorProgress + dt / (GENERATOR_FILL_MS / 1000));
-      if (generatorProgress >= 1) {
-        generatorActive = true;
-        doorUnlocked = true;
-        playDoorUnlockChime();
-      }
-    } else {
-      generatorProgress = Math.max(0, generatorProgress - dt / (GENERATOR_FILL_MS / 1000 / 2));
-    }
   }
 
   // ---- monster AI ----
@@ -771,6 +736,7 @@
       if (p.caught || isInSafeZone(p)) continue;
       const d = Math.hypot(p.x - monster.x, p.y - monster.y);
       if (d <= DETECT_RADIUS && hasLineOfSight(monster.x, monster.y, p.x, p.y)) {
+        if (monster.state !== 'alert') playRevealScreech();
         monster.state = 'alert';
         monster.alertUntil = now + ALERT_GRACE_MS;
         monster.alertTargetTile = worldToTile(p.x, p.y);
@@ -800,38 +766,27 @@
     return { x: c.x + off.x * 10, y: c.y + off.y * 10 };
   }
 
-  function updateCaterpillarSegments(m) {
-    m.trail.unshift({ x: m.x, y: m.y });
-    if (m.trail.length > 600) m.trail.length = 600;
-    const segPositions = [];
-    let distAccum = 0;
-    let targetDist = SEGMENT_SPACING;
-    let segIndex = 0;
-    for (let i = 1; i < m.trail.length && segIndex < SEGMENT_COUNT; i++) {
-      const a = m.trail[i - 1], b = m.trail[i];
-      const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-      while (distAccum + segLen >= targetDist && segIndex < SEGMENT_COUNT) {
-        const t = segLen > 0.0001 ? (targetDist - distAccum) / segLen : 0;
-        segPositions.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-        segIndex++;
-        targetDist += SEGMENT_SPACING;
+  function updateTentacleTargets(tile) {
+    const targets = [];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        if (tileChar(tile.x + dx, tile.y + dy) === '#') {
+          targets.push(tileCenter(tile.x + dx, tile.y + dy));
+        }
       }
-      distAccum += segLen;
     }
-    const last = m.trail[m.trail.length - 1] || { x: m.x, y: m.y };
-    while (segPositions.length < SEGMENT_COUNT) segPositions.push(last);
-    m.segments = segPositions;
+    monster.tentacleTargets = targets.slice(0, 3);
   }
 
   function updateMonster(now, dt) {
-    if (now < monster.frozenUntil) { updateCaterpillarSegments(monster); return; }
+    if (now < monster.frozenUntil) return; // frozen solid: no movement, no perception
 
     if (monster.luredState === 'eating') {
       if (now >= monster.eatingUntil) {
         monster.luredState = 'none';
         monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
       } else {
-        updateCaterpillarSegments(monster);
         return;
       }
     }
@@ -845,6 +800,7 @@
         const path = bfsPath(graph, startTile, goalTile);
         monster.path = path && path.length > 1 ? path.slice(1) : [];
         monster.pathIndex = 0;
+        updateTentacleTargets(startTile);
       }
       if (monster.path && monster.pathIndex < monster.path.length) {
         const step = LURE_SPEED * dt;
@@ -863,7 +819,6 @@
         monster.luredState = 'eating';
         monster.eatingUntil = now + EAT_DURATION_MS;
       }
-      updateCaterpillarSegments(monster);
       return;
     }
 
@@ -885,6 +840,7 @@
           monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       }
+      updateTentacleTargets(startTile);
     }
 
     if (monster.path && monster.pathIndex < monster.path.length) {
@@ -904,8 +860,6 @@
         monster.y += (dy / d) * step;
       }
     }
-
-    updateCaterpillarSegments(monster);
   }
 
   function updateCatch(now) {
@@ -1012,6 +966,52 @@
     });
   }
 
+  // ---- fire sightings ----
+  // Each fire flickers on a slow, per-fire cycle -- most of the time it's
+  // just cold ash, but every now and then it catches and glows for a while,
+  // including punching its own little pool of light through the darkness.
+  function fireCycle(f, now) {
+    const period = 9000 + (f.seed % 4500);
+    const litDuration = 2500 + (f.seed % 1800);
+    const phase = (now + f.seed) % period;
+    return { lit: phase < litDuration, litT: phase / litDuration };
+  }
+
+  function drawFires(g, now) {
+    fires.forEach((f) => {
+      const { lit } = fireCycle(f, now);
+      if (!lit) return;
+      const c = tileCenter(f.x, f.y);
+      g.save();
+      g.translate(c.x, c.y);
+      const flicker = 0.85 + Math.sin(now * 0.02 + f.seed) * 0.15;
+      const glow = g.createRadialGradient(0, 0, 2, 0, 0, 30 * flicker);
+      glow.addColorStop(0, 'rgba(255,170,60,0.55)');
+      glow.addColorStop(1, 'rgba(255,120,30,0)');
+      g.fillStyle = glow;
+      g.beginPath();
+      g.arc(0, 0, 30 * flicker, 0, Math.PI * 2);
+      g.fill();
+
+      for (let i = 0; i < 3; i++) {
+        const wobble = Math.sin(now * 0.014 + f.seed + i * 2) * 3;
+        const h = (9 + i * 3) * flicker;
+        g.beginPath();
+        g.moveTo(-4 + i * 2, 6);
+        g.quadraticCurveTo(2 + wobble, -h * 0.5, 0 + wobble * 0.5, -h);
+        g.quadraticCurveTo(-2 + wobble, -h * 0.5, 4 - i * 2, 6);
+        g.closePath();
+        g.fillStyle = i === 0 ? '#ffdf8a' : i === 1 ? '#ff9c3d' : '#e0541f';
+        g.fill();
+      }
+      g.restore();
+    });
+  }
+
+  function fireLightPunches(now) {
+    return fires.filter((f) => fireCycle(f, now).lit).map((f) => tileCenter(f.x, f.y));
+  }
+
   // ---- rendering ----
   const doorBounds = (() => {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -1026,7 +1026,7 @@
     return { x0, y0, x1, y1 };
   })();
 
-  function drawTiles(g, camX, camY) {
+  function drawTiles(g, camX, camY, now) {
     const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
     const maxTX = Math.min(COLS - 1, Math.ceil((camX + VIEW_W / 2) / TILE) + 1);
     const minTY = Math.max(0, Math.floor((camY - VIEW_H / 2) / TILE) - 1);
@@ -1039,9 +1039,10 @@
         switch (ch) {
           case '#': color = '#262629'; break;
           case 'S': color = floorShade(x, y); break;
+          case 'G': color = overgrowthShade(x, y); break;
           case 'T': color = dirtShade(x, y); break;
           case 'E': color = '#3a301f'; break;
-          case 'P': color = floorShade(x, y); break;
+          case 'L': color = floorShade(x, y); break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
@@ -1051,6 +1052,18 @@
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+        }
+        if (ch === 'G') {
+          g.strokeStyle = 'rgba(20,50,10,0.5)';
+          g.lineWidth = 1.5;
+          const seed = (x * 7 + y * 13) % 11;
+          for (let i = 0; i < 2; i++) {
+            const bx = px + 6 + ((seed + i * 5) % 20);
+            g.beginPath();
+            g.moveTo(bx, py + TILE);
+            g.quadraticCurveTo(bx + 3, py + TILE - 10, bx - 2, py + TILE - 18);
+            g.stroke();
+          }
         }
         if (ch === 'T') {
           g.fillStyle = 'rgba(0,0,0,0.15)';
@@ -1064,6 +1077,8 @@
         }
       }
     }
+
+    drawFires(g, now);
 
     const dx0 = doorBounds.x0 * TILE, dy0 = doorBounds.y0 * TILE;
     const dw = (doorBounds.x1 - doorBounds.x0 + 1) * TILE;
@@ -1085,117 +1100,86 @@
       g.strokeRect(dx0 + 2, dy0 + 2, dw - 4, dh - 4);
     }
 
+    drawLever(g);
+    drawTrain(g, now);
+    drawSafeZone(g);
+    drawCorpses(g);
+    drawBloodSplatters(g);
+    drawCrates(g);
+    drawMeatLure(g);
+    drawFloatingTexts(g);
+  }
+
+  function drawLever(g) {
+    const c = tileCenter(LEVEL.lever.x, LEVEL.lever.y);
+    g.save();
+    g.translate(c.x, c.y);
+    g.fillStyle = '#33363c';
+    g.fillRect(-12, -10, 24, 20);
+    g.strokeStyle = '#181a1e';
+    g.lineWidth = 2;
+    g.strokeRect(-12, -10, 24, 20);
+    g.strokeStyle = leverPulled ? '#3ddc84' : '#c9403a';
+    g.lineWidth = 3;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(0, 6);
+    if (leverPulled) {
+      g.lineTo(8, -8);
+      g.shadowColor = '#3ddc84';
+      g.shadowBlur = 8;
+    } else {
+      g.lineTo(-8, -8);
+    }
+    g.stroke();
+    g.shadowBlur = 0;
+    g.fillStyle = '#1c1e22';
+    g.beginPath();
+    g.arc(0, 6, 3, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+
+  function drawTrain(g, now) {
     const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
     g.beginPath();
     g.arc(ex.x, ex.y, doorUnlocked ? 12 : 6, 0, Math.PI * 2);
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
 
-    drawGeneratorRoom(g);
-    drawSafeZone(g);
-    drawCorpses(g);
-    drawBloodSplatters(g);
-    drawVines(g);
-    drawCrates(g);
-    drawMeatLure(g);
-    drawFloatingTexts(g);
-  }
-
-  function drawWireSegment(g, x0, y0, x1, y1, active) {
+    const tx = ex.x - 26, ty = ex.y;
     g.save();
-    g.strokeStyle = active ? '#3ddc84' : '#7a2f10';
-    g.lineWidth = 3;
-    g.lineCap = 'round';
-    if (active) { g.shadowColor = '#3ddc84'; g.shadowBlur = 6; }
-    g.beginPath();
-    g.moveTo(x0, y0);
-    g.lineTo(x1, y1);
-    g.stroke();
-    g.shadowBlur = 0;
-    g.restore();
-  }
-
-  function drawGeneratorRoom(g) {
-    const genC = tileCenter(LEVEL.generator.x, LEVEL.generator.y);
-    const p1C = tileCenter(LEVEL.plate1.x, LEVEL.plate1.y);
-    const p2C = tileCenter(LEVEL.plate2.x, LEVEL.plate2.y);
-
-    drawWireSegment(g, p1C.x, p1C.y, genC.x, genC.y, generatorActive);
-    drawWireSegment(g, p2C.x, p2C.y, genC.x, genC.y, generatorActive);
-
-    [[p1C, onPlateNow(LEVEL.plate1)], [p2C, onPlateNow(LEVEL.plate2)]].forEach(([c, pressed]) => {
-      g.save();
-      g.translate(c.x, c.y);
-      g.fillStyle = pressed ? '#5ec9e8' : '#3a4048';
-      g.fillRect(-11, -11, 22, 22);
-      g.strokeStyle = '#1c2226';
-      g.lineWidth = 2;
-      g.strokeRect(-11, -11, 22, 22);
-      if (pressed) {
-        g.shadowColor = '#5ec9e8';
-        g.shadowBlur = 10;
-        g.fillStyle = 'rgba(94,201,232,0.5)';
-        g.fillRect(-7, -7, 14, 14);
-        g.shadowBlur = 0;
-      }
-      g.restore();
-    });
-
-    g.save();
-    g.translate(genC.x, genC.y);
-    g.fillStyle = '#33363c';
-    g.fillRect(-16, -14, 32, 28);
-    g.strokeStyle = '#181a1e';
+    g.translate(tx, ty);
+    g.fillStyle = '#3a3f46';
+    g.fillRect(-30, -16, 60, 28);
+    g.strokeStyle = '#1c1e22';
     g.lineWidth = 2;
-    g.strokeRect(-16, -14, 32, 28);
-    const litColor = generatorActive ? '#3ddc84' : `rgba(255,200,60,${0.3 + generatorProgress * 0.6})`;
-    g.fillStyle = litColor;
-    g.shadowColor = litColor;
-    g.shadowBlur = generatorActive ? 12 : 4 + generatorProgress * 8;
-    for (let i = 0; i < 3; i++) {
+    g.strokeRect(-30, -16, 60, 28);
+    // windows
+    for (let i = 0; i < 4; i++) {
+      g.fillStyle = doorUnlocked ? 'rgba(255,220,140,0.9)' : 'rgba(30,34,20,0.9)';
+      g.fillRect(-24 + i * 15, -10, 9, 10);
+    }
+    // wheels
+    g.fillStyle = '#111214';
+    [-20, 0, 20].forEach((wx) => {
       g.beginPath();
-      g.arc(-9 + i * 9, -6, 2.4, 0, Math.PI * 2);
+      g.arc(wx, 14, 5, 0, Math.PI * 2);
       g.fill();
-    }
-    g.shadowBlur = 0;
-    if (!generatorActive) {
-      g.fillStyle = '#1c1e22';
-      g.fillRect(-12, 4, 24, 6);
-      g.fillStyle = '#ffd27a';
-      g.fillRect(-12, 4, 24 * generatorProgress, 6);
-    }
+    });
     g.restore();
-  }
 
-  function onPlateNow(plate) {
-    return players.some((p) => {
-      const t = worldToTile(p.x, p.y);
-      return t.x === plate.x && t.y === plate.y;
-    });
-  }
-
-  function drawVines(g) {
-    vines.forEach((v) => {
-      if (v.triggered) return;
-      const c = tileCenter(v.x, v.y);
-      g.save();
-      g.translate(c.x, c.y);
-      g.strokeStyle = '#3a6b2a';
-      g.lineWidth = 2.5;
-      g.lineCap = 'round';
+    if (doorUnlocked) {
+      const puffPhase = (now * 0.001) % 2;
       for (let i = 0; i < 3; i++) {
-        const a = (i / 3) * Math.PI * 2 + v.x * 0.3;
+        const t = (puffPhase + i * 0.6) % 2;
+        const r = 4 + t * 6;
         g.beginPath();
-        g.moveTo(0, 0);
-        g.quadraticCurveTo(Math.cos(a) * 6, Math.sin(a) * 6, Math.cos(a) * 11, Math.sin(a) * 11);
-        g.stroke();
+        g.arc(tx - 22, ty - 18 - t * 20, r, 0, Math.PI * 2);
+        g.fillStyle = `rgba(200,200,200,${0.4 * (1 - t / 2)})`;
+        g.fill();
       }
-      g.fillStyle = '#5a2a3a';
-      g.beginPath();
-      g.arc(0, 0, 3.5, 0, Math.PI * 2);
-      g.fill();
-      g.restore();
-    });
+    }
   }
 
   function drawTable(g, cx, cy) {
@@ -1304,42 +1288,118 @@
     });
   }
 
+  // The disguise: the exact same hazmat-suit silhouette the players use, in
+  // a sickly, slightly-off color -- close enough to pass at a glance from
+  // across a dark room, which is the point.
+  function drawHazmatFigure(g, color) {
+    const R = PLAYER_RADIUS;
+    g.fillStyle = '#2b2b28';
+    g.beginPath(); g.ellipse(-R * 0.9, -R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(-R * 0.9, R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
+
+    g.strokeStyle = '#54544c';
+    g.lineWidth = 2.5;
+    g.beginPath();
+    g.moveTo(-R * 1.3, -3);
+    g.quadraticCurveTo(-R * 1.1, -R * 0.9, -R * 0.55, -R * 0.55);
+    g.stroke();
+    g.fillStyle = '#54544c';
+    g.fillRect(-R * 1.5, -4.5, 7, 9);
+
+    g.beginPath();
+    g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+    g.fillStyle = color;
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.4)';
+    g.lineWidth = 1.5;
+    g.stroke();
+
+    g.save();
+    g.beginPath();
+    g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+    g.clip();
+    g.fillStyle = 'rgba(20,20,15,0.85)';
+    g.fillRect(-R * 1.3, -R * 0.28, R * 2.6, R * 0.2);
+    g.fillStyle = 'rgba(255,200,40,0.9)';
+    g.fillRect(-R * 1.3, -R * 0.1, R * 2.6, R * 0.1);
+    g.restore();
+
+    g.fillStyle = '#e8d94a';
+    g.beginPath(); g.arc(-R * 0.15, -R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.arc(-R * 0.15, R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
+
+    g.beginPath();
+    g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
+    g.strokeStyle = '#1c1c18';
+    g.lineWidth = 3;
+    g.stroke();
+
+    g.beginPath();
+    g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(220,222,210,0.95)';
+    g.fill();
+    g.strokeStyle = '#1c1c18';
+    g.lineWidth = 1.5;
+    g.stroke();
+
+    g.beginPath();
+    g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
+    g.fillStyle = '#0d1418';
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.lineWidth = 1;
+    g.stroke();
+    g.beginPath();
+    g.ellipse(R * 0.28, -R * 0.14, R * 0.14, R * 0.08, -0.4, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.55)';
+    g.fill();
+  }
+
   function drawMonster(g, t) {
-    // Body segments, tail first so the head draws on top.
-    for (let i = monster.segments.length - 1; i >= 0; i--) {
-      const seg = monster.segments[i];
-      const r = monster.radius * (1 - i * 0.06);
-      g.save();
-      g.translate(seg.x, seg.y);
-      g.beginPath();
-      g.arc(0, 0, Math.max(4, r), 0, Math.PI * 2);
-      g.fillStyle = i % 2 === 0 ? '#4a3a1e' : '#5a4726';
-      g.shadowColor = '#2a2010';
-      g.shadowBlur = 6;
-      g.fill();
-      g.shadowBlur = 0;
+    g.save();
+    g.translate(monster.x, monster.y);
+    g.rotate(Math.atan2(monster.lookDir.y, monster.lookDir.x));
+
+    if (!isRevealed(monster)) {
+      drawHazmatFigure(g, '#7c8a72');
       g.restore();
+      return;
     }
+    g.restore();
 
     g.save();
     g.translate(monster.x, monster.y);
+
+    monster.tentacleTargets.forEach((tt, i) => {
+      const wobble = Math.sin(t * 0.005 + i * 2.1 + monster.seed) * 5;
+      const tx = tt.x - monster.x, ty = tt.y - monster.y;
+      const midX = tx / 2 + wobble;
+      const midY = ty / 2 - wobble;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.quadraticCurveTo(midX, midY, tx, ty);
+      g.strokeStyle = '#3a1f4a';
+      g.lineWidth = 3;
+      g.lineCap = 'round';
+      g.stroke();
+    });
 
     const points = 10;
     g.beginPath();
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
-      const r = monster.radius + Math.sin(t * 0.006 + i * 1.7 + monster.seed) * 2.5;
+      const r = monster.radius + Math.sin(t * 0.008 + i * 1.7 + monster.seed) * 3;
       const px = Math.cos(a) * r, py = Math.sin(a) * r;
       if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
     }
     g.closePath();
-    g.fillStyle = '#3a2e16';
-    g.shadowColor = '#6b5228';
+    g.fillStyle = '#2a1533';
+    g.shadowColor = '#5a2a6e';
     g.shadowBlur = 12;
     g.fill();
     g.shadowBlur = 0;
 
-    drawMonsterEye(g, monster.lookDir);
+    drawMonsterTeeth(g, monster.lookDir);
 
     if (t < monster.frozenUntil) {
       g.beginPath();
@@ -1360,114 +1420,53 @@
     g.restore();
   }
 
-  function drawMonsterEye(g, lookDir) {
-    const eyeR = monster.radius * 0.62;
+  // No eye this time -- a dark, gaping maw ringed with teeth, facing the
+  // direction it's about to lunge.
+  function drawMonsterTeeth(g, lookDir) {
+    const mouthR = monster.radius * 0.7;
+    const angle = Math.atan2(lookDir.y, lookDir.x);
 
-    const sclera = g.createRadialGradient(0, 0, 1, 0, 0, eyeR);
-    sclera.addColorStop(0, '#f2e6d8');
-    sclera.addColorStop(0.75, '#dcc4b2');
-    sclera.addColorStop(1, '#7a6252');
+    g.save();
+    g.rotate(angle);
+
     g.beginPath();
-    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
-    g.fillStyle = sclera;
+    g.ellipse(mouthR * 0.25, 0, mouthR * 0.85, mouthR * 0.62, 0, 0, Math.PI * 2);
+    g.fillStyle = '#0a0308';
     g.fill();
 
-    const ix = lookDir.x * eyeR * 0.32, iy = lookDir.y * eyeR * 0.26;
-    const irisR = eyeR * 0.48;
-    const iris = g.createRadialGradient(ix, iy, 1, ix, iy, irisR);
-    iris.addColorStop(0, '#8a6a2e');
-    iris.addColorStop(0.6, '#4a3210');
-    iris.addColorStop(1, '#150a05');
-    g.beginPath();
-    g.arc(ix, iy, irisR, 0, Math.PI * 2);
-    g.fillStyle = iris;
-    g.fill();
+    const teeth = 9;
+    g.fillStyle = '#e8e2d8';
+    for (let i = 0; i < teeth; i++) {
+      const a = (i / (teeth - 1)) * Math.PI * 2 - Math.PI;
+      const rx = mouthR * 0.85, ry = mouthR * 0.62;
+      const bx = mouthR * 0.25 + Math.cos(a) * rx;
+      const by = Math.sin(a) * ry;
+      const inX = mouthR * 0.25 + Math.cos(a) * rx * 0.45;
+      const inY = Math.sin(a) * ry * 0.45;
+      const tw = 2.6;
+      const nx = -Math.sin(a) * tw, ny = Math.cos(a) * tw;
+      g.beginPath();
+      g.moveTo(bx + nx, by + ny);
+      g.lineTo(bx - nx, by - ny);
+      g.lineTo(inX, inY);
+      g.closePath();
+      g.fill();
+    }
 
     g.beginPath();
-    g.arc(ix, iy, irisR * 0.42, 0, Math.PI * 2);
-    g.fillStyle = '#050202';
-    g.fill();
-
-    g.beginPath();
-    g.arc(ix - irisR * 0.3, iy - irisR * 0.3, irisR * 0.16, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.85)';
-    g.fill();
-
-    g.beginPath();
-    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
-    g.strokeStyle = 'rgba(15,4,4,0.7)';
+    g.ellipse(mouthR * 0.25, 0, mouthR * 0.85, mouthR * 0.62, 0, 0, Math.PI * 2);
+    g.strokeStyle = 'rgba(0,0,0,0.6)';
     g.lineWidth = 1.5;
     g.stroke();
+    g.restore();
   }
 
   function drawPlayers(g) {
-    const R = PLAYER_RADIUS;
     players.forEach((p) => {
       g.save();
       g.translate(p.x, p.y);
       g.rotate(Math.atan2(p.facing.y, p.facing.x));
-
-      g.fillStyle = '#2b2b28';
-      g.beginPath(); g.ellipse(-R * 0.9, -R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.ellipse(-R * 0.9, R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
-
-      g.strokeStyle = '#54544c';
-      g.lineWidth = 2.5;
-      g.beginPath();
-      g.moveTo(-R * 1.3, -3);
-      g.quadraticCurveTo(-R * 1.1, -R * 0.9, -R * 0.55, -R * 0.55);
-      g.stroke();
-      g.fillStyle = '#54544c';
-      g.fillRect(-R * 1.5, -4.5, 7, 9);
-
-      g.beginPath();
-      g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
-      g.fillStyle = p.color;
-      g.fill();
-      g.strokeStyle = 'rgba(0,0,0,0.4)';
-      g.lineWidth = 1.5;
-      g.stroke();
-
-      g.save();
-      g.beginPath();
-      g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
-      g.clip();
-      g.fillStyle = 'rgba(20,20,15,0.85)';
-      g.fillRect(-R * 1.3, -R * 0.28, R * 2.6, R * 0.2);
-      g.fillStyle = 'rgba(255,200,40,0.9)';
-      g.fillRect(-R * 1.3, -R * 0.1, R * 2.6, R * 0.1);
-      g.restore();
-
-      g.fillStyle = '#e8d94a';
-      g.beginPath(); g.arc(-R * 0.15, -R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.arc(-R * 0.15, R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
-
-      g.beginPath();
-      g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
-      g.strokeStyle = '#1c1c18';
-      g.lineWidth = 3;
-      g.stroke();
-
-      g.beginPath();
-      g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(220,222,210,0.95)';
-      g.fill();
-      g.strokeStyle = '#1c1c18';
-      g.lineWidth = 1.5;
-      g.stroke();
-
-      g.beginPath();
-      g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
-      g.fillStyle = '#0d1418';
-      g.fill();
-      g.strokeStyle = 'rgba(0,0,0,0.5)';
-      g.lineWidth = 1;
-      g.stroke();
-      g.beginPath();
-      g.ellipse(R * 0.28, -R * 0.14, R * 0.14, R * 0.08, -0.4, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(255,255,255,0.55)';
-      g.fill();
-
+      drawHazmatFigure(g, p.color);
       g.restore();
     });
   }
@@ -1485,7 +1484,7 @@
     g.restore();
   }
 
-  function buildDarknessMask(camX, camY) {
+  function buildDarknessMask(camX, camY, now) {
     const worldToScreen = (wx, wy) => ({ x: wx - camX + VIEW_W / 2, y: wy - camY + VIEW_H / 2 });
 
     maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
@@ -1506,6 +1505,11 @@
       punchLight(maskCtx, s.x, s.y, 90, 1);
       punchLight(maskCtx, s.x, s.y, 230, 0.85);
     });
+
+    fireLightPunches(now).forEach((fc) => {
+      const s = worldToScreen(fc.x, fc.y);
+      punchLight(maskCtx, s.x, s.y, 130, 0.75);
+    });
   }
 
   function renderViewport(index, now) {
@@ -1523,13 +1527,13 @@
 
     ctx.save();
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
-    drawTiles(ctx, camX, camY);
+    drawTiles(ctx, camX, camY, now);
     drawMonster(ctx, now);
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
 
-    buildDarknessMask(camX, camY);
+    buildDarknessMask(camX, camY, now);
     ctx.drawImage(maskCanvas, vx, 0);
 
     drawProximityWarning(vx, Math.hypot(p.x - monster.x, p.y - monster.y), now);
@@ -1646,14 +1650,14 @@
     const jawProgress = clamp(t / 0.75, 0, 1);
 
     ctx.save();
-    ctx.fillStyle = `rgba(40,30,10,${0.25 + t * 0.35})`;
+    ctx.fillStyle = `rgba(35,10,40,${0.25 + t * 0.35})`;
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
 
     const shake = (1 - t) * 5;
     ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
 
-    drawJaw(ctx, vx, 1, jawProgress, '#3a2e16');
-    drawJaw(ctx, vx, -1, jawProgress, '#2a2210');
+    drawJaw(ctx, vx, 1, jawProgress, '#2a1533');
+    drawJaw(ctx, vx, -1, jawProgress, '#1e0f26');
 
     if (t > 0.6) {
       const flash = clamp((t - 0.6) / 0.15, 0, 1) * (1 - clamp((t - 0.85) / 0.15, 0, 1));
@@ -1675,16 +1679,15 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'FACILITY CLEARED &mdash; press Enter to replay, or <a href="level4.html" style="color:var(--accent)">continue to Level 4 &rarr;</a>';
+      messageEl.innerHTML = 'ALL ABOARD &mdash; press Enter to replay, or <a href="index.html" style="color:var(--accent)">back to Level 1</a>';
     } else {
       messageEl.style.display = 'none';
     }
   }
 
   function updateHud() {
-    const genLabel = generatorActive ? 'online' : `charging ${Math.round(generatorProgress * 100)}%`;
-    hudGeneratorEl.textContent = `Generator: ${genLabel}`;
-    hudGeneratorEl.classList.toggle('done', generatorActive);
+    hudPowerEl.textContent = `Power: ${leverPulled ? 'on' : 'off'}`;
+    hudPowerEl.classList.toggle('done', leverPulled);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
   }
@@ -1698,9 +1701,7 @@
     if (gameState === 'playing') {
       updateInputMovement(dt);
       updateTriggers();
-      updateGenerator(dt);
       updateCrates(now);
-      updateVines(now);
       updateMonster(now, dt);
       updateCatch(now);
       updateCutscenes(now);

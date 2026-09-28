@@ -20,7 +20,7 @@ Each half of the screen is that player's own camera into the same map. A
 tune (sound effects like chimes and the catch sting keep playing either
 way).
 
-All three levels flash your screen red, pulsing faster the closer a
+All four levels flash your screen red, pulsing faster the closer a
 creature gets, regardless of whether it's noticed you yet — your only
 warning to freeze or clear out before it does. Getting caught plays a
 2-second "gotcha" close-up of the creature closing in on you, then
@@ -41,8 +41,9 @@ minute. Each one holds one of three items, decided at random when it
   creature, in the corner of each player's own screen.
 - **Scanner** — a second, separate 10-second compass (bottom-right corner)
   pointing at whatever's left of the level's real objective — the nearest
-  un-pressed button, the fuse (or the real fuse box once it's picked up), or
-  the generator — and it never points at something you've already done.
+  un-pressed button, the fuse (or the real fuse box once it's picked up),
+  the generator, or the lever (and then the train once it's pulled) — and
+  it never points at something you've already done.
 - **Meat** — drops right where the crate was and instantly pulls every
   creature toward it; once a creature arrives it spends 3 seconds eating,
   completely ignoring players.
@@ -110,6 +111,24 @@ screen. Step on one and the caterpillar rockets toward that exact spot at
 20x its normal speed. If you're still there when it arrives, you're
 caught; if you've already moved on, it settles back into patrolling from
 wherever the vine was.
+
+## Level 4 — Overgrown
+
+The same facility as Level 3, years later — vegetation has swallowed the
+corridors (on top of the same patches of missing floor), and scattered
+fires flare up and die back down on their own slow, random cycles, briefly
+lighting up whatever's nearby before going dark again. There's no
+generator this time: find the electrical room and pull its lever (no
+co-op needed, either player can do it alone) to power up the train waiting
+at the platform, then get both players aboard it to finish.
+
+The creature disguises itself as a person and wanders the halls at close
+to your own pace, imitating normal movement — genuinely hard to tell apart
+from your partner at a glance. Get within range of it, though, and the
+act drops instantly: it shrinks into a small tentacle creature with a
+mouth full of teeth instead of an eye, and charges at 2x your speed until
+it either catches someone or loses the trail, at which point it slinks
+back into disguise and resumes wandering.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.

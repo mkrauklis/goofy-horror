@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Goofy Horror &mdash; Level 2</title>
+<title>Goofy Horror &mdash; Level 4</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -10,30 +10,31 @@
 <nav class="level-nav">
   <a href="index.html">Level 1</a>
   <span>&middot;</span>
-  <a href="level2.html" class="active">Level 2</a>
+  <a href="level2.html">Level 2</a>
   <span>&middot;</span>
   <a href="level3.html">Level 3</a>
   <span>&middot;</span>
-  <a href="level4.html">Level 4</a>
+  <a href="level4.html" class="active">Level 4</a>
 </nav>
 
 <header class="hero">
   <h1>GOOFY HORROR</h1>
   <p>
-    Level 2 &mdash; Blackout. The power's still out, but this time there's no
-    button panel &mdash; find the fuse and seat it in the one fuse box in the
-    facility that's actually wired to the door (follow the wire once you spot
-    it). Two creatures patrol the dark slowly and can't find you at all if you
-    hold still &mdash; but move while one is close and it charges at eight
-    times your speed. Item crates can turn up a radar, a scanner pointing at
-    the fuse (or the real box once it's picked up), a distracting slab of
-    meat, or a CO2 blast that freezes a creature solid.
+    Level 4 &mdash; Overgrown. The same facility as Level 3, gone to seed:
+    vegetation has swallowed the corridors (on top of the same patches of
+    missing floor), and every now and then you'll catch a fire burning
+    somewhere in the dark before it dies back down.
+    Find the electrical room and pull the lever to get the train running,
+    then get both players aboard. Something wanders the halls that looks
+    exactly like a person &mdash; get too close and it drops the act,
+    shrinking into a small toothy tentacle thing that charges at twice your
+    speed.
   </p>
 </header>
 
 <div class="wrap">
   <div id="hud">
-    <span id="hud-fuse">Fuse: on the ground</span>
+    <span id="hud-power">Power: off</span>
     <span id="hud-door">Door: locked</span>
     <button id="music-toggle" class="music-toggle" type="button">&#9834; Music: On</button>
   </div>
@@ -44,7 +45,7 @@
   <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys &nbsp;&middot;&nbsp; sound plays after your first key press</p>
 </div>
 
-<script src="levels/level2/level.js"></script>
-<script src="js/game2.js"></script>
+<script src="levels/level4/level.js"></script>
+<script src="js/game4.js"></script>
 </body>
 </html>
