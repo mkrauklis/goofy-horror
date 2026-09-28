@@ -8,43 +8,61 @@
 </head>
 <body>
 <nav class="level-nav">
-  <a href="index.html" class="active">Level 1</a>
+  <a href="index.html" class="active">Menu</a>
+  <span>&middot;</span>
+  <a href="level1.html">Level 1</a>
   <span>&middot;</span>
   <a href="level2.html">Level 2</a>
   <span>&middot;</span>
   <a href="level3.html">Level 3</a>
   <span>&middot;</span>
   <a href="level4.html">Level 4</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
 </nav>
 
 <header class="hero">
   <h1>GOOFY HORROR</h1>
   <p>
-    Level 1 &mdash; The Facility. The power's out and it's pitch black beyond
-    your flashlight. Find all 3 buttons together to unlock the big door out.
-Two identical creatures roam the dark independently and can't see you
-    until your own flashlight lands fully on one &mdash; once it does, it's
-    2.5x as fast as you. A network of ventilation ducts threads through the
-    facility as a safe shortcut, and item crates can turn up a radar, a
-    scanner pointing at the nearest unpressed button, a distracting slab of
-    meat, or a CO2 blast that freezes a creature solid.
+    A 2-player local split-screen horror game. Real JavaScript, no build
+    step, no image or sound files &mdash; every room, creature, and note of
+    music is generated live in the browser.
   </p>
 </header>
 
 <div class="wrap">
-  <div id="hud">
-    <span id="hud-buttons">Buttons: 0 / 3</span>
-    <span id="hud-door">Door: locked</span>
-    <button id="music-toggle" class="music-toggle" type="button">&#9834; Music: On</button>
+  <div class="menu-list">
+    <a class="menu-item panel" href="level1.html">
+      <h2>Level 1 &mdash; The Facility</h2>
+      <p>A huge, pitch-black facility. Two identical wall-crawling
+        creatures patrol independently &mdash; find all 3 buttons to
+        unlock the exit.</p>
+    </a>
+    <a class="menu-item panel" href="level2.html">
+      <h2>Level 2 &mdash; Blackout</h2>
+      <p>A sprawling lattice of corridors. Two creatures hunt by sound, not
+        sight &mdash; find the fuse and the one real fuse box wired to the
+        door.</p>
+    </a>
+    <a class="menu-item panel" href="level3.html">
+      <h2>Level 3 &mdash; Sinkhole</h2>
+      <p>The floor is crumbling to dirt. A slow caterpillar creature is
+        harmless on its own &mdash; until someone steps on a meat vine.</p>
+    </a>
+    <a class="menu-item panel" href="level4.html">
+      <h2>Level 4 &mdash; Overgrown</h2>
+      <p>Same facility, gone to seed, fires flickering in the dark. Power
+        the train with the electrical room's lever &mdash; and watch out
+        for the thing that looks like your partner.</p>
+    </a>
+    <a class="menu-item panel monsterpedia-item" href="monsterpedia.html">
+      <h2>Monsterpedia</h2>
+      <p>A field guide to every creature in the game &mdash; how it hunts,
+        how fast it is, and what gives it away.</p>
+    </a>
   </div>
-  <div id="game-canvas-holder" class="panel">
-    <canvas id="game-canvas" width="920" height="340"></canvas>
-    <div id="game-message"></div>
-  </div>
-  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys &nbsp;&middot;&nbsp; sound plays after your first key press</p>
+  <p class="hint">Player 1 (orange): W A S D &nbsp;&middot;&nbsp; Player 2 (green): Arrow keys &nbsp;&middot;&nbsp; local split-screen co-op, sound plays after your first key press in a level</p>
 </div>
 
-<script src="levels/level1/level.js"></script>
-<script src="js/game.js"></script>
 </body>
 </html>

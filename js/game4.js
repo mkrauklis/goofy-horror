@@ -1679,7 +1679,7 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'ALL ABOARD &mdash; press Enter to replay, or <a href="index.html" style="color:var(--accent)">back to Level 1</a>';
+      messageEl.innerHTML = 'ALL ABOARD &mdash; press Enter to replay, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
     } else {
       messageEl.style.display = 'none';
     }

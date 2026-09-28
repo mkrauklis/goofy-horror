@@ -11,6 +11,11 @@ the folder with any static server, e.g.:
 npx serve .
 ```
 
+[`index.html`](index.html) is the main menu, linking out to each level and
+to the [Monsterpedia](monsterpedia.html) — a field guide rendering every
+creature live on canvas, the same drawing code the levels themselves use,
+with a short write-up of how each one hunts.
+
 ## Controls
 
 Split-screen local 2-player, sharing one dark facility. Player 1 (orange)

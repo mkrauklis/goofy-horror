@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Goofy Horror &mdash; Level 4</title>
+<title>Goofy Horror &mdash; Level 1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -10,13 +10,13 @@
 <nav class="level-nav">
   <a href="index.html">Menu</a>
   <span>&middot;</span>
-  <a href="level1.html">Level 1</a>
+  <a href="level1.html" class="active">Level 1</a>
   <span>&middot;</span>
   <a href="level2.html">Level 2</a>
   <span>&middot;</span>
   <a href="level3.html">Level 3</a>
   <span>&middot;</span>
-  <a href="level4.html" class="active">Level 4</a>
+  <a href="level4.html">Level 4</a>
   <span>&middot;</span>
   <a href="monsterpedia.html">Monsterpedia</a>
 </nav>
@@ -24,21 +24,20 @@
 <header class="hero">
   <h1>GOOFY HORROR</h1>
   <p>
-    Level 4 &mdash; Overgrown. The same facility as Level 3, gone to seed:
-    vegetation has swallowed the corridors (on top of the same patches of
-    missing floor), and every now and then you'll catch a fire burning
-    somewhere in the dark before it dies back down.
-    Find the electrical room and pull the lever to get the train running,
-    then get both players aboard. Something wanders the halls that looks
-    exactly like a person &mdash; get too close and it drops the act,
-    shrinking into a small toothy tentacle thing that charges at twice your
-    speed.
+    Level 1 &mdash; The Facility. The power's out and it's pitch black beyond
+    your flashlight. Find all 3 buttons together to unlock the big door out.
+Two identical creatures roam the dark independently and can't see you
+    until your own flashlight lands fully on one &mdash; once it does, it's
+    2.5x as fast as you. A network of ventilation ducts threads through the
+    facility as a safe shortcut, and item crates can turn up a radar, a
+    scanner pointing at the nearest unpressed button, a distracting slab of
+    meat, or a CO2 blast that freezes a creature solid.
   </p>
 </header>
 
 <div class="wrap">
   <div id="hud">
-    <span id="hud-power">Power: off</span>
+    <span id="hud-buttons">Buttons: 0 / 3</span>
     <span id="hud-door">Door: locked</span>
     <button id="music-toggle" class="music-toggle" type="button">&#9834; Music: On</button>
   </div>
@@ -49,7 +48,7 @@
   <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys &nbsp;&middot;&nbsp; sound plays after your first key press</p>
 </div>
 
-<script src="levels/level4/level.js"></script>
-<script src="js/game4.js"></script>
+<script src="levels/level1/level.js"></script>
+<script src="js/game.js"></script>
 </body>
 </html>
