@@ -29,6 +29,17 @@
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
   const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner'];
+
+  // ---- sprint / stamina ----
+  const DOUBLE_TAP_MS = 300;
+  const STAMINA_MAX = 15; // seconds of sprint fuel
+  const SPRINT_SPEED_MULT = 2;
+  const EXHAUSTED_SPEED_MULT = 0.5;
+  const SPRINT_DRAIN_RATE = STAMINA_MAX / 15; // empties over 15s of continuous sprint
+  const EXHAUSTED_MS = 5000;
+  const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
+  const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking
+  const WALK_CYCLE_SPEED = 9; // radians/second the walk-cycle phase advances at 1x speed
   const SEGMENT_COUNT = 7;
   const SEGMENT_SPACING = 15;
 
@@ -51,11 +62,13 @@
 
   const hudGeneratorEl = document.getElementById('hud-generator');
   const hudDoorEl = document.getElementById('hud-door');
+  const hudTimerEl = document.getElementById('hud-timer');
+  const hudBestEl = document.getElementById('hud-best');
 
   // ---- procedural audio (no asset files) ----
   let audioCtx = null;
   let musicMasterGain = null; // both the ambient drone and the safe-room pad route through this
-  let musicEnabled = true;
+  let musicEnabled = false;
   let ambientGain = null;
   let ambientSubOsc = null;
   let ambientMidGain = null;
@@ -327,21 +340,45 @@
     }
   }
 
+  const soundHintEl = document.getElementById('sound-hint');
+  function updateSoundHint() {
+    if (soundHintEl) soundHintEl.style.display = musicEnabled ? '' : 'none';
+  }
+
   const musicToggleEl = document.getElementById('music-toggle');
   if (musicToggleEl) {
     musicToggleEl.addEventListener('click', () => {
       setMusicEnabled(!musicEnabled);
       musicToggleEl.textContent = musicEnabled ? '♪ Music: On' : '♪ Music: Off';
       musicToggleEl.classList.toggle('muted', !musicEnabled);
+      updateSoundHint();
     });
   }
+  updateSoundHint();
 
   const TRACKED_KEYS = new Set(['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
   const keys = {};
 
+  // Double-tapping a movement key starts a sprint (see updateStamina/
+  // applyMovement) as long as there's stamina left. Only counted on the
+  // real edge of a fresh keydown, not the browser's auto-repeat.
+  const lastTapTime = [{}, {}];
+  function handleMovementKeyPress(key, now) {
+    const playerIndex = (key === 'w' || key === 'a' || key === 's' || key === 'd') ? 0 : 1;
+    const last = lastTapTime[playerIndex][key] || 0;
+    if (now - last < DOUBLE_TAP_MS) {
+      const p = players[playerIndex];
+      if (p.moveState !== 'exhausted' && p.stamina > 0) {
+        p.sprintActive = true;
+      }
+    }
+    lastTapTime[playerIndex][key] = now;
+  }
+
   window.addEventListener('keydown', (e) => {
     ensureAudio();
     if (TRACKED_KEYS.has(e.key)) {
+      if (!keys[e.key]) handleMovementKeyPress(e.key, performance.now());
       keys[e.key] = true;
       e.preventDefault();
     }
@@ -405,6 +442,24 @@
   }
 
   // ---- game state ----
+
+  // ---- timer / best time (best is kept per-browser in localStorage, not
+  // shared between players or devices) ----
+  const BEST_TIME_KEY = 'goofy-horror-best-level3';
+  let bestMs = (() => {
+    const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
+    return Number.isFinite(v) ? v : null;
+  })();
+  let runStartTime = performance.now();
+  let elapsedMs = 0;
+  let bestRecorded = false;
+
+  function formatTime(ms) {
+    const totalSec = Math.max(0, ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
+  }
   let generatorProgress = 0;
   let generatorActive = false;
   let doorUnlocked = false;
@@ -416,6 +471,8 @@
     return {
       x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0,
       caught: false, caughtAt: 0,
+      stamina: STAMINA_MAX, moveState: 'normal', exhaustedUntil: 0, sprintActive: false,
+      walkPhase: 0,
     };
   }
 
@@ -467,6 +524,10 @@
       p.caught = false;
       p.caughtAt = 0;
       p.invulnerableUntil = 0;
+      p.stamina = STAMINA_MAX;
+      p.moveState = 'normal';
+      p.exhaustedUntil = 0;
+      p.sprintActive = false;
     });
 
     const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
@@ -488,6 +549,9 @@
     scannerUntil = 0;
     floatingTexts = [];
     resetExploration();
+    runStartTime = performance.now();
+    elapsedMs = 0;
+    bestRecorded = false;
   }
   resetLevel();
 
@@ -516,18 +580,57 @@
     if (dy !== 0 && canStandAt(p.x, p.y + dy)) p.y += dy;
   }
 
+  // Sprinting drains stamina over 15s of continuous use; run out and you're
+  // stuck at half speed for 5s while it refills halfway. Walking normally
+  // (not sprinting, not exhausted) also refills it, just at half the rate
+  // the exhausted penalty does.
+  function updateStamina(p, now, dt, isMoving) {
+    if (p.moveState === 'exhausted') {
+      p.stamina = Math.min(STAMINA_MAX, p.stamina + EXHAUSTED_REGEN_RATE * dt);
+      if (now >= p.exhaustedUntil) p.moveState = 'normal';
+      return;
+    }
+    if (p.sprintActive && isMoving && p.stamina > 0) {
+      p.moveState = 'sprinting';
+      p.stamina = Math.max(0, p.stamina - SPRINT_DRAIN_RATE * dt);
+      if (p.stamina <= 0) {
+        p.moveState = 'exhausted';
+        p.exhaustedUntil = now + EXHAUSTED_MS;
+        p.sprintActive = false;
+      }
+    } else {
+      p.moveState = 'normal';
+      if (!isMoving) p.sprintActive = false; // stopping cancels the sprint; needs a fresh double-tap
+      p.stamina = Math.min(STAMINA_MAX, p.stamina + NORMAL_REGEN_RATE * dt);
+    }
+  }
+
+  function speedMultiplierFor(p) {
+    if (p.moveState === 'exhausted') return EXHAUSTED_SPEED_MULT;
+    if (p.moveState === 'sprinting') return SPRINT_SPEED_MULT;
+    return 1;
+  }
+
   function applyMovement(p, ix, iy, dt) {
     if (p.caught) return; // held fast during the catch cutscene
     if (ix === 0 && iy === 0) return;
     const len = Math.hypot(ix, iy);
     const nx = ix / len, ny = iy / len;
     p.facing = { x: nx, y: ny };
-    movePlayer(p, nx * PLAYER_SPEED * dt, ny * PLAYER_SPEED * dt);
+    const speed = PLAYER_SPEED * speedMultiplierFor(p);
+    movePlayer(p, nx * speed * dt, ny * speed * dt);
   }
 
-  function updateInputMovement(dt) {
-    applyMovement(players[0], (keys.d ? 1 : 0) - (keys.a ? 1 : 0), (keys.s ? 1 : 0) - (keys.w ? 1 : 0), dt);
-    applyMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), dt);
+  function updatePlayerMovement(p, ix, iy, now, dt) {
+    const isMoving = !p.caught && (ix !== 0 || iy !== 0);
+    updateStamina(p, now, dt, isMoving);
+    applyMovement(p, ix, iy, dt);
+    if (isMoving) p.walkPhase += dt * WALK_CYCLE_SPEED * speedMultiplierFor(p);
+  }
+
+  function updateInputMovement(now, dt) {
+    updatePlayerMovement(players[0], (keys.d ? 1 : 0) - (keys.a ? 1 : 0), (keys.s ? 1 : 0) - (keys.w ? 1 : 0), now, dt);
+    updatePlayerMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), now, dt);
   }
 
   function isInSafeZone(p) {
@@ -590,6 +693,25 @@
       ctx.fillStyle = pl.color;
       ctx.fill();
     });
+    ctx.restore();
+    return mh;
+  }
+
+  function drawStaminaBar(vx, p, minimapH) {
+    const barW = MINIMAP_W, barH = 7;
+    const bx = vx + 8, by = 8 + minimapH + 8;
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,5,8,0.65)';
+    ctx.fillRect(bx - 2, by - 2, barW + 4, barH + 4);
+    ctx.fillStyle = '#202225';
+    ctx.fillRect(bx, by, barW, barH);
+    const frac = clamp(p.stamina / STAMINA_MAX, 0, 1);
+    const color = p.moveState === 'exhausted' ? '#c9403a' : p.moveState === 'sprinting' ? '#ffd27a' : '#3ddc84';
+    ctx.fillStyle = color;
+    ctx.fillRect(bx, by, barW * frac, barH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, barW - 1, barH - 1);
     ctx.restore();
   }
 
@@ -1472,6 +1594,22 @@
     g.stroke();
   }
 
+  // A single limb: a thick rounded stroke from (hipX,hipY) to (tipX,tipY)
+  // with a small cap circle (boot/glove) at the moving end.
+  function drawLimb(g, hipX, hipY, tipX, tipY, width, color, capColor, capR) {
+    g.strokeStyle = color;
+    g.lineWidth = width;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(hipX, hipY);
+    g.lineTo(tipX, tipY);
+    g.stroke();
+    g.beginPath();
+    g.arc(tipX, tipY, capR, 0, Math.PI * 2);
+    g.fillStyle = capColor;
+    g.fill();
+  }
+
   function drawPlayers(g) {
     const R = PLAYER_RADIUS;
     players.forEach((p) => {
@@ -1485,9 +1623,18 @@
 
       g.rotate(Math.atan2(p.facing.y, p.facing.x));
 
-      g.fillStyle = '#2b2b28';
-      g.beginPath(); g.ellipse(-R * 0.9, -R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.ellipse(-R * 0.9, R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
+      // Legs swing fore/aft opposite each other; arms swing opposite their
+      // same-side leg (contralateral, like a real walking gait). Frozen in
+      // place while standing still rather than easing to neutral -- reads
+      // as a mid-step pause, which is fine at this scale.
+      const swing = Math.sin(p.walkPhase) * R * 0.62;
+      const bob = Math.abs(Math.cos(p.walkPhase)) * R * 0.05;
+      const suitDark = shade(p.color, -0.45);
+      const bootColor = '#2b2b28';
+
+      // legs -- drawn first so the torso overlaps their hip ends
+      drawLimb(g, 0, -R * 0.3, swing, -R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
+      drawLimb(g, 0, R * 0.3, -swing, R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
 
       g.strokeStyle = '#54544c';
       g.lineWidth = 2.5;
@@ -1501,12 +1648,15 @@
       g.fillStyle = tankGrad;
       g.fillRect(-R * 1.5, -4.5, 7, 9);
 
-      const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.3);
+      // torso, lit from the upper-left, bobbing slightly with the stride
+      g.save();
+      g.translate(0, -bob);
+      const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.1);
       bodyGrad.addColorStop(0, shade(p.color, 0.25));
       bodyGrad.addColorStop(0.6, p.color);
       bodyGrad.addColorStop(1, shade(p.color, -0.35));
       g.beginPath();
-      g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+      g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
       g.fillStyle = bodyGrad;
       g.fill();
       g.strokeStyle = 'rgba(0,0,0,0.4)';
@@ -1515,17 +1665,21 @@
 
       g.save();
       g.beginPath();
-      g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+      g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
       g.clip();
       g.fillStyle = 'rgba(20,20,15,0.85)';
-      g.fillRect(-R * 1.3, -R * 0.28, R * 2.6, R * 0.2);
+      g.fillRect(-R * 1.1, -R * 0.24, R * 2.2, R * 0.17);
       g.fillStyle = 'rgba(255,200,40,0.9)';
-      g.fillRect(-R * 1.3, -R * 0.1, R * 2.6, R * 0.1);
+      g.fillRect(-R * 1.1, -R * 0.08, R * 2.2, R * 0.09);
+      g.restore();
       g.restore();
 
-      g.fillStyle = '#e8d94a';
-      g.beginPath(); g.arc(-R * 0.15, -R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.arc(-R * 0.15, R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
+      // arms -- on top of the torso, swinging opposite their same-side leg
+      drawLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
+      drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
+
+      g.save();
+      g.translate(0, -bob);
 
       g.beginPath();
       g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
@@ -1563,6 +1717,8 @@
       g.ellipse(R * 0.1, R * 0.12, R * 0.06, R * 0.03, -0.4, 0, Math.PI * 2);
       g.fillStyle = 'rgba(255,255,255,0.25)';
       g.fill();
+
+      g.restore();
 
       g.restore();
     });
@@ -1631,7 +1787,8 @@
     drawProximityWarning(vx, Math.hypot(p.x - monster.x, p.y - monster.y), now);
     drawRadar(vx, p, now);
     drawScanner(vx, p, now);
-    drawMinimap(vx);
+    const minimapH = drawMinimap(vx);
+    drawStaminaBar(vx, p, minimapH);
 
     if (p.caught) drawCutsceneOverlay(vx, p, now);
 
@@ -1783,6 +1940,16 @@
     hudGeneratorEl.classList.toggle('done', generatorActive);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
+
+    if (gameState === 'complete' && !bestRecorded) {
+      bestRecorded = true;
+      if (bestMs === null || elapsedMs < bestMs) {
+        bestMs = elapsedMs;
+        localStorage.setItem(BEST_TIME_KEY, String(bestMs));
+      }
+    }
+    if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
+    if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
   }
 
   let lastFrameTime = null;
@@ -1792,7 +1959,8 @@
     lastFrameTime = now;
 
     if (gameState === 'playing') {
-      updateInputMovement(dt);
+      elapsedMs = now - runStartTime;
+      updateInputMovement(now, dt);
       updateTriggers();
       updateGenerator(dt);
       updateCrates(now);

@@ -44,6 +44,7 @@
   const EXHAUSTED_MS = 5000;
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking
+  const WALK_CYCLE_SPEED = 9; // radians/second the walk-cycle phase advances at 1x speed
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
@@ -64,11 +65,13 @@
 
   const hudPowerEl = document.getElementById('hud-power');
   const hudDoorEl = document.getElementById('hud-door');
+  const hudTimerEl = document.getElementById('hud-timer');
+  const hudBestEl = document.getElementById('hud-best');
 
   // ---- procedural audio (no asset files) ----
   let audioCtx = null;
   let musicMasterGain = null; // both the ambient drone and the safe-room pad route through this
-  let musicEnabled = true;
+  let musicEnabled = false;
   let ambientGain = null;
   let ambientSubOsc = null;
   let ambientMidGain = null;
@@ -356,14 +359,21 @@
     }
   }
 
+  const soundHintEl = document.getElementById('sound-hint');
+  function updateSoundHint() {
+    if (soundHintEl) soundHintEl.style.display = musicEnabled ? '' : 'none';
+  }
+
   const musicToggleEl = document.getElementById('music-toggle');
   if (musicToggleEl) {
     musicToggleEl.addEventListener('click', () => {
       setMusicEnabled(!musicEnabled);
       musicToggleEl.textContent = musicEnabled ? '♪ Music: On' : '♪ Music: Off';
       musicToggleEl.classList.toggle('muted', !musicEnabled);
+      updateSoundHint();
     });
   }
+  updateSoundHint();
 
   const TRACKED_KEYS = new Set(['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
   const keys = {};
@@ -543,6 +553,24 @@
   }
 
   // ---- game state ----
+
+  // ---- timer / best time (best is kept per-browser in localStorage, not
+  // shared between players or devices) ----
+  const BEST_TIME_KEY = 'goofy-horror-best-level4';
+  let bestMs = (() => {
+    const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
+    return Number.isFinite(v) ? v : null;
+  })();
+  let runStartTime = performance.now();
+  let elapsedMs = 0;
+  let bestRecorded = false;
+
+  function formatTime(ms) {
+    const totalSec = Math.max(0, ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
+  }
   let leverPulled = false;
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
@@ -554,6 +582,7 @@
       x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0,
       caught: false, caughtAt: 0,
       stamina: STAMINA_MAX, moveState: 'normal', exhaustedUntil: 0, sprintActive: false,
+      walkPhase: 0,
     };
   }
 
@@ -585,6 +614,7 @@
       luredState: 'none', // 'none' | 'lured' | 'eating'
       lureTarget: null,
       eatingUntil: 0,
+      walkPhase: 0,
     };
   }
 
@@ -673,6 +703,9 @@
     superRadarUntil = 0;
     floatingTexts = [];
     resetExploration();
+    runStartTime = performance.now();
+    elapsedMs = 0;
+    bestRecorded = false;
   }
   resetLevel();
 
@@ -746,6 +779,7 @@
     const isMoving = !p.caught && (ix !== 0 || iy !== 0);
     updateStamina(p, now, dt, isMoving);
     applyMovement(p, ix, iy, dt);
+    if (isMoving) p.walkPhase += dt * WALK_CYCLE_SPEED * speedMultiplierFor(p);
   }
 
   function updateInputMovement(now, dt) {
@@ -1203,6 +1237,7 @@
         m.x += (dx / d) * step;
         m.y += (dy / d) * step;
       }
+      if (!isRevealed(m)) m.walkPhase += dt * WALK_CYCLE_SPEED * (step / dt / PLAYER_SPEED);
     }
   }
 
@@ -1799,14 +1834,37 @@
     });
   }
 
+  // A single limb: a thick rounded stroke from (hipX,hipY) to (tipX,tipY)
+  // with a small cap circle (boot/glove) at the moving end.
+  function drawLimb(g, hipX, hipY, tipX, tipY, width, color, capColor, capR) {
+    g.strokeStyle = color;
+    g.lineWidth = width;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(hipX, hipY);
+    g.lineTo(tipX, tipY);
+    g.stroke();
+    g.beginPath();
+    g.arc(tipX, tipY, capR, 0, Math.PI * 2);
+    g.fillStyle = capColor;
+    g.fill();
+  }
+
   // The disguise: the exact same hazmat-suit silhouette the players use, in
   // a sickly, slightly-off color -- close enough to pass at a glance from
-  // across a dark room, which is the point.
-  function drawHazmatFigure(g, color) {
+  // across a dark room, which is the point. walkPhase drives the same
+  // limb-swing walk cycle the players use, so it reads as a person walking
+  // in whichever direction it's currently facing.
+  function drawHazmatFigure(g, color, walkPhase) {
     const R = PLAYER_RADIUS;
-    g.fillStyle = '#2b2b28';
-    g.beginPath(); g.ellipse(-R * 0.9, -R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.ellipse(-R * 0.9, R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
+    walkPhase = walkPhase || 0;
+    const swing = Math.sin(walkPhase) * R * 0.62;
+    const bob = Math.abs(Math.cos(walkPhase)) * R * 0.05;
+    const suitDark = shade(color, -0.45);
+    const bootColor = '#2b2b28';
+
+    drawLimb(g, 0, -R * 0.3, swing, -R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
+    drawLimb(g, 0, R * 0.3, -swing, R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
 
     g.strokeStyle = '#54544c';
     g.lineWidth = 2.5;
@@ -1820,12 +1878,14 @@
     g.fillStyle = tankGrad;
     g.fillRect(-R * 1.5, -4.5, 7, 9);
 
-    const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.3);
+    g.save();
+    g.translate(0, -bob);
+    const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.1);
     bodyGrad.addColorStop(0, shade(color, 0.25));
     bodyGrad.addColorStop(0.6, color);
     bodyGrad.addColorStop(1, shade(color, -0.35));
     g.beginPath();
-    g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+    g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
     g.fillStyle = bodyGrad;
     g.fill();
     g.strokeStyle = 'rgba(0,0,0,0.4)';
@@ -1834,17 +1894,20 @@
 
     g.save();
     g.beginPath();
-    g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+    g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
     g.clip();
     g.fillStyle = 'rgba(20,20,15,0.85)';
-    g.fillRect(-R * 1.3, -R * 0.28, R * 2.6, R * 0.2);
+    g.fillRect(-R * 1.1, -R * 0.24, R * 2.2, R * 0.17);
     g.fillStyle = 'rgba(255,200,40,0.9)';
-    g.fillRect(-R * 1.3, -R * 0.1, R * 2.6, R * 0.1);
+    g.fillRect(-R * 1.1, -R * 0.08, R * 2.2, R * 0.09);
+    g.restore();
     g.restore();
 
-    g.fillStyle = '#e8d94a';
-    g.beginPath(); g.arc(-R * 0.15, -R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.arc(-R * 0.15, R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
+    drawLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, color, '#e8d94a', R * 0.22);
+    drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, color, '#e8d94a', R * 0.22);
+
+    g.save();
+    g.translate(0, -bob);
 
     g.beginPath();
     g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
@@ -1882,6 +1945,8 @@
     g.ellipse(R * 0.1, R * 0.12, R * 0.06, R * 0.03, -0.4, 0, Math.PI * 2);
     g.fillStyle = 'rgba(255,255,255,0.25)';
     g.fill();
+
+    g.restore();
   }
 
   function drawGroundShadow(g, r) {
@@ -1898,7 +1963,7 @@
     if (!isRevealed(m)) {
       drawGroundShadow(g, PLAYER_RADIUS);
       g.rotate(Math.atan2(m.lookDir.y, m.lookDir.x));
-      drawHazmatFigure(g, '#7c8a72');
+      drawHazmatFigure(g, '#7c8a72', m.walkPhase);
       g.restore();
       return;
     }
@@ -2010,7 +2075,7 @@
       g.translate(p.x, p.y);
       drawGroundShadow(g, PLAYER_RADIUS);
       g.rotate(Math.atan2(p.facing.y, p.facing.x));
-      drawHazmatFigure(g, p.color);
+      drawHazmatFigure(g, p.color, p.walkPhase);
       g.restore();
     });
   }
@@ -2237,6 +2302,16 @@
     hudPowerEl.classList.toggle('done', leverPulled);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
+
+    if (gameState === 'complete' && !bestRecorded) {
+      bestRecorded = true;
+      if (bestMs === null || elapsedMs < bestMs) {
+        bestMs = elapsedMs;
+        localStorage.setItem(BEST_TIME_KEY, String(bestMs));
+      }
+    }
+    if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
+    if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
   }
 
   let lastFrameTime = null;
@@ -2246,6 +2321,7 @@
     lastFrameTime = now;
 
     if (gameState === 'playing') {
+      elapsedMs = now - runStartTime;
       updateInputMovement(now, dt);
       updateTriggers();
       updateCrates(now);

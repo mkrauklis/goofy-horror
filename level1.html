@@ -24,30 +24,35 @@
 </nav>
 
 <header class="hero">
-  <h1>GOOFY HORROR</h1>
-  <p>
-    Level 1 &mdash; The Facility. The power's out and it's pitch black beyond
-    your flashlight. Find all 3 buttons together to unlock the big door out.
-Two identical creatures roam the dark independently and can't see you
-    until your own flashlight lands fully on one &mdash; once it does, it's
-    2.5x as fast as you. A network of ventilation ducts threads through the
-    facility as a safe shortcut, and item crates can turn up a radar, a
-    scanner pointing at the nearest unpressed button, a distracting slab of
-    meat, or a CO2 blast that freezes a creature solid.
-  </p>
+  <h1>Level 1 &mdash; The Facility</h1>
+  <p class="objective">Find all <strong>3 buttons</strong> and reach the exit &mdash; the blind, wall-crawling creatures only notice you if your flashlight lands on them.</p>
 </header>
 
 <div class="wrap">
   <div id="hud">
     <span id="hud-buttons">Buttons: 0 / 3</span>
     <span id="hud-door">Door: locked</span>
-    <button id="music-toggle" class="music-toggle" type="button">&#9834; Music: On</button>
+    <span id="hud-timer">Time: 0:00.0</span>
+    <span id="hud-best">Best: --:--</span>
+    <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
   </div>
   <div id="game-canvas-holder" class="panel">
     <canvas id="game-canvas" width="920" height="340"></canvas>
     <div id="game-message"></div>
   </div>
-  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys &nbsp;&middot;&nbsp; sound plays after your first key press</p>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    The power's out and it's pitch black beyond your flashlight. Two
+    identical creatures roam the dark independently and can't see you until
+    your own flashlight lands fully on one &mdash; once it does, it's 2.5x
+    as fast as you. A network of ventilation ducts threads through the
+    facility as a safe shortcut, and item crates can turn up a radar, a
+    scanner pointing at the nearest unpressed button, a distracting slab of
+    meat, or a CO2 blast that freezes a creature solid.
+  </p>
 </div>
 
 <script src="levels/level1/level.js"></script>

@@ -24,31 +24,40 @@
 </nav>
 
 <header class="hero">
-  <h1>GOOFY HORROR</h1>
-  <p>
-    Level 4 &mdash; Overgrown. The same facility as Level 3, gone to seed:
-    vegetation has swallowed the corridors (on top of the same patches of
-    missing floor), and every now and then you'll catch a fire burning
-    somewhere in the dark before it dies back down.
-    Find the electrical room and pull the lever to get the train running,
-    then get both players aboard. Something wanders the halls that looks
-    exactly like a person &mdash; get too close and it drops the act,
-    shrinking into a small toothy tentacle thing that charges at twice your
-    speed.
-  </p>
+  <h1>Level 4 &mdash; Overgrown</h1>
+  <p class="objective">Pull the <strong>electrical room's lever</strong> and get both players aboard the train &mdash; watch for the thing wandering the halls that looks just like a person.</p>
 </header>
 
 <div class="wrap">
   <div id="hud">
     <span id="hud-power">Power: off</span>
     <span id="hud-door">Door: locked</span>
-    <button id="music-toggle" class="music-toggle" type="button">&#9834; Music: On</button>
+    <span id="hud-timer">Time: 0:00.0</span>
+    <span id="hud-best">Best: --:--</span>
+    <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
   </div>
   <div id="game-canvas-holder" class="panel">
     <canvas id="game-canvas" width="920" height="340"></canvas>
     <div id="game-message"></div>
   </div>
-  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys &nbsp;&middot;&nbsp; sound plays after your first key press</p>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    The same facility as Level 3, years later and noticeably bigger, with
+    more dead-end side corridors to get turned around in &mdash; vegetation
+    has swallowed the corridors (on top of the same patches of missing
+    floor), and a good number of fires burn permanently once you find
+    them. Find the electrical room (wrapped in exposed wiring so it's
+    unmistakable) and pull its lever &mdash; either player can do it alone
+    &mdash; to power up the train, then get both players aboard. Three
+    mimics disguise themselves as people and wander the halls at close to
+    your own pace &mdash; get too close and the act drops instantly,
+    shrinking into a small toothy tentacle thing that charges at 2x your
+    speed. Item crates are everywhere here, restocking twice as fast as
+    other levels, and a few are secretly mimic crates in disguise.
+  </p>
 </div>
 
 <script src="levels/level4/level.js"></script>

@@ -35,30 +35,30 @@
 <div class="wrap">
   <div class="menu-list">
     <a class="menu-item panel" href="level1.html">
-      <h2>Level 1 &mdash; The Facility</h2>
+      <h2>Level 1 &mdash; The Facility <span class="best-time" data-level="level1"></span></h2>
       <p>A huge, pitch-black facility. Two identical wall-crawling
         creatures patrol independently &mdash; find all 3 buttons to
         unlock the exit.</p>
     </a>
     <a class="menu-item panel" href="level2.html">
-      <h2>Level 2 &mdash; Blackout</h2>
+      <h2>Level 2 &mdash; Blackout <span class="best-time" data-level="level2"></span></h2>
       <p>A sprawling lattice of corridors. Two creatures hunt by sound, not
         sight &mdash; find the fuse and the one real fuse box wired to the
         door.</p>
     </a>
     <a class="menu-item panel" href="level3.html">
-      <h2>Level 3 &mdash; Sinkhole</h2>
+      <h2>Level 3 &mdash; Sinkhole <span class="best-time" data-level="level3"></span></h2>
       <p>The floor is crumbling to dirt. A slow caterpillar creature is
         harmless on its own &mdash; until someone steps on a meat vine.</p>
     </a>
     <a class="menu-item panel" href="level4.html">
-      <h2>Level 4 &mdash; Overgrown</h2>
+      <h2>Level 4 &mdash; Overgrown <span class="best-time" data-level="level4"></span></h2>
       <p>Same facility, gone to seed, fires flickering in the dark. Power
         the train with the electrical room's lever &mdash; and watch out
         for the thing that looks like your partner.</p>
     </a>
     <a class="menu-item panel" href="level5.html">
-      <h2>Level 5 &mdash; The Cinder Pit</h2>
+      <h2>Level 5 &mdash; The Cinder Pit <span class="best-time" data-level="level5"></span></h2>
       <p>One giant, crumbling room on fire from end to end. Find all 3
         buttons and get out &mdash; without waking the burnt giant smoldering
         in the middle.</p>
@@ -72,5 +72,17 @@
   <p class="hint">Player 1 (orange): W A S D &nbsp;&middot;&nbsp; Player 2 (green): Arrow keys &nbsp;&middot;&nbsp; local split-screen co-op, sound plays after your first key press in a level</p>
 </div>
 
+<script>
+  // Best times are saved per-level by each game's own script under
+  // goofy-horror-best-levelN; read-only here, just for display.
+  document.querySelectorAll('.best-time').forEach((el) => {
+    const v = parseFloat(localStorage.getItem('goofy-horror-best-' + el.dataset.level));
+    if (!Number.isFinite(v)) return;
+    const totalSec = Math.max(0, v / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    el.textContent = `— best ${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
+  });
+</script>
 </body>
 </html>

@@ -200,6 +200,24 @@
     });
   }
 
+  // A single limb (arm/leg): a thick rounded stroke from (hipX,hipY) to
+  // (tipX,tipY) with a small cap circle (boot/glove) at the moving end --
+  // used by the hazmat figure's walk cycle, distinct from the radiating
+  // drawTaperedTentacle above (which always starts at the origin).
+  function drawStubLimb(g, hipX, hipY, tipX, tipY, width, color, capColor, capR) {
+    g.strokeStyle = color;
+    g.lineWidth = width;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(hipX, hipY);
+    g.lineTo(tipX, tipY);
+    g.stroke();
+    g.beginPath();
+    g.arc(tipX, tipY, capR, 0, Math.PI * 2);
+    g.fillStyle = capColor;
+    g.fill();
+  }
+
   function drawTentacles(g, radius, color, t, seed, lineWidth, count) {
     const n = count || 3;
     for (let i = 0; i < n; i++) {
@@ -312,16 +330,23 @@
 
   // ---- the mimic's disguise, borrowed from the players' own hazmat suit --
   // shared with drawPlayers-style rendering in the level files: a gradient
-  // suit body, a glassy gradient helmet, and a soft ground shadow.
-  function drawHazmatFigure(g, R, color) {
+  // suit body, a glassy gradient helmet, animated limbs and a soft ground
+  // shadow. walkPhase drives the same swinging-limb walk cycle the level
+  // files use, so the preview reads as a person actually walking.
+  function drawHazmatFigure(g, R, color, walkPhase) {
+    walkPhase = walkPhase || 0;
+    const swing = Math.sin(walkPhase) * R * 0.62;
+    const bob = Math.abs(Math.cos(walkPhase)) * R * 0.05;
+    const suitDark = shade(color, -0.45);
+    const bootColor = '#2b2b28';
+
     g.beginPath();
     g.ellipse(0, R * 1.05, R * 0.85, R * 0.24, 0, 0, Math.PI * 2);
     g.fillStyle = 'rgba(0,0,0,0.32)';
     g.fill();
 
-    g.fillStyle = '#2b2b28';
-    g.beginPath(); g.ellipse(-R * 0.9, -R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.ellipse(-R * 0.9, R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
+    drawStubLimb(g, 0, -R * 0.3, swing, -R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
+    drawStubLimb(g, 0, R * 0.3, -swing, R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
 
     const tankGrad = g.createLinearGradient(-R * 1.5, -8, -R * 1.5, 6);
     tankGrad.addColorStop(0, shade('#54544c', 0.25));
@@ -335,12 +360,14 @@
     g.fillStyle = tankGrad;
     g.fillRect(-R * 1.5, -4.5, 7, 9);
 
-    const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.3);
+    g.save();
+    g.translate(0, -bob);
+    const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.1);
     bodyGrad.addColorStop(0, shade(color, 0.25));
     bodyGrad.addColorStop(0.6, color);
     bodyGrad.addColorStop(1, shade(color, -0.35));
     g.beginPath();
-    g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+    g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
     g.fillStyle = bodyGrad;
     g.fill();
     g.strokeStyle = 'rgba(0,0,0,0.4)';
@@ -349,22 +376,25 @@
 
     g.save();
     g.beginPath();
-    g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+    g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
     g.clip();
     g.fillStyle = 'rgba(20,20,15,0.85)';
-    g.fillRect(-R * 1.3, -R * 0.28, R * 2.6, R * 0.2);
+    g.fillRect(-R * 1.1, -R * 0.24, R * 2.2, R * 0.17);
     g.fillStyle = 'rgba(255,200,40,0.9)';
-    g.fillRect(-R * 1.3, -R * 0.1, R * 2.6, R * 0.1);
+    g.fillRect(-R * 1.1, -R * 0.08, R * 2.2, R * 0.09);
     const rim = g.createRadialGradient(-R * 0.4, -R * 0.5, 1, -R * 0.4, -R * 0.5, R * 1.1);
     rim.addColorStop(0, 'rgba(255,255,255,0.22)');
     rim.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = rim;
-    g.fillRect(-R * 1.3, -R * 1.1, R * 2.6, R * 2.2);
+    g.fillRect(-R * 1.1, -R * 1.1, R * 2.2, R * 2.2);
+    g.restore();
     g.restore();
 
-    g.fillStyle = '#e8d94a';
-    g.beginPath(); g.arc(-R * 0.15, -R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.arc(-R * 0.15, R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
+    drawStubLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, color, '#e8d94a', R * 0.22);
+    drawStubLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, color, '#e8d94a', R * 0.22);
+
+    g.save();
+    g.translate(0, -bob);
 
     g.beginPath();
     g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
@@ -402,6 +432,8 @@
     g.ellipse(R * 0.1, R * 0.12, R * 0.06, R * 0.03, -0.4, 0, Math.PI * 2);
     g.fillStyle = 'rgba(255,255,255,0.25)';
     g.fill();
+
+    g.restore();
   }
 
   function drawMonsterTeeth(g, radius, lookDir) {
@@ -464,7 +496,7 @@
     if (!revealed) {
       g.save();
       g.rotate(Math.sin(t * 0.0008) * 0.3);
-      drawHazmatFigure(g, 24, '#7c8a72');
+      drawHazmatFigure(g, 24, '#7c8a72', t * 0.006);
       g.restore();
     } else {
       const seed = 30;
