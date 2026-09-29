@@ -387,6 +387,49 @@
     return FLOOR_SHADES[idx];
   }
 
+  // Shifts a '#rrggbb' color toward white (amt > 0) or black (amt < 0) --
+  // used to derive a highlight/shadow tone from a single base color instead
+  // of hand-picking a second and third shade for everything drawn below.
+  function shade(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+    const r = clamp(((n >> 16) & 255) + 255 * amt);
+    const g2 = clamp(((n >> 8) & 255) + 255 * amt);
+    const b = clamp((n & 255) + 255 * amt);
+    return `rgb(${r},${g2},${b})`;
+  }
+
+  // A single tapered, suckered tentacle from (0,0) to (tx,ty) bowing through
+  // (midX,midY) -- thick at the root, thin at the tip, with a couple of
+  // suckers, instead of one uniform-width stroke.
+  function drawTaperedTentacle(g, tx, ty, midX, midY, baseWidth, color) {
+    const segs = 4;
+    let prevX = 0, prevY = 0;
+    for (let s = 1; s <= segs; s++) {
+      const tt = s / segs;
+      const it = 1 - tt;
+      const x = 2 * it * tt * midX + tt * tt * tx;
+      const y = 2 * it * tt * midY + tt * tt * ty;
+      g.beginPath();
+      g.moveTo(prevX, prevY);
+      g.lineTo(x, y);
+      g.strokeStyle = color;
+      g.lineWidth = Math.max(0.6, baseWidth * (1 - tt * 0.75));
+      g.lineCap = 'round';
+      g.stroke();
+      prevX = x; prevY = y;
+    }
+    g.fillStyle = 'rgba(0,0,0,0.28)';
+    [0.55, 0.82].forEach((s) => {
+      const it = 1 - s;
+      const x = 2 * it * s * midX + s * s * tx;
+      const y = 2 * it * s * midY + s * s * ty;
+      g.beginPath();
+      g.arc(x, y, baseWidth * 0.16, 0, Math.PI * 2);
+      g.fill();
+    });
+  }
+
   // ---- game state ----
   let buttonsPressed = [false, false, false];
   let doorUnlocked = false;
@@ -1178,37 +1221,21 @@
     g.translate(m.x, m.y);
 
     m.tentacleTargets.forEach((tt, i) => {
-      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * 6;
+      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * m.radius * 0.35;
       const tx = tt.x - m.x, ty = tt.y - m.y;
-      const midX = tx / 2 + wobble;
-      const midY = ty / 2 - wobble;
-      g.beginPath();
-      g.moveTo(0, 0);
-      g.quadraticCurveTo(midX, midY, tx, ty);
-      g.strokeStyle = '#6a1826';
-      g.lineWidth = 4;
-      g.lineCap = 'round';
-      g.stroke();
+      const dist = Math.hypot(tx, ty) || 1;
+      const perpX = -ty / dist, perpY = tx / dist;
+      const midX = tx / 2 + perpX * wobble;
+      const midY = ty / 2 + perpY * wobble;
+      drawTaperedTentacle(g, tx, ty, midX, midY, m.radius * 0.22, '#6a1826');
     });
 
-    const points = 10;
-    g.beginPath();
-    for (let i = 0; i <= points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const r = m.radius + Math.sin(t * 0.006 + i * 1.7 + m.seed) * 4;
-      const px = Math.cos(a) * r, py = Math.sin(a) * r;
-      if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
-    }
-    g.closePath();
-    g.fillStyle = '#4a0f1c';
-    g.shadowColor = '#7a1f2f';
-    g.shadowBlur = 14;
-    g.fill();
-    g.shadowBlur = 0;
+    drawBlobBody(g, m.radius, '#4a0f1c', '#7a1f2f', m.seed, t);
 
     drawMonsterEye(g, m);
 
     if (t < m.frozenUntil) {
+      const points = 12;
       g.beginPath();
       for (let i = 0; i <= points; i++) {
         const a = (i / points) * Math.PI * 2;
@@ -1227,44 +1254,112 @@
     g.restore();
   }
 
+  // A fleshy, lit blob body: an irregular two-octave silhouette, an offset
+  // gradient for volume, one soft specular highlight and a couple of veins,
+  // all clipped to the silhouette. Kept deliberately light on draw calls --
+  // this runs per monster, per frame.
+  function drawBlobBody(g, radius, fillColor, shadowColor, seed, t, opts) {
+    opts = opts || {};
+    const points = 14;
+    const path = [];
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const r = radius
+        + Math.sin(t * 0.006 + i * 1.7 + seed) * radius * 0.1
+        + Math.sin(t * 0.0021 + i * 3.3 + seed * 1.7) * radius * 0.04;
+      path.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    const trace = () => {
+      g.beginPath();
+      path.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+      g.closePath();
+    };
+
+    trace();
+    const base = g.createRadialGradient(-radius * 0.25, -radius * 0.3, radius * 0.1, 0, 0, radius * 1.05);
+    base.addColorStop(0, opts.core || shade(fillColor, 0.22));
+    base.addColorStop(0.55, fillColor);
+    base.addColorStop(1, opts.rim || shade(fillColor, -0.35));
+    g.fillStyle = base;
+    g.shadowColor = shadowColor;
+    g.shadowBlur = Math.min(radius * 0.4, 18);
+    g.fill();
+    g.shadowBlur = 0;
+
+    g.save();
+    trace();
+    g.clip();
+
+    g.beginPath();
+    g.ellipse(-radius * 0.32, -radius * 0.38, radius * 0.5, radius * 0.32, -0.5, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.14)';
+    g.fill();
+
+    g.strokeStyle = opts.veinColor || 'rgba(0,0,0,0.2)';
+    g.lineWidth = 1.3;
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + seed;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * radius * 0.15, Math.sin(a) * radius * 0.15);
+      g.lineTo(Math.cos(a) * radius * 0.88, Math.sin(a) * radius * 0.88);
+      g.stroke();
+    }
+
+    g.restore();
+  }
+
   function drawMonsterEye(g, m) {
     const lookDir = m.lookDir;
-    const eyeR = m.radius * 0.62;
-
-    const sclera = g.createRadialGradient(0, 0, 1, 0, 0, eyeR);
-    sclera.addColorStop(0, '#f2e6d8');
-    sclera.addColorStop(0.75, '#dcc4b2');
-    sclera.addColorStop(1, '#7a6252');
-    g.beginPath();
-    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
-    g.fillStyle = sclera;
-    g.fill();
+    const ex = m.radius * 0.62, ey = ex * 0.8;
 
     g.save();
     g.beginPath();
-    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
+    g.ellipse(0, 0, ex, ey, 0, 0, Math.PI * 2);
     g.clip();
-    g.strokeStyle = 'rgba(170,25,25,0.4)';
-    g.lineWidth = 0.8;
-    for (let i = 0; i < 6; i++) {
-      const a = i * 1.05 + m.seed;
+
+    const sclera = g.createRadialGradient(-ex * 0.2, -ey * 0.25, 1, 0, 0, ex * 1.15);
+    sclera.addColorStop(0, '#faf1e4');
+    sclera.addColorStop(0.55, '#dcc4b2');
+    sclera.addColorStop(1, '#6b5142');
+    g.fillStyle = sclera;
+    g.fillRect(-ex, -ey, ex * 2, ey * 2);
+
+    g.strokeStyle = 'rgba(170,25,25,0.38)';
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.15 + m.seed;
+      g.lineWidth = 0.5 + ((i * 13) % 3) * 0.35;
       g.beginPath();
-      g.moveTo(Math.cos(a) * eyeR, Math.sin(a) * eyeR * 0.8);
-      g.lineTo(Math.cos(a) * eyeR * 0.1, Math.sin(a) * eyeR * 0.1);
+      g.moveTo(Math.cos(a) * ex, Math.sin(a) * ey);
+      g.quadraticCurveTo(Math.cos(a + 0.1) * ex * 0.5, Math.sin(a - 0.1) * ey * 0.5, Math.cos(a) * ex * 0.08, Math.sin(a) * ey * 0.08);
       g.stroke();
     }
-    g.restore();
 
-    const ix = lookDir.x * eyeR * 0.32, iy = lookDir.y * eyeR * 0.26;
-    const irisR = eyeR * 0.48;
-    const iris = g.createRadialGradient(ix, iy, 1, ix, iy, irisR);
-    iris.addColorStop(0, '#c96a2e');
-    iris.addColorStop(0.6, '#7a2f10');
+    const ix = lookDir.x * ex * 0.32, iy = lookDir.y * ey * 0.32;
+    const irisR = ex * 0.48;
+    const iris = g.createRadialGradient(ix - irisR * 0.22, iy - irisR * 0.22, 1, ix, iy, irisR);
+    iris.addColorStop(0, '#e8903f');
+    iris.addColorStop(0.45, '#c96a2e');
+    iris.addColorStop(0.8, '#7a2f10');
     iris.addColorStop(1, '#200a05');
     g.beginPath();
     g.arc(ix, iy, irisR, 0, Math.PI * 2);
     g.fillStyle = iris;
     g.fill();
+
+    g.save();
+    g.beginPath();
+    g.arc(ix, iy, irisR, 0, Math.PI * 2);
+    g.clip();
+    g.strokeStyle = 'rgba(0,0,0,0.25)';
+    g.lineWidth = 0.6;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + m.seed * 0.3;
+      g.beginPath();
+      g.moveTo(ix + Math.cos(a) * irisR * 0.35, iy + Math.sin(a) * irisR * 0.35);
+      g.lineTo(ix + Math.cos(a) * irisR, iy + Math.sin(a) * irisR);
+      g.stroke();
+    }
+    g.restore();
 
     g.beginPath();
     g.arc(ix, iy, irisR * 0.42, 0, Math.PI * 2);
@@ -1272,12 +1367,23 @@
     g.fill();
 
     g.beginPath();
-    g.arc(ix - irisR * 0.3, iy - irisR * 0.3, irisR * 0.16, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.85)';
+    g.arc(ix - irisR * 0.32, iy - irisR * 0.32, irisR * 0.22, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.3)';
+    g.fill();
+    g.beginPath();
+    g.arc(ix - irisR * 0.28, iy - irisR * 0.3, irisR * 0.11, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.9)';
     g.fill();
 
     g.beginPath();
-    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
+    g.ellipse(0, -ey * 0.32, ex * 0.98, ey * 0.6, 0, Math.PI, Math.PI * 2);
+    g.fillStyle = 'rgba(0,0,0,0.3)';
+    g.fill();
+
+    g.restore();
+
+    g.beginPath();
+    g.ellipse(0, 0, ex, ey, 0, 0, Math.PI * 2);
     g.strokeStyle = 'rgba(15,4,4,0.7)';
     g.lineWidth = 1.5;
     g.stroke();
@@ -1288,6 +1394,13 @@
     players.forEach((p) => {
       g.save();
       g.translate(p.x, p.y);
+
+      // ground shadow, drawn before rotation so it never tilts with the player
+      g.beginPath();
+      g.ellipse(0, R * 1.05, R * 0.85, R * 0.26, 0, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(0,0,0,0.35)';
+      g.fill();
+
       g.rotate(Math.atan2(p.facing.y, p.facing.x));
 
       // boots, peeking out from under the suit
@@ -1302,13 +1415,20 @@
       g.moveTo(-R * 1.3, -3);
       g.quadraticCurveTo(-R * 1.1, -R * 0.9, -R * 0.55, -R * 0.55);
       g.stroke();
-      g.fillStyle = '#54544c';
+      const tankGrad = g.createLinearGradient(-R * 1.5, -4.5, -R * 1.5, 4.5);
+      tankGrad.addColorStop(0, shade('#54544c', 0.25));
+      tankGrad.addColorStop(1, shade('#54544c', -0.25));
+      g.fillStyle = tankGrad;
       g.fillRect(-R * 1.5, -4.5, 7, 9);
 
-      // bulky coverall body
+      // bulky coverall body, lit from the upper-left
+      const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.3);
+      bodyGrad.addColorStop(0, shade(p.color, 0.25));
+      bodyGrad.addColorStop(0.6, p.color);
+      bodyGrad.addColorStop(1, shade(p.color, -0.35));
       g.beginPath();
       g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
-      g.fillStyle = p.color;
+      g.fillStyle = bodyGrad;
       g.fill();
       g.strokeStyle = 'rgba(0,0,0,0.4)';
       g.lineWidth = 1.5;
@@ -1337,26 +1457,37 @@
       g.lineWidth = 3;
       g.stroke();
 
-      // helmet dome
+      // glassy helmet dome
+      const helmetGrad = g.createRadialGradient(-R * 0.25, -R * 0.32, 1, 0, 0, R * 0.85);
+      helmetGrad.addColorStop(0, '#ffffff');
+      helmetGrad.addColorStop(0.35, 'rgba(224,226,216,0.95)');
+      helmetGrad.addColorStop(1, 'rgba(150,155,146,0.92)');
       g.beginPath();
       g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(220,222,210,0.95)';
+      g.fillStyle = helmetGrad;
       g.fill();
       g.strokeStyle = '#1c1c18';
       g.lineWidth = 1.5;
       g.stroke();
 
-      // big face visor, facing forward
+      // big face visor, facing forward, with a wet double highlight
+      const visorGrad = g.createLinearGradient(-R * 0.4, -R * 0.4, R * 0.6, R * 0.4);
+      visorGrad.addColorStop(0, '#1c2a33');
+      visorGrad.addColorStop(1, '#03060a');
       g.beginPath();
       g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
-      g.fillStyle = '#0d1418';
+      g.fillStyle = visorGrad;
       g.fill();
       g.strokeStyle = 'rgba(0,0,0,0.5)';
       g.lineWidth = 1;
       g.stroke();
       g.beginPath();
       g.ellipse(R * 0.28, -R * 0.14, R * 0.14, R * 0.08, -0.4, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(255,255,255,0.55)';
+      g.fillStyle = 'rgba(255,255,255,0.6)';
+      g.fill();
+      g.beginPath();
+      g.ellipse(R * 0.1, R * 0.12, R * 0.06, R * 0.03, -0.4, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,255,255,0.25)';
       g.fill();
 
       g.restore();

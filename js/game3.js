@@ -392,6 +392,18 @@
     return DIRT_SHADES[idx];
   }
 
+  // Shifts a '#rrggbb' color toward white (amt > 0) or black (amt < 0) --
+  // used to derive a highlight/shadow tone from a single base color instead
+  // of hand-picking a second and third shade for everything drawn below.
+  function shade(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+    const r = clamp(((n >> 16) & 255) + 255 * amt);
+    const g2 = clamp(((n >> 8) & 255) + 255 * amt);
+    const b = clamp((n & 255) + 255 * amt);
+    return `rgb(${r},${g2},${b})`;
+  }
+
   // ---- game state ----
   let generatorProgress = 0;
   let generatorActive = false;
@@ -1305,39 +1317,84 @@
   }
 
   function drawMonster(g, t) {
-    // Body segments, tail first so the head draws on top.
+    // Ground shadow trail, drawn first so it sits under every segment.
+    g.fillStyle = 'rgba(0,0,0,0.25)';
     for (let i = monster.segments.length - 1; i >= 0; i--) {
       const seg = monster.segments[i];
       const r = monster.radius * (1 - i * 0.06);
+      g.beginPath();
+      g.ellipse(seg.x, seg.y + r * 0.5, Math.max(3, r * 0.85), Math.max(2, r * 0.35), 0, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // Body segments, tail first so the head draws on top.
+    for (let i = monster.segments.length - 1; i >= 0; i--) {
+      const seg = monster.segments[i];
+      const r = Math.max(4, monster.radius * (1 - i * 0.06));
+      const base = i % 2 === 0 ? '#4a3a1e' : '#5a4726';
       g.save();
       g.translate(seg.x, seg.y);
+      const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
+      grad.addColorStop(0, shade(base, 0.28));
+      grad.addColorStop(0.6, base);
+      grad.addColorStop(1, shade(base, -0.3));
       g.beginPath();
-      g.arc(0, 0, Math.max(4, r), 0, Math.PI * 2);
-      g.fillStyle = i % 2 === 0 ? '#4a3a1e' : '#5a4726';
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.fillStyle = grad;
       g.shadowColor = '#2a2010';
       g.shadowBlur = 6;
       g.fill();
       g.shadowBlur = 0;
+
+      // a pair of stubby legs per segment
+      g.strokeStyle = 'rgba(20,14,6,0.6)';
+      g.lineWidth = 1.6;
+      [-1, 1].forEach((side) => {
+        g.beginPath();
+        g.moveTo(0, side * r * 0.7);
+        g.lineTo(-2, side * (r * 0.7 + 4));
+        g.stroke();
+      });
       g.restore();
     }
 
     g.save();
     g.translate(monster.x, monster.y);
 
-    const points = 10;
-    g.beginPath();
+    const points = 12;
+    const path = [];
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
-      const r = monster.radius + Math.sin(t * 0.006 + i * 1.7 + monster.seed) * 2.5;
-      const px = Math.cos(a) * r, py = Math.sin(a) * r;
-      if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      const r = monster.radius
+        + Math.sin(t * 0.006 + i * 1.7 + monster.seed) * 2.5
+        + Math.sin(t * 0.0021 + i * 3.1 + monster.seed) * 1.2;
+      path.push([Math.cos(a) * r, Math.sin(a) * r]);
     }
-    g.closePath();
-    g.fillStyle = '#3a2e16';
+    const trace = () => {
+      g.beginPath();
+      path.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+      g.closePath();
+    };
+
+    trace();
+    const headGrad = g.createRadialGradient(-monster.radius * 0.3, -monster.radius * 0.35, 1, 0, 0, monster.radius * 1.05);
+    headGrad.addColorStop(0, shade('#3a2e16', 0.3));
+    headGrad.addColorStop(0.55, '#3a2e16');
+    headGrad.addColorStop(1, shade('#3a2e16', -0.3));
+    g.fillStyle = headGrad;
     g.shadowColor = '#6b5228';
     g.shadowBlur = 12;
     g.fill();
     g.shadowBlur = 0;
+
+    g.save();
+    trace();
+    g.clip();
+    g.beginPath();
+    g.ellipse(-monster.radius * 0.3, -monster.radius * 0.35, monster.radius * 0.5, monster.radius * 0.3, -0.5, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.12)';
+    g.fill();
+    g.restore();
 
     drawMonsterEye(g, monster.lookDir);
 
@@ -1361,22 +1418,26 @@
   }
 
   function drawMonsterEye(g, lookDir) {
-    const eyeR = monster.radius * 0.62;
+    const ex = monster.radius * 0.62, ey = ex * 0.8;
 
-    const sclera = g.createRadialGradient(0, 0, 1, 0, 0, eyeR);
-    sclera.addColorStop(0, '#f2e6d8');
-    sclera.addColorStop(0.75, '#dcc4b2');
-    sclera.addColorStop(1, '#7a6252');
+    g.save();
     g.beginPath();
-    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
-    g.fillStyle = sclera;
-    g.fill();
+    g.ellipse(0, 0, ex, ey, 0, 0, Math.PI * 2);
+    g.clip();
 
-    const ix = lookDir.x * eyeR * 0.32, iy = lookDir.y * eyeR * 0.26;
-    const irisR = eyeR * 0.48;
-    const iris = g.createRadialGradient(ix, iy, 1, ix, iy, irisR);
-    iris.addColorStop(0, '#8a6a2e');
-    iris.addColorStop(0.6, '#4a3210');
+    const sclera = g.createRadialGradient(-ex * 0.2, -ey * 0.25, 1, 0, 0, ex * 1.15);
+    sclera.addColorStop(0, '#f2e6d8');
+    sclera.addColorStop(0.55, '#dcc4b2');
+    sclera.addColorStop(1, '#6b5142');
+    g.fillStyle = sclera;
+    g.fillRect(-ex, -ey, ex * 2, ey * 2);
+
+    const ix = lookDir.x * ex * 0.32, iy = lookDir.y * ey * 0.32;
+    const irisR = ex * 0.48;
+    const iris = g.createRadialGradient(ix - irisR * 0.22, iy - irisR * 0.22, 1, ix, iy, irisR);
+    iris.addColorStop(0, '#a3822e');
+    iris.addColorStop(0.5, '#8a6a2e');
+    iris.addColorStop(0.85, '#4a3210');
     iris.addColorStop(1, '#150a05');
     g.beginPath();
     g.arc(ix, iy, irisR, 0, Math.PI * 2);
@@ -1389,12 +1450,23 @@
     g.fill();
 
     g.beginPath();
-    g.arc(ix - irisR * 0.3, iy - irisR * 0.3, irisR * 0.16, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.85)';
+    g.arc(ix - irisR * 0.3, iy - irisR * 0.3, irisR * 0.2, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.3)';
+    g.fill();
+    g.beginPath();
+    g.arc(ix - irisR * 0.27, iy - irisR * 0.28, irisR * 0.1, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.9)';
     g.fill();
 
     g.beginPath();
-    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
+    g.ellipse(0, -ey * 0.32, ex * 0.98, ey * 0.6, 0, Math.PI, Math.PI * 2);
+    g.fillStyle = 'rgba(0,0,0,0.3)';
+    g.fill();
+
+    g.restore();
+
+    g.beginPath();
+    g.ellipse(0, 0, ex, ey, 0, 0, Math.PI * 2);
     g.strokeStyle = 'rgba(15,4,4,0.7)';
     g.lineWidth = 1.5;
     g.stroke();
@@ -1405,6 +1477,12 @@
     players.forEach((p) => {
       g.save();
       g.translate(p.x, p.y);
+
+      g.beginPath();
+      g.ellipse(0, R * 1.05, R * 0.85, R * 0.26, 0, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(0,0,0,0.35)';
+      g.fill();
+
       g.rotate(Math.atan2(p.facing.y, p.facing.x));
 
       g.fillStyle = '#2b2b28';
@@ -1417,12 +1495,19 @@
       g.moveTo(-R * 1.3, -3);
       g.quadraticCurveTo(-R * 1.1, -R * 0.9, -R * 0.55, -R * 0.55);
       g.stroke();
-      g.fillStyle = '#54544c';
+      const tankGrad = g.createLinearGradient(-R * 1.5, -4.5, -R * 1.5, 4.5);
+      tankGrad.addColorStop(0, shade('#54544c', 0.25));
+      tankGrad.addColorStop(1, shade('#54544c', -0.25));
+      g.fillStyle = tankGrad;
       g.fillRect(-R * 1.5, -4.5, 7, 9);
 
+      const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.3);
+      bodyGrad.addColorStop(0, shade(p.color, 0.25));
+      bodyGrad.addColorStop(0.6, p.color);
+      bodyGrad.addColorStop(1, shade(p.color, -0.35));
       g.beginPath();
       g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
-      g.fillStyle = p.color;
+      g.fillStyle = bodyGrad;
       g.fill();
       g.strokeStyle = 'rgba(0,0,0,0.4)';
       g.lineWidth = 1.5;
@@ -1448,24 +1533,35 @@
       g.lineWidth = 3;
       g.stroke();
 
+      const helmetGrad = g.createRadialGradient(-R * 0.25, -R * 0.32, 1, 0, 0, R * 0.85);
+      helmetGrad.addColorStop(0, '#ffffff');
+      helmetGrad.addColorStop(0.35, 'rgba(224,226,216,0.95)');
+      helmetGrad.addColorStop(1, 'rgba(150,155,146,0.92)');
       g.beginPath();
       g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(220,222,210,0.95)';
+      g.fillStyle = helmetGrad;
       g.fill();
       g.strokeStyle = '#1c1c18';
       g.lineWidth = 1.5;
       g.stroke();
 
+      const visorGrad = g.createLinearGradient(-R * 0.4, -R * 0.4, R * 0.6, R * 0.4);
+      visorGrad.addColorStop(0, '#1c2a33');
+      visorGrad.addColorStop(1, '#03060a');
       g.beginPath();
       g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
-      g.fillStyle = '#0d1418';
+      g.fillStyle = visorGrad;
       g.fill();
       g.strokeStyle = 'rgba(0,0,0,0.5)';
       g.lineWidth = 1;
       g.stroke();
       g.beginPath();
       g.ellipse(R * 0.28, -R * 0.14, R * 0.14, R * 0.08, -0.4, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(255,255,255,0.55)';
+      g.fillStyle = 'rgba(255,255,255,0.6)';
+      g.fill();
+      g.beginPath();
+      g.ellipse(R * 0.1, R * 0.12, R * 0.06, R * 0.03, -0.4, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,255,255,0.25)';
       g.fill();
 
       g.restore();
