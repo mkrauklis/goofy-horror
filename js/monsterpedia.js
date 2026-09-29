@@ -9,6 +9,7 @@
   const caterpillarCtx = ctxFor('monster-canvas-caterpillar');
   const mimicCtx = ctxFor('monster-canvas-mimic');
   const lurkerCtx = ctxFor('monster-canvas-lurker');
+  const bossCtx = ctxFor('monster-canvas-boss');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -334,12 +335,76 @@
     g.restore();
   }
 
+  // The Level 5 boss: a Crawler burnt black and set on fire, blown up far
+  // past what fits a 160px portrait at true scale -- radius is picked to
+  // read as "the biggest thing in this book," not a literal 8x Crawler.
+  function drawBossTentacles(g, radius, t, seed) {
+    for (let i = 0; i < 7; i++) {
+      const baseAngle = (i / 7) * Math.PI * 2 + seed;
+      const wobble = Math.sin(t * 0.0017 + i * 1.6 + seed) * 10;
+      const tx = Math.cos(baseAngle) * (radius + 34), ty = Math.sin(baseAngle) * (radius + 34);
+      const midX = tx / 2 + wobble, midY = ty / 2 - wobble;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.quadraticCurveTo(midX, midY, tx, ty);
+      g.strokeStyle = i % 3 === 0 ? '#3a1008' : '#6a1826';
+      g.lineWidth = 4.5;
+      g.lineCap = 'round';
+      g.stroke();
+    }
+  }
+
+  function drawBossFlames(g, radius, t, seed) {
+    const spots = 5;
+    for (let i = 0; i < spots; i++) {
+      const a = (i / spots) * Math.PI * 2 + seed * 0.1;
+      const bx = Math.cos(a) * radius * 0.92, by = Math.sin(a) * radius * 0.92;
+      const flicker = 0.8 + Math.sin(t * 0.02 + i * 3.1 + seed) * 0.2;
+      g.save();
+      g.translate(bx, by);
+      g.rotate(a - Math.PI / 2);
+      for (let j = 0; j < 2; j++) {
+        const h = radius * (0.45 + j * 0.18) * flicker;
+        g.beginPath();
+        g.moveTo(-4 + j * 3, 4);
+        g.quadraticCurveTo(3, -h * 0.55, 0, -h);
+        g.quadraticCurveTo(-3, -h * 0.55, 4 - j * 3, 4);
+        g.closePath();
+        g.fillStyle = j === 0 ? '#ff9c3d' : '#ffe38a';
+        g.fill();
+      }
+      g.restore();
+    }
+  }
+
+  function drawBoss(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 74, radius = 50;
+    drawBossTentacles(g, radius, t, seed);
+    drawBlobBody(g, radius, '#4a0f0a', '#ff6a2a', seed, t);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + 0.6;
+      const cx = Math.cos(a) * radius * 0.4, cy = Math.sin(a) * radius * 0.4;
+      g.beginPath();
+      g.arc(cx, cy, radius * 0.24, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(10,6,6,0.55)';
+      g.fill();
+    }
+    drawBossFlames(g, radius, t, seed);
+    const angle = t * 0.0006;
+    drawEye(g, radius, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    g.restore();
+  }
+
   function loop(t) {
     if (crawlerCtx) drawCrawler(crawlerCtx, PORTRAIT, PORTRAIT, t);
     if (drifterCtx) drawDrifter(drifterCtx, PORTRAIT, PORTRAIT, t);
     if (caterpillarCtx) drawCaterpillar(caterpillarCtx, PORTRAIT, PORTRAIT, t);
     if (mimicCtx) drawMimic(mimicCtx, PORTRAIT, PORTRAIT, t);
     if (lurkerCtx) drawLurker(lurkerCtx, PORTRAIT, PORTRAIT, t);
+    if (bossCtx) drawBoss(bossCtx, PORTRAIT, PORTRAIT, t);
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

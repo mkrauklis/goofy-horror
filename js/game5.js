@@ -1,5 +1,5 @@
 (function () {
-  const LEVEL = window.LEVEL4;
+  const LEVEL = window.LEVEL5;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
@@ -10,50 +10,52 @@
   const VIEW_H = 340;
 
   // Speeds are px/second and movement is scaled by the real elapsed time
-  // each frame (see `dt` in loop()) rather than a fixed px/frame step.
+  // each frame (see `dt` in loop()) rather than a fixed px/frame step --
+  // fixed-per-frame movement made real-world speed drift with the frame
+  // rate, which showed up as random-feeling slowdowns whenever a frame
+  // took longer than usual (e.g. a big tile grid redraw).
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  const PATROL_SPEED = PLAYER_SPEED * 0.85; // disguised, walking like a person
-  const CHARGE_SPEED = PLAYER_SPEED * 2; // revealed, twice your speed
-  const LURE_SPEED = PLAYER_SPEED * 0.6;
-  const CATCH_RADIUS = 20;
+
+  // The boss is a single Crawler (Level 1) blown up to 8x normal size and
+  // set alight -- slower and heavier than the original, but its sheer bulk
+  // and reach more than make up for it. Everything below is scaled off the
+  // original Crawler's numbers (radius 16, catch 20, chase 2.5x) rather
+  // than picked arbitrarily.
+  const BOSS_RADIUS = 16 * 8;
+  const BOSS_CHASE_SPEED = PLAYER_SPEED * 2;
+  const BOSS_PATROL_SPEED = PLAYER_SPEED * 0.3;
+  const BOSS_LURE_SPEED = PLAYER_SPEED * 0.5;
+  const BOSS_CATCH_RADIUS = BOSS_RADIUS * 1.25;
   const REPATH_MS = 500;
-  const ALERT_GRACE_MS = 2500;
-  const DETECT_RADIUS = 140; // how close before the disguise drops
+  const ALERT_GRACE_MS = 3200;
+  const FLASHLIGHT_RADIUS = 260;
   const RADAR_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
-  const SUPER_RADAR_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
   const EAT_DURATION_MS = 3000;
-  const CRATE_RESPAWN_MS = 30000; // half of the other levels' 60s
+  const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
-  const SMOKE_FUSE_MS = 3000;
-  const SMOKE_DURATION_MS = 10000;
-  const SMOKE_RADIUS = 70;
-  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke'];
-  const MIMIC_CRATE_CHANCE = 0.12;
-  const MIMIC_CHASE_SPEED = PLAYER_SPEED * 2.2;
-  const MIMIC_TIMEOUT_MS = 8000;
-
-  // ---- sprint / stamina ----
-  const DOUBLE_TAP_MS = 300;
-  const STAMINA_MAX = 15; // seconds of sprint fuel
-  const SPRINT_SPEED_MULT = 2;
-  const EXHAUSTED_SPEED_MULT = 0.5;
-  const SPRINT_DRAIN_RATE = STAMINA_MAX / 15; // empties over 15s of continuous sprint
-  const EXHAUSTED_MS = 5000;
-  const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
-  const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking
+  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner'];
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
   const messageEl = document.getElementById('game-message');
 
+  // Darkness is composited from a separate offscreen mask so that punching
+  // light holes (globalCompositeOperation 'destination-out') erases only the
+  // mask's own darkness pixels, not the scene already drawn on the main canvas.
   const maskCanvas = document.createElement('canvas');
   maskCanvas.width = VIEW_W;
   maskCanvas.height = VIEW_H;
   const maskCtx = maskCanvas.getContext('2d');
+  const hudButtonsEl = document.getElementById('hud-buttons');
+  const hudDoorEl = document.getElementById('hud-door');
 
+  // Explored-tiles minimap: an offscreen 1px-per-tile canvas that only ever
+  // gets painted to (never cleared), so it builds up a fog-of-war record of
+  // what each session has actually walked near, rather than showing the
+  // whole huge map from the start.
   const exploredCanvas = document.createElement('canvas');
   exploredCanvas.width = COLS;
   exploredCanvas.height = ROWS;
@@ -61,9 +63,6 @@
   let explored = new Uint8Array(COLS * ROWS);
   const EXPLORE_RADIUS = 7;
   const MINIMAP_W = 90;
-
-  const hudPowerEl = document.getElementById('hud-power');
-  const hudDoorEl = document.getElementById('hud-door');
 
   // ---- procedural audio (no asset files) ----
   let audioCtx = null;
@@ -91,7 +90,8 @@
   // Every several seconds, a brief, gentle flutter in the safe-room music's
   // volume and a soft pitch dip on a couple of voices -- runs continuously
   // in the background; it's inaudible whenever safeMusicGain itself is
-  // faded near zero.
+  // faded near zero. Subtle on purpose: enough to read as "not quite
+  // right" without undercutting the calming point of the music.
   function scheduleSafeMusicGlitch() {
     const delay = 3000 + Math.random() * 4500;
     setTimeout(() => {
@@ -259,6 +259,10 @@
     osc.stop(start + duration + 0.05);
   }
 
+  function playButtonChime() {
+    playTone(880, 0.18, 'sine', 0.2);
+  }
+
   function playItemChime(freq) {
     playTone(freq, 0.25, 'square', 0.18);
   }
@@ -267,23 +271,6 @@
     playTone(440, 0.2, 'triangle', 0.22, 0);
     playTone(660, 0.2, 'triangle', 0.22, 0.12);
     playTone(880, 0.3, 'triangle', 0.22, 0.24);
-  }
-
-  function playRevealScreech() {
-    if (!audioCtx) return;
-    const start = audioCtx.currentTime;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(220, start);
-    osc.frequency.exponentialRampToValueAtTime(1100, start + 0.25);
-    gain.gain.setValueAtTime(0.001, start);
-    gain.gain.exponentialRampToValueAtTime(0.22, start + 0.04);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(start);
-    osc.stop(start + 0.4);
   }
 
   function playCatchSting() {
@@ -318,31 +305,14 @@
     osc.stop(start + 0.25);
   }
 
-  function playSmokePoof() {
-    if (!audioCtx) return;
-    const start = audioCtx.currentTime;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(180, start);
-    osc.frequency.exponentialRampToValueAtTime(60, start + 0.3);
-    gain.gain.setValueAtTime(0.001, start);
-    gain.gain.exponentialRampToValueAtTime(0.3, start + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.4);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(start);
-    osc.stop(start + 0.45);
-  }
-
   function playWinJingle() {
     [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
   }
 
   function updateAmbientTension() {
     if (!audioCtx) return;
-    const minDist = Math.min(...players.flatMap((p) => monsters.map((m) => Math.hypot(p.x - m.x, p.y - m.y))));
-    const proximity = clamp(1 - minDist / 380, 0, 1);
+    const minDist = Math.min(...players.map((p) => Math.hypot(p.x - boss.x, p.y - boss.y)));
+    const proximity = clamp(1 - minDist / 420, 0, 1);
     ambientGain.gain.setTargetAtTime(0.05 + proximity * 0.18, audioCtx.currentTime, 0.3);
     ambientSubOsc.frequency.setTargetAtTime(41.2 + proximity * 12, audioCtx.currentTime, 0.3);
     ambientMidGain.gain.setTargetAtTime(proximity * 0.06, audioCtx.currentTime, 0.4);
@@ -368,26 +338,9 @@
   const TRACKED_KEYS = new Set(['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
   const keys = {};
 
-  // Double-tapping a movement key starts a sprint (see updateStamina/
-  // applyMovement) as long as there's stamina left. Only counted on the
-  // real edge of a fresh keydown, not the browser's auto-repeat.
-  const lastTapTime = [{}, {}];
-  function handleMovementKeyPress(key, now) {
-    const playerIndex = (key === 'w' || key === 'a' || key === 's' || key === 'd') ? 0 : 1;
-    const last = lastTapTime[playerIndex][key] || 0;
-    if (now - last < DOUBLE_TAP_MS) {
-      const p = players[playerIndex];
-      if (p.moveState !== 'exhausted' && p.stamina > 0) {
-        p.sprintActive = true;
-      }
-    }
-    lastTapTime[playerIndex][key] = now;
-  }
-
   window.addEventListener('keydown', (e) => {
     ensureAudio();
     if (TRACKED_KEYS.has(e.key)) {
-      if (!keys[e.key]) handleMovementKeyPress(e.key, performance.now());
       keys[e.key] = true;
       e.preventDefault();
     }
@@ -423,7 +376,8 @@
 
   // A handful of near-identical grays, picked per-tile by hashing its
   // coordinates, so plain floor reads as worn/mottled concrete instead of
-  // one flat color.
+  // one flat color -- stable across frames since it's a function of (x, y),
+  // not random noise re-rolled every draw.
   const FLOOR_SHADES = ['#4c4c53', '#525258', '#58585f', '#5e5e66', '#54545c', '#605f68'];
   function floorShade(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
@@ -431,22 +385,15 @@
     return FLOOR_SHADES[idx];
   }
 
-  const OVERGROWTH_SHADES = ['#33421f', '#3c4d24', '#2c391a', '#445a28'];
-  function overgrowthShade(x, y) {
-    const h = Math.imul(x + 91, 374761393) ^ Math.imul(y - 17, 668265263);
-    const idx = ((h ^ (h >>> 13)) >>> 0) % OVERGROWTH_SHADES.length;
-    return OVERGROWTH_SHADES[idx];
-  }
-
   const DIRT_SHADES = ['#5a4127', '#63482b', '#4e3a22', '#6b4f30'];
   function dirtShade(x, y) {
-    const h = Math.imul(x - 53, 374761393) ^ Math.imul(y + 29, 668265263);
+    const h = Math.imul(x + 91, 374761393) ^ Math.imul(y - 17, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % DIRT_SHADES.length;
     return DIRT_SHADES[idx];
   }
 
   // ---- game state ----
-  let leverPulled = false;
+  let buttonsPressed = [false, false, false];
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
@@ -456,7 +403,6 @@
     return {
       x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, spawn, invulnerableUntil: 0,
       caught: false, caughtAt: 0,
-      stamina: STAMINA_MAX, moveState: 'normal', exhaustedUntil: 0, sprintActive: false,
     };
   }
 
@@ -465,21 +411,25 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
-  // Three mimics patrol disguised as people (state 'patrol'); once a player
-  // gets close, one drops the act, becomes a small toothy tentacle thing,
-  // and charges at 2x player speed (state 'alert') until it gives up or
-  // catches someone, then goes back to wandering in disguise.
-  function makeMonster(patrolStartIndex) {
+  // The boss: one giant, burnt Crawler. There's only ever one, so it's a
+  // single object rather than an array of monsters like the other levels --
+  // no need for the multi-monster machinery when there's nothing to iterate.
+  function makeBoss(patrolStartIndex) {
+    const tentacleCount = 9;
+    const tentacleAngles = [];
+    for (let i = 0; i < tentacleCount; i++) {
+      tentacleAngles.push((i / tentacleCount) * Math.PI * 2 + Math.random() * 0.4);
+    }
     return {
       x: 0,
       y: 0,
-      radius: 13,
+      radius: BOSS_RADIUS,
       seed: Math.random() * 100,
       path: [],
       pathIndex: 0,
       nextRepathAt: 0,
       lookDir: { x: 1, y: 0 },
-      tentacleTargets: [],
+      tentacleAngles,
       state: 'patrol', // 'patrol' | 'alert'
       alertUntil: 0,
       alertTargetTile: null,
@@ -491,51 +441,17 @@
     };
   }
 
-  const patrolLen = LEVEL.patrolPoints.length;
-  const monsters = [
-    makeMonster(0),
-    makeMonster(Math.floor(patrolLen / 3)),
-    makeMonster(Math.floor((patrolLen * 2) / 3)),
-  ];
-
-  function isRevealed(m) {
-    return m.state === 'alert' || m.luredState !== 'none';
-  }
-
-  function nearestMonster(x, y) {
-    let best = monsters[0], bestD = Infinity;
-    monsters.forEach((m) => {
-      const d = Math.hypot(x - m.x, y - m.y);
-      if (d < bestD) { bestD = d; best = m; }
-    });
-    return best;
-  }
+  const boss = makeBoss(0);
 
   let crates = [];
   let fires = [];
-  let smokeBombs = [];
-  let mimicSpawns = [];
   let radarUntil = 0;
   let scannerUntil = 0;
-  let superRadarUntil = 0;
   let floatingTexts = [];
 
   function respawnPlayer(p) {
     const c = tileCenter(p.spawn.x, p.spawn.y);
     p.x = c.x; p.y = c.y; p.facing = { x: 0, y: 1 };
-  }
-
-  function resetExploration() {
-    explored = new Uint8Array(COLS * ROWS);
-    exploredCtx.clearRect(0, 0, COLS, ROWS);
-  }
-
-  // Most crates hold a normal item; a small fraction are secretly mimics
-  // instead -- same box, no item, but a barely-there jitter while it's
-  // still closed (see drawCrates).
-  function rollCrateContents() {
-    if (Math.random() < MIMIC_CRATE_CHANCE) return { item: null, isMimic: true };
-    return { item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], isMimic: false };
   }
 
   function resetLevel() {
@@ -544,36 +460,26 @@
       p.caught = false;
       p.caughtAt = 0;
       p.invulnerableUntil = 0;
-      p.stamina = STAMINA_MAX;
-      p.moveState = 'normal';
-      p.exhaustedUntil = 0;
-      p.sprintActive = false;
     });
 
-    const spawns = LEVEL.monsterSpawns;
-    monsters.forEach((mon, i) => {
-      const m = tileCenter(spawns[i].x, spawns[i].y);
-      mon.x = m.x; mon.y = m.y;
-      mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
-      mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
-      mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.eatingUntil = 0;
-    });
+    const spawn = LEVEL.monsterSpawns[0];
+    const m = tileCenter(spawn.x, spawn.y);
+    boss.x = m.x; boss.y = m.y;
+    boss.path = []; boss.pathIndex = 0; boss.nextRepathAt = 0;
+    boss.state = 'patrol'; boss.alertUntil = 0; boss.alertTargetTile = null;
+    boss.frozenUntil = 0; boss.luredState = 'none'; boss.lureTarget = null; boss.eatingUntil = 0;
 
-    leverPulled = false;
+    buttonsPressed = [false, false, false];
     doorUnlocked = false;
 
-    crates = (LEVEL.crateSpawns || []).map((c) => {
-      const roll = rollCrateContents();
-      return { x: c.x, y: c.y, item: roll.item, isMimic: roll.isMimic, opened: false, openedAt: 0 };
-    });
+    crates = (LEVEL.crateSpawns || []).map((c) => ({
+      x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
+    }));
     fires = (LEVEL.fireSpawns || []).map((f, i) => ({
       x: f.x, y: f.y, seed: i * 1471.7 + Math.random() * 5000,
     }));
-    smokeBombs = [];
-    mimicSpawns = [];
     radarUntil = 0;
     scannerUntil = 0;
-    superRadarUntil = 0;
     floatingTexts = [];
     resetExploration();
   }
@@ -604,56 +510,23 @@
     if (dy !== 0 && canStandAt(p.x, p.y + dy)) p.y += dy;
   }
 
-  // Sprinting drains stamina over 15s of continuous use; run out and you're
-  // stuck at half speed for 5s while it refills halfway. Walking normally
-  // (not sprinting, not exhausted) also refills it, just at half the rate
-  // the exhausted penalty does.
-  function updateStamina(p, now, dt, isMoving) {
-    if (p.moveState === 'exhausted') {
-      p.stamina = Math.min(STAMINA_MAX, p.stamina + EXHAUSTED_REGEN_RATE * dt);
-      if (now >= p.exhaustedUntil) p.moveState = 'normal';
-      return;
-    }
-    if (p.sprintActive && isMoving && p.stamina > 0) {
-      p.moveState = 'sprinting';
-      p.stamina = Math.max(0, p.stamina - SPRINT_DRAIN_RATE * dt);
-      if (p.stamina <= 0) {
-        p.moveState = 'exhausted';
-        p.exhaustedUntil = now + EXHAUSTED_MS;
-        p.sprintActive = false;
-      }
-    } else {
-      p.moveState = 'normal';
-      if (!isMoving) p.sprintActive = false; // stopping cancels the sprint; needs a fresh double-tap
-      p.stamina = Math.min(STAMINA_MAX, p.stamina + NORMAL_REGEN_RATE * dt);
-    }
-  }
-
-  function speedMultiplierFor(p) {
-    if (p.moveState === 'exhausted') return EXHAUSTED_SPEED_MULT;
-    if (p.moveState === 'sprinting') return SPRINT_SPEED_MULT;
-    return 1;
-  }
-
   function applyMovement(p, ix, iy, dt) {
     if (p.caught) return; // held fast during the catch cutscene
     if (ix === 0 && iy === 0) return;
     const len = Math.hypot(ix, iy);
     const nx = ix / len, ny = iy / len;
     p.facing = { x: nx, y: ny };
-    const speed = PLAYER_SPEED * speedMultiplierFor(p);
-    movePlayer(p, nx * speed * dt, ny * speed * dt);
+    movePlayer(p, nx * PLAYER_SPEED * dt, ny * PLAYER_SPEED * dt);
   }
 
-  function updatePlayerMovement(p, ix, iy, now, dt) {
-    const isMoving = !p.caught && (ix !== 0 || iy !== 0);
-    updateStamina(p, now, dt, isMoving);
-    applyMovement(p, ix, iy, dt);
+  function updateInputMovement(dt) {
+    applyMovement(players[0], (keys.d ? 1 : 0) - (keys.a ? 1 : 0), (keys.s ? 1 : 0) - (keys.w ? 1 : 0), dt);
+    applyMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), dt);
   }
 
-  function updateInputMovement(now, dt) {
-    updatePlayerMovement(players[0], (keys.d ? 1 : 0) - (keys.a ? 1 : 0), (keys.s ? 1 : 0) - (keys.w ? 1 : 0), now, dt);
-    updatePlayerMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), now, dt);
+  function isHidden(p) {
+    const t = worldToTile(p.x, p.y);
+    return tileChar(t.x, t.y) === 'S';
   }
 
   function isInSafeZone(p) {
@@ -661,25 +534,16 @@
     return tileChar(t.x, t.y) === 'S';
   }
 
-  function isInSmoke(p, now) {
-    return smokeBombs.some((b) => b.exploded && now < b.endsAt && Math.hypot(p.x - b.x, p.y - b.y) < SMOKE_RADIUS);
-  }
-
-  // The scanner points at the lever until it's pulled, then at the train
-  // itself so there's still something to follow once the power's on.
-  function scannerTarget() {
-    if (!leverPulled) return tileCenter(LEVEL.lever.x, LEVEL.lever.y);
-    if (gameState === 'playing') return tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
-    return null;
+  function resetExploration() {
+    explored = new Uint8Array(COLS * ROWS);
+    exploredCtx.clearRect(0, 0, COLS, ROWS);
   }
 
   function minimapColorFor(ch) {
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
     if (ch === 'S') return '#3ddc84';
-    if (ch === 'L') return '#5ec9e8';
-    if (ch === 'G') return '#3c5223';
-    if (ch === 'T') return '#7a5a34';
+    if (ch === 'T') return '#5a4127';
     return '#3c3c46';
   }
 
@@ -714,19 +578,6 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(mx + 0.5, my + 0.5, MINIMAP_W - 1, mh - 1);
-    if (now < superRadarUntil) {
-      monsters.forEach((m) => {
-        const px = mx + (m.x / WORLD_W) * MINIMAP_W;
-        const py = my + (m.y / WORLD_H) * mh;
-        ctx.beginPath();
-        ctx.arc(px, py, 2.4, 0, Math.PI * 2);
-        ctx.fillStyle = '#ff4d6d';
-        ctx.shadowColor = '#ff4d6d';
-        ctx.shadowBlur = 4;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      });
-    }
     players.forEach((pl) => {
       const px = mx + (pl.x / WORLD_W) * MINIMAP_W;
       const py = my + (pl.y / WORLD_H) * mh;
@@ -735,26 +586,16 @@
       ctx.fillStyle = pl.color;
       ctx.fill();
     });
+    const bx = mx + (boss.x / WORLD_W) * MINIMAP_W;
+    const by = my + (boss.y / WORLD_H) * mh;
+    ctx.beginPath();
+    ctx.arc(bx, by, 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff5a2a';
+    ctx.shadowColor = '#ff5a2a';
+    ctx.shadowBlur = 5;
+    ctx.fill();
     ctx.restore();
     return mh;
-  }
-
-  function drawStaminaBar(vx, p, minimapH) {
-    const barW = MINIMAP_W, barH = 7;
-    const bx = vx + 8, by = 8 + minimapH + 8;
-    ctx.save();
-    ctx.fillStyle = 'rgba(5,5,8,0.65)';
-    ctx.fillRect(bx - 2, by - 2, barW + 4, barH + 4);
-    ctx.fillStyle = '#202225';
-    ctx.fillRect(bx, by, barW, barH);
-    const frac = clamp(p.stamina / STAMINA_MAX, 0, 1);
-    const color = p.moveState === 'exhausted' ? '#c9403a' : p.moveState === 'sprinting' ? '#ffd27a' : '#3ddc84';
-    ctx.fillStyle = color;
-    ctx.fillRect(bx, by, barW * frac, barH);
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(bx + 0.5, by + 0.5, barW - 1, barH - 1);
-    ctx.restore();
   }
 
   function spawnFloatingText(x, y, text) {
@@ -768,35 +609,39 @@
     }
   }
 
+  // The scanner points at the nearest button that hasn't been pressed yet --
+  // once a button's done, it drops out of consideration entirely so the
+  // scanner never wastes a reading on somewhere you've already been.
+  function nearestUnpressedButton(x, y) {
+    let best = null, bestD = Infinity;
+    LEVEL.buttons.forEach((b, i) => {
+      if (buttonsPressed[i]) return;
+      const c = tileCenter(b.x, b.y);
+      const d = Math.hypot(x - c.x, y - c.y);
+      if (d < bestD) { bestD = d; best = c; }
+    });
+    return best;
+  }
+
   function applyItemEffect(item, x, y, now) {
     if (item === 'radar') {
       radarUntil = now + RADAR_DURATION_MS;
       spawnFloatingText(x, y, 'RADAR');
       playItemChime(880);
     } else if (item === 'meat') {
-      monsters.forEach((m) => {
-        m.luredState = 'lured';
-        m.lureTarget = { x, y };
-        m.path = []; m.pathIndex = 0;
-      });
+      boss.luredState = 'lured';
+      boss.lureTarget = { x, y };
+      boss.path = []; boss.pathIndex = 0;
       spawnFloatingText(x, y, 'MEAT');
       playItemChime(220);
     } else if (item === 'co2') {
-      monsters.forEach((m) => { m.frozenUntil = now + FREEZE_DURATION_MS; });
+      boss.frozenUntil = now + FREEZE_DURATION_MS;
       spawnFloatingText(x, y, 'FROZEN');
       playItemChime(1200);
     } else if (item === 'scanner') {
       scannerUntil = now + SCANNER_DURATION_MS;
       spawnFloatingText(x, y, 'SCANNER');
       playItemChime(660);
-    } else if (item === 'super-radar') {
-      superRadarUntil = now + SUPER_RADAR_DURATION_MS;
-      spawnFloatingText(x, y, 'SUPER-RADAR');
-      playItemChime(1400);
-    } else if (item === 'smoke') {
-      smokeBombs.push({ x, y, armAt: now + SMOKE_FUSE_MS, exploded: false, endsAt: 0 });
-      spawnFloatingText(x, y, 'SMOKE BOMB');
-      playItemChime(500);
     }
   }
 
@@ -808,99 +653,32 @@
         if (c.x === t.x && c.y === t.y) {
           c.opened = true;
           c.openedAt = now;
-          const center = tileCenter(c.x, c.y);
-          if (c.isMimic) {
-            spawnMimicCrateCreature(center.x, center.y, now);
-          } else {
-            applyItemEffect(c.item, center.x, center.y, now);
-          }
+          applyItemEffect(c.item, tileCenter(c.x, c.y).x, tileCenter(c.x, c.y).y, now);
         }
       });
     });
     crates.forEach((c) => {
       if (c.opened && now - c.openedAt >= CRATE_RESPAWN_MS) {
         c.opened = false;
-        const roll = rollCrateContents();
-        c.item = roll.item;
-        c.isMimic = roll.isMimic;
+        c.item = CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)];
       }
     });
-  }
-
-  // ---- mimic crates: a jump-scare chaser instead of an item ----
-  function spawnMimicCrateCreature(x, y, now) {
-    mimicSpawns.push({
-      x, y, seed: Math.random() * 100, lookDir: { x: 1, y: 0 },
-      path: [], pathIndex: 0, nextRepathAt: 0,
-      expiresAt: now + MIMIC_TIMEOUT_MS,
-    });
-    playRevealScreech();
-  }
-
-  function updateMimicSpawns(now, dt) {
-    mimicSpawns = mimicSpawns.filter((ms) => now < ms.expiresAt);
-    mimicSpawns.forEach((ms) => {
-      let target = null, bestD = Infinity;
-      players.forEach((p) => {
-        if (p.caught || isInSafeZone(p) || isInSmoke(p, now)) return;
-        const d = Math.hypot(p.x - ms.x, p.y - ms.y);
-        if (d < bestD) { bestD = d; target = p; }
-      });
-      if (!target) return;
-
-      if (now >= ms.nextRepathAt) {
-        ms.nextRepathAt = now + REPATH_MS;
-        const startTile = worldToTile(ms.x, ms.y);
-        const goalTile = worldToTile(target.x, target.y);
-        const graph = buildMonsterGraph();
-        const path = bfsPath(graph, startTile, goalTile);
-        ms.path = path && path.length > 1 ? path.slice(1) : [];
-        ms.pathIndex = 0;
-      }
-      if (ms.path && ms.pathIndex < ms.path.length) {
-        const step = MIMIC_CHASE_SPEED * dt;
-        const tgt = tileTargetWithOffset(ms.path[ms.pathIndex]);
-        const dx = tgt.x - ms.x, dy = tgt.y - ms.y;
-        const d = Math.hypot(dx, dy);
-        if (d > 0.001) ms.lookDir = { x: dx / d, y: dy / d };
-        if (d < step) {
-          ms.x = tgt.x; ms.y = tgt.y;
-          ms.pathIndex++;
-        } else {
-          ms.x += (dx / d) * step;
-          ms.y += (dy / d) * step;
-        }
-      }
-
-      if (!target.caught && now >= target.invulnerableUntil &&
-          Math.hypot(target.x - ms.x, target.y - ms.y) < CATCH_RADIUS) {
-        triggerCaught(target, now);
-        ms.expiresAt = now;
-      }
-    });
-  }
-
-  function updateSmokeBombs(now) {
-    smokeBombs.forEach((b) => {
-      if (!b.exploded && now >= b.armAt) {
-        b.exploded = true;
-        b.endsAt = now + SMOKE_DURATION_MS;
-        playSmokePoof();
-      }
-    });
-    smokeBombs = smokeBombs.filter((b) => !b.exploded || now < b.endsAt);
   }
 
   function updateTriggers() {
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
       const ch = tileChar(t.x, t.y);
-      if (ch === 'L' && !leverPulled) {
-        leverPulled = true;
-        doorUnlocked = true;
-        const c = tileCenter(t.x, t.y);
-        spawnFloatingText(c.x, c.y, 'POWER ON');
-        playDoorUnlockChime();
+      if (ch === 'B') {
+        const idx = LEVEL.buttons.findIndex((b) => b.x === t.x && b.y === t.y);
+        if (idx >= 0 && !buttonsPressed[idx]) {
+          buttonsPressed[idx] = true;
+          playButtonChime();
+          if (buttonsPressed.every(Boolean)) {
+            doorUnlocked = true;
+            playDoorUnlockChime();
+          }
+        }
       }
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
@@ -909,7 +687,7 @@
     });
   }
 
-  // ---- monster AI ----
+  // ---- boss AI ----
   function monsterCanOccupy(ch) {
     if (ch === '#' || ch === 'S') return false;
     if (ch === 'D') return doorUnlocked;
@@ -978,148 +756,117 @@
     return true;
   }
 
-  function updateDetection(m, now) {
+  function updateDetection(now) {
     for (const p of players) {
-      if (p.caught || isInSafeZone(p) || isInSmoke(p, now)) continue;
-      const d = Math.hypot(p.x - m.x, p.y - m.y);
-      if (d <= DETECT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
-        if (m.state !== 'alert') playRevealScreech();
-        m.state = 'alert';
-        m.alertUntil = now + ALERT_GRACE_MS;
-        m.alertTargetTile = worldToTile(p.x, p.y);
+      if (p.caught || isHidden(p)) continue;
+      const d = Math.hypot(p.x - boss.x, p.y - boss.y);
+      if (d <= FLASHLIGHT_RADIUS && hasLineOfSight(boss.x, boss.y, p.x, p.y)) {
+        boss.state = 'alert';
+        boss.alertUntil = now + ALERT_GRACE_MS;
+        boss.alertTargetTile = worldToTile(p.x, p.y);
       }
     }
-    if (m.state === 'alert' && now >= m.alertUntil) {
-      m.state = 'patrol';
-      m.path = [];
-      m.pathIndex = 0;
+    if (boss.state === 'alert' && now >= boss.alertUntil) {
+      boss.state = 'patrol';
+      boss.path = [];
+      boss.pathIndex = 0;
     }
   }
 
-  function wallOffsetDir(tx, ty) {
-    let dx = 0, dy = 0;
-    if (tileChar(tx - 1, ty) === '#') dx += 1;
-    if (tileChar(tx + 1, ty) === '#') dx -= 1;
-    if (tileChar(tx, ty - 1) === '#') dy += 1;
-    if (tileChar(tx, ty + 1) === '#') dy -= 1;
-    const len = Math.hypot(dx, dy);
-    if (len === 0) return { x: 0, y: 0 };
-    return { x: dx / len, y: dy / len };
+  function tileTargetSimple(t) {
+    return tileCenter(t.x, t.y);
   }
 
-  function tileTargetWithOffset(t) {
-    const c = tileCenter(t.x, t.y);
-    const off = wallOffsetDir(t.x, t.y);
-    return { x: c.x + off.x * 10, y: c.y + off.y * 10 };
-  }
+  function updateBoss(now, dt) {
+    if (now < boss.frozenUntil) return; // frozen solid: no movement, no perception
 
-  function updateTentacleTargets(m, tile) {
-    const targets = [];
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        if (tileChar(tile.x + dx, tile.y + dy) === '#') {
-          targets.push(tileCenter(tile.x + dx, tile.y + dy));
-        }
-      }
-    }
-    m.tentacleTargets = targets.slice(0, 3);
-  }
-
-  function updateMonster(m, now, dt) {
-    if (now < m.frozenUntil) return; // frozen solid: no movement, no perception
-
-    if (m.luredState === 'eating') {
-      if (now >= m.eatingUntil) {
-        m.luredState = 'none';
-        m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
+    if (boss.luredState === 'eating') {
+      if (now >= boss.eatingUntil) {
+        boss.luredState = 'none';
+        boss.path = []; boss.pathIndex = 0; boss.nextRepathAt = 0;
       } else {
         return;
       }
     }
 
-    if (m.luredState === 'lured') {
-      if (now >= m.nextRepathAt) {
-        m.nextRepathAt = now + REPATH_MS;
-        const startTile = worldToTile(m.x, m.y);
-        const goalTile = worldToTile(m.lureTarget.x, m.lureTarget.y);
+    if (boss.luredState === 'lured') {
+      if (now >= boss.nextRepathAt) {
+        boss.nextRepathAt = now + REPATH_MS;
+        const startTile = worldToTile(boss.x, boss.y);
+        const goalTile = worldToTile(boss.lureTarget.x, boss.lureTarget.y);
         const graph = buildMonsterGraph();
         const path = bfsPath(graph, startTile, goalTile);
-        m.path = path && path.length > 1 ? path.slice(1) : [];
-        m.pathIndex = 0;
-        updateTentacleTargets(m, startTile);
+        boss.path = path && path.length > 1 ? path.slice(1) : [];
+        boss.pathIndex = 0;
       }
-      if (m.path && m.pathIndex < m.path.length) {
-        const step = LURE_SPEED * dt;
-        const target = tileTargetWithOffset(m.path[m.pathIndex]);
-        const dx = target.x - m.x, dy = target.y - m.y;
+      if (boss.path && boss.pathIndex < boss.path.length) {
+        const step = BOSS_LURE_SPEED * dt;
+        const target = tileTargetSimple(boss.path[boss.pathIndex]);
+        const dx = target.x - boss.x, dy = target.y - boss.y;
         const d = Math.hypot(dx, dy);
-        if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
+        if (d > 0.001) boss.lookDir = { x: dx / d, y: dy / d };
         if (d < step) {
-          m.x = target.x; m.y = target.y;
-          m.pathIndex++;
+          boss.x = target.x; boss.y = target.y;
+          boss.pathIndex++;
         } else {
-          m.x += (dx / d) * step;
-          m.y += (dy / d) * step;
+          boss.x += (dx / d) * step;
+          boss.y += (dy / d) * step;
         }
       } else {
-        m.luredState = 'eating';
-        m.eatingUntil = now + EAT_DURATION_MS;
+        boss.luredState = 'eating';
+        boss.eatingUntil = now + EAT_DURATION_MS;
       }
       return;
     }
 
-    updateDetection(m, now);
+    updateDetection(now);
 
-    if (now >= m.nextRepathAt) {
-      m.nextRepathAt = now + REPATH_MS;
-      const startTile = worldToTile(m.x, m.y);
-      const goalTile = m.state === 'alert' ? m.alertTargetTile : LEVEL.patrolPoints[m.patrolIndex];
+    if (now >= boss.nextRepathAt) {
+      boss.nextRepathAt = now + REPATH_MS;
+      const startTile = worldToTile(boss.x, boss.y);
+      const goalTile = boss.state === 'alert' ? boss.alertTargetTile : LEVEL.patrolPoints[boss.patrolIndex];
       const graph = buildMonsterGraph();
       const path = bfsPath(graph, startTile, goalTile);
       if (path && path.length > 1) {
-        m.path = path.slice(1);
-        m.pathIndex = 0;
+        boss.path = path.slice(1);
+        boss.pathIndex = 0;
       } else {
-        m.path = [];
-        m.pathIndex = 0;
-        if (m.state === 'patrol') {
-          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        boss.path = [];
+        boss.pathIndex = 0;
+        if (boss.state === 'patrol') {
+          boss.patrolIndex = (boss.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       }
-      updateTentacleTargets(m, startTile);
     }
 
-    if (m.path && m.pathIndex < m.path.length) {
-      const step = (m.state === 'alert' ? CHARGE_SPEED : PATROL_SPEED) * dt;
-      const target = tileTargetWithOffset(m.path[m.pathIndex]);
-      const dx = target.x - m.x, dy = target.y - m.y;
+    if (boss.path && boss.pathIndex < boss.path.length) {
+      const step = (boss.state === 'alert' ? BOSS_CHASE_SPEED : BOSS_PATROL_SPEED) * dt;
+      const target = tileTargetSimple(boss.path[boss.pathIndex]);
+      const dx = target.x - boss.x, dy = target.y - boss.y;
       const d = Math.hypot(dx, dy);
-      if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
+      if (d > 0.001) boss.lookDir = { x: dx / d, y: dy / d };
       if (d < step) {
-        m.x = target.x; m.y = target.y;
-        m.pathIndex++;
-        if (m.pathIndex >= m.path.length && m.state === 'patrol') {
-          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        boss.x = target.x; boss.y = target.y;
+        boss.pathIndex++;
+        if (boss.pathIndex >= boss.path.length && boss.state === 'patrol') {
+          boss.patrolIndex = (boss.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       } else {
-        m.x += (dx / d) * step;
-        m.y += (dy / d) * step;
+        boss.x += (dx / d) * step;
+        boss.y += (dy / d) * step;
       }
     }
   }
 
   function updateCatch(now) {
-    monsters.forEach((m) => {
-      if (now < m.frozenUntil) return;
-      if (m.luredState !== 'none') return;
-      if (m.state !== 'alert') return;
-      players.forEach((p) => {
-        if (p.caught) return;
-        if (isInSafeZone(p) || isInSmoke(p, now)) return;
-        if (now < p.invulnerableUntil) return;
-        if (Math.hypot(p.x - m.x, p.y - m.y) < CATCH_RADIUS) triggerCaught(p, now);
-      });
+    if (now < boss.frozenUntil) return;
+    if (boss.luredState !== 'none') return;
+    if (boss.state !== 'alert') return;
+    players.forEach((p) => {
+      if (p.caught) return;
+      if (isHidden(p)) return;
+      if (now < p.invulnerableUntil) return;
+      if (Math.hypot(p.x - boss.x, p.y - boss.y) < BOSS_CATCH_RADIUS) triggerCaught(p, now);
     });
   }
 
@@ -1250,20 +997,7 @@
   }
 
   // ---- rendering ----
-  const doorBounds = (() => {
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        if (LEVEL.grid[y][x] === 'D') {
-          x0 = Math.min(x0, x); y0 = Math.min(y0, y);
-          x1 = Math.max(x1, x); y1 = Math.max(y1, y);
-        }
-      }
-    }
-    return { x0, y0, x1, y1 };
-  })();
-
-  function drawTiles(g, camX, camY, now) {
+  function drawTiles(g, camX, camY) {
     const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
     const maxTX = Math.min(COLS - 1, Math.ceil((camX + VIEW_W / 2) / TILE) + 1);
     const minTY = Math.max(0, Math.floor((camY - VIEW_H / 2) / TILE) - 1);
@@ -1276,10 +1010,8 @@
         switch (ch) {
           case '#': color = '#262629'; break;
           case 'S': color = floorShade(x, y); break;
-          case 'G': color = overgrowthShade(x, y); break;
           case 'T': color = dirtShade(x, y); break;
           case 'E': color = '#3a301f'; break;
-          case 'L': color = floorShade(x, y); break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
@@ -1290,244 +1022,58 @@
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
         }
-        if (ch === 'G') {
-          g.strokeStyle = 'rgba(20,50,10,0.5)';
-          g.lineWidth = 1.5;
-          const seed = (x * 7 + y * 13) % 11;
-          for (let i = 0; i < 2; i++) {
-            const bx = px + 6 + ((seed + i * 5) % 20);
-            g.beginPath();
-            g.moveTo(bx, py + TILE);
-            g.quadraticCurveTo(bx + 3, py + TILE - 10, bx - 2, py + TILE - 18);
-            g.stroke();
-          }
-        }
-        if (ch === 'T') {
-          g.fillStyle = 'rgba(0,0,0,0.15)';
-          const pebbles = 3;
-          for (let i = 0; i < pebbles; i++) {
-            const seed = (x * 7 + y * 13 + i * 31) % 17;
-            g.beginPath();
-            g.arc(px + 6 + (seed % 5) * 5, py + 6 + ((seed * 3) % 5) * 5, 1.5, 0, Math.PI * 2);
-            g.fill();
-          }
-        }
       }
     }
 
-    drawFires(g, now);
-
-    const dx0 = doorBounds.x0 * TILE, dy0 = doorBounds.y0 * TILE;
-    const dw = (doorBounds.x1 - doorBounds.x0 + 1) * TILE;
-    const dh = (doorBounds.y1 - doorBounds.y0 + 1) * TILE;
-    if (!doorUnlocked) {
-      g.strokeStyle = '#0d1114';
-      g.lineWidth = 4;
-      g.strokeRect(dx0 + 3, dy0 + 3, dw - 6, dh - 6);
-      g.strokeStyle = 'rgba(255,190,60,0.5)';
-      g.lineWidth = 3;
-      g.strokeRect(dx0 + 9, dy0 + 9, dw - 18, dh - 18);
-      g.beginPath();
-      g.moveTo(dx0 + dw / 2, dy0 + 4);
-      g.lineTo(dx0 + dw / 2, dy0 + dh - 4);
-      g.stroke();
-    } else {
-      g.strokeStyle = 'rgba(255,255,255,0.18)';
-      g.lineWidth = 3;
-      g.strokeRect(dx0 + 2, dy0 + 2, dw - 4, dh - 4);
+    // door plug (a short 2-tile gap in the exit alcove's wall)
+    let dx0 = Infinity, dy0 = Infinity, dx1 = -Infinity, dy1 = -Infinity;
+    for (let y = minTY; y <= maxTY; y++) {
+      for (let x = minTX; x <= maxTX; x++) {
+        if (LEVEL.grid[y][x] === 'D') {
+          dx0 = Math.min(dx0, x); dy0 = Math.min(dy0, y);
+          dx1 = Math.max(dx1, x); dy1 = Math.max(dy1, y);
+        }
+      }
+    }
+    if (dx0 !== Infinity) {
+      const wx0 = dx0 * TILE, wy0 = dy0 * TILE;
+      const dw = (dx1 - dx0 + 1) * TILE, dh = (dy1 - dy0 + 1) * TILE;
+      if (!doorUnlocked) {
+        g.strokeStyle = '#0d1114';
+        g.lineWidth = 4;
+        g.strokeRect(wx0 + 3, wy0 + 3, dw - 6, dh - 6);
+        g.strokeStyle = 'rgba(255,190,60,0.5)';
+        g.lineWidth = 3;
+        g.strokeRect(wx0 + 9, wy0 + 9, Math.max(dw - 18, 2), Math.max(dh - 18, 2));
+      } else {
+        g.strokeStyle = 'rgba(255,255,255,0.18)';
+        g.lineWidth = 3;
+        g.strokeRect(wx0 + 2, wy0 + 2, dw - 4, dh - 4);
+      }
     }
 
-    drawElectricalClutter(g);
-    drawLever(g);
-    drawTrain(g, now);
-    drawSafeZone(g);
-    drawCorpses(g);
-    drawBloodSplatters(g);
-    drawCrates(g, now);
-    drawSmokeBombs(g, now);
-    drawMeatLure(g);
-    drawFloatingTexts(g);
-  }
-
-  // A cluster of exposed wiring around the electrical room's lever -- purely
-  // decorative, but it sells the "electrical room" a lot harder than one
-  // lonely switchbox would.
-  function drawElectricalClutter(g) {
-    const c = tileCenter(LEVEL.lever.x, LEVEL.lever.y);
-    g.save();
-    g.translate(c.x, c.y);
-    const wireColors = ['#c9403a', '#3ddc84', '#ffd27a', '#5ec9e8', '#b073e0'];
-    const targets = [
-      [-46, -34], [42, -30], [-40, 34], [46, 30], [0, -50], [-56, 8], [54, -6], [0, 48],
-    ];
-    targets.forEach(([tx, ty], i) => {
-      g.strokeStyle = wireColors[i % wireColors.length];
-      g.lineWidth = 1.6;
+    LEVEL.buttons.forEach((b, i) => {
+      const c = tileCenter(b.x, b.y);
       g.beginPath();
-      g.moveTo(0, 0);
-      const midx = tx * 0.5 + (i % 2 === 0 ? 9 : -9);
-      const midy = ty * 0.5 + (i % 2 === 0 ? -7 : 7);
-      g.quadraticCurveTo(midx, midy, tx, ty);
-      g.stroke();
+      g.arc(c.x, c.y, 9, 0, Math.PI * 2);
+      g.fillStyle = buttonsPressed[i] ? '#3ddc84' : '#e0546b';
+      g.shadowColor = g.fillStyle;
+      g.shadowBlur = 10;
+      g.fill();
+      g.shadowBlur = 0;
     });
-    g.fillStyle = '#26292e';
-    g.strokeStyle = '#111214';
-    g.lineWidth = 1;
-    [[-46, -34], [42, -30], [-40, 34], [46, 30]].forEach(([bx, by]) => {
-      g.fillRect(bx - 4, by - 4, 8, 8);
-      g.strokeRect(bx - 4, by - 4, 8, 8);
-    });
-    g.restore();
-  }
 
-  function drawLever(g) {
-    const c = tileCenter(LEVEL.lever.x, LEVEL.lever.y);
-    g.save();
-    g.translate(c.x, c.y);
-    g.fillStyle = '#33363c';
-    g.fillRect(-12, -10, 24, 20);
-    g.strokeStyle = '#181a1e';
-    g.lineWidth = 2;
-    g.strokeRect(-12, -10, 24, 20);
-    g.strokeStyle = leverPulled ? '#3ddc84' : '#c9403a';
-    g.lineWidth = 3;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(0, 6);
-    if (leverPulled) {
-      g.lineTo(8, -8);
-      g.shadowColor = '#3ddc84';
-      g.shadowBlur = 8;
-    } else {
-      g.lineTo(-8, -8);
-    }
-    g.stroke();
-    g.shadowBlur = 0;
-    g.fillStyle = '#1c1e22';
-    g.beginPath();
-    g.arc(0, 6, 3, 0, Math.PI * 2);
-    g.fill();
-    g.restore();
-  }
-
-  // A proper subway car: rounded steel-blue body, a route roundel, banded
-  // windows, bogies with paired wheels, a headlight, and an electric
-  // pantograph spark instead of steam once it's powered up.
-  function drawTrain(g, now) {
     const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
     g.beginPath();
     g.arc(ex.x, ex.y, doorUnlocked ? 12 : 6, 0, Math.PI * 2);
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
 
-    const tx = ex.x - 34, ty = ex.y;
-
-    function rr(x, y, w, h, r) {
-      g.beginPath();
-      if (g.roundRect) g.roundRect(x, y, w, h, r);
-      else g.rect(x, y, w, h);
-    }
-
-    g.save();
-    g.translate(tx, ty);
-
-    // bogies (wheel trucks)
-    g.fillStyle = '#111214';
-    [-22, 22].forEach((bx) => {
-      rr(bx - 13, 13, 26, 6, 2); g.fill();
-      [bx - 8, bx + 8].forEach((wx) => {
-        g.beginPath(); g.arc(wx, 20, 4.2, 0, Math.PI * 2); g.fill();
-      });
-    });
-
-    // main body, subway steel-blue with rounded ends
-    rr(-40, -20, 80, 34, 10);
-    g.fillStyle = '#4a5568';
-    g.fill();
-    g.strokeStyle = '#1c2026';
-    g.lineWidth = 2;
-    g.stroke();
-
-    // roof band for depth
-    rr(-40, -20, 80, 8, 10);
-    g.fillStyle = '#3a4250';
-    g.fill();
-
-    // accent stripe
-    g.fillStyle = doorUnlocked ? '#3ddc84' : '#ff8a3d';
-    g.fillRect(-38, -1, 76, 5);
-
-    // route roundel
-    g.beginPath();
-    g.arc(-30, 7, 6, 0, Math.PI * 2);
-    g.fillStyle = '#1c2026';
-    g.fill();
-    g.fillStyle = doorUnlocked ? '#3ddc84' : '#ff8a3d';
-    g.font = 'bold 8px monospace';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText('4', -30, 8);
-
-    // windows
-    const winColor = doorUnlocked ? 'rgba(255,222,150,0.95)' : 'rgba(28,32,44,0.9)';
-    for (let i = 0; i < 5; i++) {
-      const wx = -14 + i * 14;
-      rr(wx, -14, 10, 9, 2);
-      g.fillStyle = winColor;
-      g.fill();
-      if (doorUnlocked) {
-        g.strokeStyle = 'rgba(255,255,255,0.4)';
-        g.lineWidth = 0.6;
-        g.stroke();
-      }
-    }
-
-    // sliding door seams
-    g.strokeStyle = 'rgba(0,0,0,0.35)';
-    g.lineWidth = 1.5;
-    [-4, 4].forEach((dx) => {
-      g.beginPath();
-      g.moveTo(dx, -12);
-      g.lineTo(dx, 12);
-      g.stroke();
-    });
-
-    // headlight
-    g.beginPath();
-    g.arc(-40, 4, 3, 0, Math.PI * 2);
-    g.fillStyle = doorUnlocked ? '#fff4c2' : '#5a4a30';
-    if (doorUnlocked) { g.shadowColor = '#fff4c2'; g.shadowBlur = 10; }
-    g.fill();
-    g.shadowBlur = 0;
-
-    g.restore();
-
-    if (doorUnlocked) {
-      // an electric flicker off the pantograph instead of steam -- this is
-      // a subway car, not a coal engine.
-      const flick = Math.sin(now * 0.03) > 0.7;
-      if (flick) {
-        g.save();
-        g.strokeStyle = 'rgba(180,220,255,0.9)';
-        g.lineWidth = 1.5;
-        g.shadowColor = '#a8d8ff';
-        g.shadowBlur = 8;
-        g.beginPath();
-        g.moveTo(tx, ty - 20);
-        g.lineTo(tx + (Math.random() - 0.5) * 6, ty - 30);
-        g.lineTo(tx, ty - 36);
-        g.stroke();
-        g.shadowBlur = 0;
-        g.restore();
-      }
-      const glow = g.createRadialGradient(tx - 40, ty + 4, 2, tx - 40, ty + 4, 40);
-      glow.addColorStop(0, 'rgba(255,244,194,0.25)');
-      glow.addColorStop(1, 'rgba(255,244,194,0)');
-      g.fillStyle = glow;
-      g.beginPath();
-      g.arc(tx - 40, ty + 4, 40, 0, Math.PI * 2);
-      g.fill();
-    }
+    drawSafeZone(g);
+    drawCorpses(g);
+    drawBloodSplatters(g);
+    drawCrates(g);
+    drawMeatLure(g);
   }
 
   function drawTable(g, cx, cy) {
@@ -1582,18 +1128,11 @@
     });
   }
 
-  function drawCrates(g, now) {
+  function drawCrates(g) {
     crates.forEach((c) => {
       const center = tileCenter(c.x, c.y);
       g.save();
-      let ox = 0, oy = 0;
-      if (!c.opened && c.isMimic) {
-        // the only tell: a barely-there jitter, easy to miss unless you're
-        // really looking for it.
-        ox = Math.sin(now * 0.05 + c.x * 3.1) * 0.5;
-        oy = Math.cos(now * 0.047 + c.y * 2.7) * 0.5;
-      }
-      g.translate(center.x + ox, center.y + oy);
+      g.translate(center.x, center.y);
       if (c.opened) {
         g.fillStyle = '#4a3826';
         g.fillRect(-9, -6, 18, 12);
@@ -1615,46 +1154,10 @@
     });
   }
 
-  function drawSmokeBombs(g, now) {
-    smokeBombs.forEach((b) => {
-      if (!b.exploded) {
-        g.save();
-        g.translate(b.x, b.y);
-        const blink = Math.sin(now * 0.02) > 0;
-        g.fillStyle = '#2a2a2a';
-        g.fillRect(-5, -7, 10, 14);
-        g.strokeStyle = '#111';
-        g.lineWidth = 1;
-        g.strokeRect(-5, -7, 10, 14);
-        g.fillStyle = blink ? '#ff4444' : '#661111';
-        g.beginPath();
-        g.arc(0, -8, 2, 0, Math.PI * 2);
-        g.fill();
-        g.restore();
-      } else if (now < b.endsAt) {
-        const elapsed = SMOKE_DURATION_MS - (b.endsAt - now);
-        const t = elapsed / SMOKE_DURATION_MS;
-        const radius = SMOKE_RADIUS * Math.min(1, t * 3);
-        const fade = 1 - Math.max(0, (t - 0.7) / 0.3);
-        g.save();
-        g.translate(b.x, b.y);
-        const cloud = g.createRadialGradient(0, 0, 4, 0, 0, radius);
-        cloud.addColorStop(0, `rgba(205,205,210,${0.55 * fade})`);
-        cloud.addColorStop(1, 'rgba(205,205,210,0)');
-        g.fillStyle = cloud;
-        g.beginPath();
-        g.arc(0, 0, radius, 0, Math.PI * 2);
-        g.fill();
-        g.restore();
-      }
-    });
-  }
-
   function drawMeatLure(g) {
-    const lured = monsters.find((m) => m.luredState !== 'none' && m.lureTarget);
-    if (!lured) return;
+    if (boss.luredState === 'none' || !boss.lureTarget) return;
     g.save();
-    g.translate(lured.lureTarget.x, lured.lureTarget.y);
+    g.translate(boss.lureTarget.x, boss.lureTarget.y);
     g.fillStyle = '#8a2a2a';
     g.beginPath();
     g.ellipse(0, 0, 9, 6, 0.3, 0, Math.PI * 2);
@@ -1679,209 +1182,281 @@
     });
   }
 
-  // The disguise: the exact same hazmat-suit silhouette the players use, in
-  // a sickly, slightly-off color -- close enough to pass at a glance from
-  // across a dark room, which is the point.
-  function drawHazmatFigure(g, color) {
-    const R = PLAYER_RADIUS;
-    g.fillStyle = '#2b2b28';
-    g.beginPath(); g.ellipse(-R * 0.9, -R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.ellipse(-R * 0.9, R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
-
-    g.strokeStyle = '#54544c';
-    g.lineWidth = 2.5;
-    g.beginPath();
-    g.moveTo(-R * 1.3, -3);
-    g.quadraticCurveTo(-R * 1.1, -R * 0.9, -R * 0.55, -R * 0.55);
-    g.stroke();
-    g.fillStyle = '#54544c';
-    g.fillRect(-R * 1.5, -4.5, 7, 9);
-
-    g.beginPath();
-    g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
-    g.fillStyle = color;
-    g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.4)';
-    g.lineWidth = 1.5;
-    g.stroke();
-
-    g.save();
-    g.beginPath();
-    g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
-    g.clip();
-    g.fillStyle = 'rgba(20,20,15,0.85)';
-    g.fillRect(-R * 1.3, -R * 0.28, R * 2.6, R * 0.2);
-    g.fillStyle = 'rgba(255,200,40,0.9)';
-    g.fillRect(-R * 1.3, -R * 0.1, R * 2.6, R * 0.1);
-    g.restore();
-
-    g.fillStyle = '#e8d94a';
-    g.beginPath(); g.arc(-R * 0.15, -R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.arc(-R * 0.15, R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
-
-    g.beginPath();
-    g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
-    g.strokeStyle = '#1c1c18';
-    g.lineWidth = 3;
-    g.stroke();
-
-    g.beginPath();
-    g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(220,222,210,0.95)';
-    g.fill();
-    g.strokeStyle = '#1c1c18';
-    g.lineWidth = 1.5;
-    g.stroke();
-
-    g.beginPath();
-    g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
-    g.fillStyle = '#0d1418';
-    g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.5)';
-    g.lineWidth = 1;
-    g.stroke();
-    g.beginPath();
-    g.ellipse(R * 0.28, -R * 0.14, R * 0.14, R * 0.08, -0.4, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.55)';
-    g.fill();
-  }
-
-  function drawMonster(g, t, m) {
-    g.save();
-    g.translate(m.x, m.y);
-    g.rotate(Math.atan2(m.lookDir.y, m.lookDir.x));
-
-    if (!isRevealed(m)) {
-      drawHazmatFigure(g, '#7c8a72');
-      g.restore();
-      return;
-    }
-    g.restore();
-
-    g.save();
-    g.translate(m.x, m.y);
-
-    m.tentacleTargets.forEach((tt, i) => {
-      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * 5;
-      const tx = tt.x - m.x, ty = tt.y - m.y;
-      const midX = tx / 2 + wobble;
-      const midY = ty / 2 - wobble;
+  // ---- the boss: a Crawler blown up 8x and set on fire ----
+  function drawBossTentacles(g, t) {
+    boss.tentacleAngles.forEach((baseA, i) => {
+      const sway = Math.sin(t * 0.0017 + i * 1.6 + boss.seed) * 0.5;
+      const a = baseA + sway * 0.3;
+      const len = boss.radius * (1.5 + 0.25 * Math.sin(t * 0.0013 + i * 2.3));
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
+      const wobble = Math.sin(t * 0.004 + i * 2.1 + boss.seed) * (boss.radius * 0.18);
+      const perpA = a + Math.PI / 2;
+      const midX = (tx / 2) + Math.cos(perpA) * wobble;
+      const midY = (ty / 2) + Math.sin(perpA) * wobble;
       g.beginPath();
       g.moveTo(0, 0);
       g.quadraticCurveTo(midX, midY, tx, ty);
-      g.strokeStyle = '#3a1f4a';
-      g.lineWidth = 3;
+      g.strokeStyle = i % 3 === 0 ? '#3a1008' : '#6a1826';
+      g.lineWidth = boss.radius * 0.05;
       g.lineCap = 'round';
       g.stroke();
     });
+  }
 
-    const points = 10;
+  // A few fixed dark, cracked scorch patches over the body -- positions are
+  // derived from the boss's own seed so they're stable frame to frame
+  // instead of re-rolled every draw.
+  const CHAR_PATCHES = (() => {
+    const patches = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.6;
+      patches.push({ a, d: 0.35 + (i % 3) * 0.15, r: 0.22 + (i % 2) * 0.1 });
+    }
+    return patches;
+  })();
+
+  function drawBossBody(g, t) {
+    const points = 14;
     g.beginPath();
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
-      const r = m.radius + Math.sin(t * 0.008 + i * 1.7 + m.seed) * 3;
+      const r = boss.radius + Math.sin(t * 0.004 + i * 1.7 + boss.seed) * (boss.radius * 0.05);
       const px = Math.cos(a) * r, py = Math.sin(a) * r;
       if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
     }
     g.closePath();
-    g.fillStyle = '#2a1533';
-    g.shadowColor = '#5a2a6e';
-    g.shadowBlur = 12;
+    const grad = g.createRadialGradient(0, 0, boss.radius * 0.2, 0, 0, boss.radius);
+    grad.addColorStop(0, '#7a1c14');
+    grad.addColorStop(0.6, '#4a0f0a');
+    grad.addColorStop(1, '#200705');
+    g.fillStyle = grad;
+    g.shadowColor = '#ff6a2a';
+    g.shadowBlur = boss.radius * 0.4;
     g.fill();
     g.shadowBlur = 0;
 
-    drawMonsterTeeth(g, m);
+    // charred, cracked scorch patches
+    CHAR_PATCHES.forEach((cp) => {
+      const cx = Math.cos(cp.a) * boss.radius * cp.d;
+      const cy = Math.sin(cp.a) * boss.radius * cp.d;
+      const r = boss.radius * cp.r;
+      g.beginPath();
+      for (let i = 0; i <= 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        const pr = r * (0.75 + 0.25 * Math.sin(a * 3 + cp.a * 5));
+        const px = cx + Math.cos(a) * pr, py = cy + Math.sin(a) * pr;
+        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      }
+      g.closePath();
+      g.fillStyle = 'rgba(10,6,6,0.55)';
+      g.fill();
+      g.strokeStyle = 'rgba(255,120,40,0.25)';
+      g.lineWidth = 1.5;
+      g.stroke();
+    });
+  }
 
-    if (t < m.frozenUntil) {
+  function drawBossFlames(g, t) {
+    const spots = 6;
+    for (let i = 0; i < spots; i++) {
+      const a = (i / spots) * Math.PI * 2 + boss.seed * 0.1;
+      const bx = Math.cos(a) * boss.radius * 0.92;
+      const by = Math.sin(a) * boss.radius * 0.92;
+      const flicker = 0.8 + Math.sin(t * 0.02 + i * 3.1 + boss.seed) * 0.2;
+      g.save();
+      g.translate(bx, by);
+      g.rotate(a - Math.PI / 2);
+      for (let j = 0; j < 3; j++) {
+        const wobble = Math.sin(t * 0.016 + i * 5 + j * 2) * (boss.radius * 0.04);
+        const h = boss.radius * (0.5 + j * 0.16) * flicker;
+        g.beginPath();
+        g.moveTo(-boss.radius * 0.08 + j * 4, 4);
+        g.quadraticCurveTo(boss.radius * 0.05 + wobble, -h * 0.55, wobble * 0.5, -h);
+        g.quadraticCurveTo(-boss.radius * 0.05 + wobble, -h * 0.55, boss.radius * 0.08 - j * 4, 4);
+        g.closePath();
+        g.fillStyle = j === 0 ? '#ffe38a' : j === 1 ? '#ff9c3d' : '#e0541f';
+        g.fill();
+      }
+      g.restore();
+    }
+
+    // rising embers -- a cheap, self-looping effect rather than a real
+    // particle array, since it only ever needs to sit on the boss itself.
+    for (let i = 0; i < 10; i++) {
+      const seed = boss.seed * 7 + i * 971;
+      const cycle = 2200 + (i % 4) * 400;
+      const phase = ((t + seed) % cycle) / cycle;
+      const ex = Math.sin(seed + phase * 6.2) * boss.radius * 0.8;
+      const ey = boss.radius * 0.6 - phase * boss.radius * 2.4;
+      const alpha = 1 - phase;
+      g.beginPath();
+      g.arc(ex, ey, 2 + (i % 3), 0, Math.PI * 2);
+      g.fillStyle = `rgba(255,${140 + (i % 3) * 30},60,${alpha * 0.85})`;
+      g.fill();
+    }
+  }
+
+  function drawBossEye(g) {
+    const lookDir = boss.lookDir;
+    const eyeR = boss.radius * 0.4;
+
+    const sclera = g.createRadialGradient(0, 0, 1, 0, 0, eyeR);
+    sclera.addColorStop(0, '#f2e6d8');
+    sclera.addColorStop(0.75, '#dcc4b2');
+    sclera.addColorStop(1, '#7a6252');
+    g.beginPath();
+    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
+    g.fillStyle = sclera;
+    g.fill();
+
+    g.save();
+    g.beginPath();
+    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
+    g.clip();
+    g.strokeStyle = 'rgba(170,25,25,0.4)';
+    g.lineWidth = 1.2;
+    for (let i = 0; i < 6; i++) {
+      const a = i * 1.05 + boss.seed;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * eyeR, Math.sin(a) * eyeR * 0.8);
+      g.lineTo(Math.cos(a) * eyeR * 0.1, Math.sin(a) * eyeR * 0.1);
+      g.stroke();
+    }
+    g.restore();
+
+    const ix = lookDir.x * eyeR * 0.32, iy = lookDir.y * eyeR * 0.26;
+    const irisR = eyeR * 0.48;
+    const iris = g.createRadialGradient(ix, iy, 1, ix, iy, irisR);
+    iris.addColorStop(0, '#ffb43d');
+    iris.addColorStop(0.6, '#a3390f');
+    iris.addColorStop(1, '#200a05');
+    g.beginPath();
+    g.arc(ix, iy, irisR, 0, Math.PI * 2);
+    g.fillStyle = iris;
+    g.fill();
+
+    g.beginPath();
+    g.arc(ix, iy, irisR * 0.42, 0, Math.PI * 2);
+    g.fillStyle = '#050202';
+    g.fill();
+
+    g.beginPath();
+    g.arc(ix - irisR * 0.3, iy - irisR * 0.3, irisR * 0.16, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.85)';
+    g.fill();
+
+    g.beginPath();
+    g.ellipse(0, 0, eyeR, eyeR * 0.8, 0, 0, Math.PI * 2);
+    g.strokeStyle = 'rgba(15,4,4,0.7)';
+    g.lineWidth = 1.5;
+    g.stroke();
+  }
+
+  function drawBoss(g, t) {
+    g.save();
+    g.translate(boss.x, boss.y);
+
+    drawBossTentacles(g, t);
+    drawBossBody(g, t);
+    drawBossFlames(g, t);
+    drawBossEye(g);
+
+    if (t < boss.frozenUntil) {
+      const points = 14;
       g.beginPath();
       for (let i = 0; i <= points; i++) {
         const a = (i / points) * Math.PI * 2;
-        const r = m.radius + 3;
+        const r = boss.radius + 6;
         const px = Math.cos(a) * r, py = Math.sin(a) * r;
         if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
       }
       g.closePath();
-      g.fillStyle = 'rgba(140,220,255,0.45)';
+      g.fillStyle = 'rgba(140,220,255,0.4)';
       g.fill();
-      g.strokeStyle = 'rgba(220,250,255,0.8)';
-      g.lineWidth = 1.5;
+      g.strokeStyle = 'rgba(220,250,255,0.75)';
+      g.lineWidth = 2;
       g.stroke();
     }
 
     g.restore();
   }
 
-  // No eye this time -- a dark, gaping maw ringed with teeth, facing the
-  // direction it's about to lunge.
-  function drawMonsterTeeth(g, m) {
-    const mouthR = m.radius * 0.7;
-    const angle = Math.atan2(m.lookDir.y, m.lookDir.x);
-
-    g.save();
-    g.rotate(angle);
-
-    g.beginPath();
-    g.ellipse(mouthR * 0.25, 0, mouthR * 0.85, mouthR * 0.62, 0, 0, Math.PI * 2);
-    g.fillStyle = '#0a0308';
-    g.fill();
-
-    const teeth = 9;
-    g.fillStyle = '#e8e2d8';
-    for (let i = 0; i < teeth; i++) {
-      const a = (i / (teeth - 1)) * Math.PI * 2 - Math.PI;
-      const rx = mouthR * 0.85, ry = mouthR * 0.62;
-      const bx = mouthR * 0.25 + Math.cos(a) * rx;
-      const by = Math.sin(a) * ry;
-      const inX = mouthR * 0.25 + Math.cos(a) * rx * 0.45;
-      const inY = Math.sin(a) * ry * 0.45;
-      const tw = 2.6;
-      const nx = -Math.sin(a) * tw, ny = Math.cos(a) * tw;
-      g.beginPath();
-      g.moveTo(bx + nx, by + ny);
-      g.lineTo(bx - nx, by - ny);
-      g.lineTo(inX, inY);
-      g.closePath();
-      g.fill();
-    }
-
-    g.beginPath();
-    g.ellipse(mouthR * 0.25, 0, mouthR * 0.85, mouthR * 0.62, 0, 0, Math.PI * 2);
-    g.strokeStyle = 'rgba(0,0,0,0.6)';
-    g.lineWidth = 1.5;
-    g.stroke();
-    g.restore();
-  }
-
-  // The jump-scare that pops out of a mimic crate: a small purple tentacle
-  // thing with the same toothy maw as the real mimic's revealed form.
-  function drawMimicSpawn(g, t, ms) {
-    g.save();
-    g.translate(ms.x, ms.y);
-    const points = 10;
-    const radius = 11;
-    g.beginPath();
-    for (let i = 0; i <= points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const r = radius + Math.sin(t * 0.01 + i * 1.7 + ms.seed) * 3;
-      const px = Math.cos(a) * r, py = Math.sin(a) * r;
-      if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
-    }
-    g.closePath();
-    g.fillStyle = '#3a1550';
-    g.shadowColor = '#a03fd6';
-    g.shadowBlur = 14;
-    g.fill();
-    g.shadowBlur = 0;
-    drawMonsterTeeth(g, { radius, lookDir: ms.lookDir });
-    g.restore();
-  }
-
   function drawPlayers(g) {
+    const R = PLAYER_RADIUS;
     players.forEach((p) => {
       g.save();
       g.translate(p.x, p.y);
       g.rotate(Math.atan2(p.facing.y, p.facing.x));
-      drawHazmatFigure(g, p.color);
+
+      // boots, peeking out from under the suit
+      g.fillStyle = '#2b2b28';
+      g.beginPath(); g.ellipse(-R * 0.9, -R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.ellipse(-R * 0.9, R * 0.35, 3.2, 4.5, 0, 0, Math.PI * 2); g.fill();
+
+      // oxygen tank + hose up to the collar
+      g.strokeStyle = '#54544c';
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.moveTo(-R * 1.3, -3);
+      g.quadraticCurveTo(-R * 1.1, -R * 0.9, -R * 0.55, -R * 0.55);
+      g.stroke();
+      g.fillStyle = '#54544c';
+      g.fillRect(-R * 1.5, -4.5, 7, 9);
+
+      // bulky coverall body
+      g.beginPath();
+      g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+      g.fillStyle = p.color;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.4)';
+      g.lineWidth = 1.5;
+      g.stroke();
+
+      // hazard chevron stripe across the chest
+      g.save();
+      g.beginPath();
+      g.ellipse(0, 0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2);
+      g.clip();
+      g.fillStyle = 'rgba(20,20,15,0.85)';
+      g.fillRect(-R * 1.3, -R * 0.28, R * 2.6, R * 0.2);
+      g.fillStyle = 'rgba(255,200,40,0.9)';
+      g.fillRect(-R * 1.3, -R * 0.1, R * 2.6, R * 0.1);
+      g.restore();
+
+      // rubber gloves
+      g.fillStyle = '#e8d94a';
+      g.beginPath(); g.arc(-R * 0.15, -R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(-R * 0.15, R * 0.95, 3.4, 0, Math.PI * 2); g.fill();
+
+      // sealed collar ring
+      g.beginPath();
+      g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
+      g.strokeStyle = '#1c1c18';
+      g.lineWidth = 3;
+      g.stroke();
+
+      // helmet dome
+      g.beginPath();
+      g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(220,222,210,0.95)';
+      g.fill();
+      g.strokeStyle = '#1c1c18';
+      g.lineWidth = 1.5;
+      g.stroke();
+
+      // big face visor, facing forward
+      g.beginPath();
+      g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
+      g.fillStyle = '#0d1418';
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 1;
+      g.stroke();
+      g.beginPath();
+      g.ellipse(R * 0.28, -R * 0.14, R * 0.14, R * 0.08, -0.4, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,255,255,0.55)';
+      g.fill();
+
       g.restore();
     });
   }
@@ -1925,6 +1500,12 @@
       const s = worldToScreen(fc.x, fc.y);
       punchLight(maskCtx, s.x, s.y, 130, 0.75);
     });
+
+    // the boss is on fire -- it lights up its own surroundings, giving
+    // players a chance to spot the glow before they're close enough for
+    // its own detection range to find them.
+    const bs = worldToScreen(boss.x, boss.y);
+    punchLight(maskCtx, bs.x, bs.y, boss.radius * 2.2, 0.6);
   }
 
   function renderViewport(index, now) {
@@ -1942,29 +1523,28 @@
 
     ctx.save();
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
-    drawTiles(ctx, camX, camY, now);
-    monsters.forEach((m) => drawMonster(ctx, now, m));
-    mimicSpawns.forEach((ms) => drawMimicSpawn(ctx, now, ms));
+    drawTiles(ctx, camX, camY);
+    drawFires(ctx, now);
+    drawBoss(ctx, now);
     drawPlayers(ctx);
     drawParticles(ctx);
+    drawFloatingTexts(ctx);
     ctx.restore();
 
     buildDarknessMask(camX, camY);
     ctx.drawImage(maskCanvas, vx, 0);
 
-    const nearest = nearestMonster(p.x, p.y);
-    drawProximityWarning(vx, Math.hypot(p.x - nearest.x, p.y - nearest.y), now);
-    drawRadar(vx, p, now, nearest);
+    drawProximityWarning(vx, Math.hypot(p.x - boss.x, p.y - boss.y), now);
+    drawRadar(vx, p, now);
     drawScanner(vx, p, now);
-    const minimapH = drawMinimap(vx, now);
-    drawStaminaBar(vx, p, minimapH);
+    drawMinimap(vx, now);
 
     if (p.caught) drawCutsceneOverlay(vx, p, now);
 
     ctx.restore();
   }
 
-  function drawRadar(vx, p, now, nearest) {
+  function drawRadar(vx, p, now) {
     if (now > radarUntil) return;
     const cx = vx + VIEW_W - 34, cy = 34;
     ctx.save();
@@ -1975,7 +1555,7 @@
     ctx.strokeStyle = '#3ddc84';
     ctx.lineWidth = 2;
     ctx.stroke();
-    const angle = Math.atan2(nearest.y - p.y, nearest.x - p.x);
+    const angle = Math.atan2(boss.y - p.y, boss.x - p.x);
     ctx.translate(cx, cy);
     ctx.rotate(angle);
     ctx.beginPath();
@@ -1990,20 +1570,9 @@
     ctx.restore();
   }
 
-  const PROXIMITY_WARNING_RADIUS = 400;
-
-  function drawProximityWarning(vx, dist, now) {
-    if (dist > PROXIMITY_WARNING_RADIUS) return;
-    const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
-    const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
-    const alpha = closeness * 0.6 * pulse;
-    ctx.fillStyle = `rgba(200,20,20,${alpha})`;
-    ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
-  }
-
   function drawScanner(vx, p, now) {
     if (now > scannerUntil) return;
-    const target = scannerTarget();
+    const target = nearestUnpressedButton(p.x, p.y);
     if (!target) return;
     const cx = vx + VIEW_W - 34, cy = VIEW_H - 34;
     ctx.save();
@@ -2029,8 +1598,19 @@
     ctx.restore();
   }
 
+  const PROXIMITY_WARNING_RADIUS = 500;
+
+  function drawProximityWarning(vx, dist, now) {
+    if (dist > PROXIMITY_WARNING_RADIUS) return;
+    const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+    const alpha = closeness * 0.6 * pulse;
+    ctx.fillStyle = `rgba(200,20,20,${alpha})`;
+    ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+  }
+
   // A short "gotcha" cutscene rendered only in the caught player's own half:
-  // the screen darkens and shakes while a jagged pair of jaws close in from
+  // the screen reddens and shakes while a jagged pair of jaws close in from
   // the top and bottom edges, meeting in the middle right as the bite lands.
   function drawJaw(g, vx, direction, progress, color) {
     const teeth = 8;
@@ -2068,14 +1648,14 @@
     const jawProgress = clamp(t / 0.75, 0, 1);
 
     ctx.save();
-    ctx.fillStyle = `rgba(35,10,40,${0.25 + t * 0.35})`;
+    ctx.fillStyle = `rgba(50,0,0,${0.25 + t * 0.35})`;
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
 
     const shake = (1 - t) * 5;
     ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
 
-    drawJaw(ctx, vx, 1, jawProgress, '#2a1533');
-    drawJaw(ctx, vx, -1, jawProgress, '#1e0f26');
+    drawJaw(ctx, vx, 1, jawProgress, '#3a0d16');
+    drawJaw(ctx, vx, -1, jawProgress, '#2a0810');
 
     if (t > 0.6) {
       const flash = clamp((t - 0.6) / 0.15, 0, 1) * (1 - clamp((t - 0.85) / 0.15, 0, 1));
@@ -2097,15 +1677,16 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'ALL ABOARD &mdash; press Enter to replay, or <a href="level5.html" style="color:var(--accent)">continue to Level 5 &rarr;</a>';
+      messageEl.innerHTML = 'THE FIRE GOES OUT &mdash; press Enter to replay, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
     } else {
       messageEl.style.display = 'none';
     }
   }
 
   function updateHud() {
-    hudPowerEl.textContent = `Power: ${leverPulled ? 'on' : 'off'}`;
-    hudPowerEl.classList.toggle('done', leverPulled);
+    const pressedCount = buttonsPressed.filter(Boolean).length;
+    hudButtonsEl.textContent = `Buttons: ${pressedCount} / ${LEVEL.buttons.length}`;
+    hudButtonsEl.classList.toggle('done', pressedCount === LEVEL.buttons.length);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
   }
@@ -2117,12 +1698,10 @@
     lastFrameTime = now;
 
     if (gameState === 'playing') {
-      updateInputMovement(now, dt);
+      updateInputMovement(dt);
       updateTriggers();
       updateCrates(now);
-      updateSmokeBombs(now);
-      updateMimicSpawns(now, dt);
-      monsters.forEach((m) => updateMonster(m, now, dt));
+      updateBoss(now, dt);
       updateCatch(now);
       updateCutscenes(now);
       updateExploration();

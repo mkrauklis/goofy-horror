@@ -25,7 +25,7 @@ Each half of the screen is that player's own camera into the same map. A
 tune (sound effects like chimes and the catch sting keep playing either
 way).
 
-All four levels flash your screen red, pulsing faster the closer a
+All five levels flash your screen red, pulsing faster the closer a
 creature gets, regardless of whether it's noticed you yet — your only
 warning to freeze or clear out before it does. Getting caught plays a
 2-second "gotcha" close-up of the creature closing in on you, then
@@ -159,6 +159,29 @@ continuous sprinting and drains as you use it; empty it and you're stuck
 walking at half speed for 5 seconds while it refills halfway. It also
 refills while you're just walking normally, just at half the rate the
 exhaustion penalty does.
+
+## Level 5 — The Cinder Pit
+
+No facility this time — one single, giant room, big enough to get lost
+in on its own. Patches of floor have crumbled to bare dirt throughout,
+same as Levels 3 and 4, and fires burn everywhere you look, permanently,
+casting their glow across most of the room between them. Find all 3
+buttons together to unlock the exit — no fuse, generator, or lever this
+time, just the same button puzzle as Level 1, reused here for one last
+lap around the room.
+
+Planted dead center is the boss: a Crawler, the very same creature from
+Level 1, burnt black, still on fire, and **8 times** its normal size. It
+never leaves the middle of the room, patrolling a small loop there rather
+than roaming the whole map — but it doesn't need to chase you far, since
+its own flames already light up most of the room from wherever it's
+standing, giving away roughly where it is long before you're anywhere
+near it. It hunts the same way the original Crawler does — blind until
+your own flashlight lands fully on it — and once it locks on it closes
+in at **2x** your speed, slower than the original 2.5x, but its
+reach and sheer bulk more than make up the difference. Getting caught
+only respawns that one player, same as every other level; button
+progress is never lost.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.
