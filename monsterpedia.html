@@ -30,69 +30,81 @@
   </p>
 </header>
 
-<div class="wrap">
-  <div class="monster-grid">
-    <div class="monster-card panel">
-      <canvas id="monster-canvas-crawler" width="120" height="120"></canvas>
-      <div>
-        <h2>The Crawler</h2>
-        <p class="monster-meta">Level 1 &mdash; The Facility &middot; sight-based</p>
-        <p>
-          A fleshy, wall-crawling thing with one very realistic eye. Two of
-          them patrol Level 1's corridors independently, each blind to you
-          until your own flashlight lands fully on its eye &mdash; the
-          instant it does, it locks on and closes the distance at <strong>2.5x</strong>
-          your speed before giving up and going back to patrolling.
-        </p>
-      </div>
-    </div>
+<div class="wrap monsterpedia-wrap">
+  <article class="monster-entry" style="--entry-color:#e0546b; --entry-glow:rgba(224,84,107,0.35)">
+    <canvas id="monster-canvas-crawler" width="160" height="160"></canvas>
+    <h2>The Crawler</h2>
+    <span class="monster-meta">Level 1 &mdash; The Facility &middot; sight-based &middot; x2 per level</span>
+    <p>
+      A fleshy, wall-crawling thing with one very realistic eye. Two of
+      them patrol Level 1's corridors independently, each blind to you
+      until your own flashlight lands fully on its eye &mdash; the instant
+      it does, it locks on and closes the distance at <strong>2.5x</strong>
+      your speed before giving up and going back to patrolling. Ventilation
+      ducts are the one place it can never follow you.
+    </p>
+  </article>
 
-    <div class="monster-card panel">
-      <canvas id="monster-canvas-drifter" width="120" height="120"></canvas>
-      <div>
-        <h2>The Drifter</h2>
-        <p class="monster-meta">Level 2 &mdash; Blackout &middot; sound-based</p>
-        <p>
-          A larger, green cousin of the Crawler that hunts entirely by
-          sound. Stand still, even right beside one, and it has no idea
-          you're there; move while it's in range and it charges at a
-          brutal <strong>8x</strong> your speed for a few seconds. Two patrol
-          Level 2 independently, each on its own schedule.
-        </p>
-      </div>
-    </div>
+  <article class="monster-entry" style="--entry-color:#3ddc84; --entry-glow:rgba(61,220,132,0.35)">
+    <canvas id="monster-canvas-drifter" width="160" height="160"></canvas>
+    <h2>The Drifter</h2>
+    <span class="monster-meta">Level 2 &mdash; Blackout &middot; sound-based &middot; x2 per level</span>
+    <p>
+      A larger, green cousin of the Crawler that hunts entirely by sound.
+      Stand still, even right beside one, and it has no idea you're there;
+      move while it's in range and it charges at a brutal
+      <strong>8x</strong> your speed for a few seconds before losing
+      interest. Two patrol Level 2 independently, each on its own
+      schedule, so there's rarely a moment when both are looking the other
+      way.
+    </p>
+  </article>
 
-    <div class="monster-card panel">
-      <canvas id="monster-canvas-caterpillar" width="120" height="120"></canvas>
-      <div>
-        <h2>The Caterpillar</h2>
-        <p class="monster-meta">Level 3 &mdash; Sinkhole &middot; short-range sight</p>
-        <p>
-          A slow, segmented body dragging itself along at only
-          <strong>0.9x</strong> your speed &mdash; on its own, harmless. Its
-          eyesight is so short-range it rarely notices you first. The real
-          threat is the meat vines scattered across the ground: trigger one
-          and it rockets to that exact spot at <strong>20x</strong> speed.
-        </p>
-      </div>
-    </div>
+  <article class="monster-entry" style="--entry-color:#c9903a; --entry-glow:rgba(201,144,58,0.32)">
+    <canvas id="monster-canvas-caterpillar" width="160" height="160"></canvas>
+    <h2>The Caterpillar</h2>
+    <span class="monster-meta">Level 3 &mdash; Sinkhole &middot; short-range sight &middot; x1 per level</span>
+    <p>
+      A slow, segmented body dragging itself along at only
+      <strong>0.9x</strong> your speed &mdash; on its own, genuinely
+      harmless, and its eyesight is so short-range it rarely notices you
+      first. The real threat is the meat vines scattered across the
+      ground, dense enough that one is almost always somewhere nearby:
+      trigger one and it rockets to that exact spot at <strong>20x</strong>
+      speed, arriving in an instant.
+    </p>
+  </article>
 
-    <div class="monster-card panel">
-      <canvas id="monster-canvas-mimic" width="120" height="120"></canvas>
-      <div>
-        <h2>The Mimic</h2>
-        <p class="monster-meta">Level 4 &mdash; Overgrown &middot; disguised</p>
-        <p>
-          Disguises itself as a hazmat-suited person and wanders the halls
-          at close to your own walking pace &mdash; genuinely hard to tell
-          apart from your partner at a glance. Get within range and the act
-          drops instantly: it shrinks into a small tentacle creature with a
-          mouth full of teeth instead of an eye, and charges at <strong>2x</strong>
-          your speed until it catches someone or loses the trail.
-        </p>
-      </div>
-    </div>
-  </div>
+  <article class="monster-entry" style="--entry-color:#7c8a72; --entry-glow:rgba(160,63,214,0.35)">
+    <canvas id="monster-canvas-mimic" width="160" height="160"></canvas>
+    <h2>The Mimic</h2>
+    <span class="monster-meta">Level 4 &mdash; Overgrown &middot; disguised &middot; x3 per level</span>
+    <p>
+      Disguises itself as a hazmat-suited person and wanders the halls at
+      close to your own walking pace &mdash; genuinely hard to tell apart
+      from your partner at a glance. Get within range and the act drops
+      instantly: it shrinks into a small tentacle creature with a mouth
+      full of teeth instead of an eye, and charges at <strong>2x</strong>
+      your speed until it catches someone or loses the trail. Three of
+      them wander Level 4 independently, each keeping up the act until
+      you're close enough to spook it.
+    </p>
+  </article>
+
+  <article class="monster-entry" style="--entry-color:#a03fd6; --entry-glow:rgba(160,63,214,0.4)">
+    <canvas id="monster-canvas-lurker" width="160" height="160"></canvas>
+    <h2>The Crate Lurker</h2>
+    <span class="monster-meta">Level 4 &mdash; Overgrown &middot; ambush &middot; hides in crates</span>
+    <p>
+      Not a patrolling creature at all &mdash; a trap. A small percentage
+      of Level 4's item crates are secretly occupied instead of holding
+      loot, and the only tell is a jitter in the crate so faint it's easy
+      to miss entirely. Open one and a small purple tentacle thing bursts
+      out and chases whoever's closest at <strong>2.2x</strong> your speed
+      until it catches them or gives up after a few seconds, then vanishes
+      for good.
+    </p>
+  </article>
 </div>
 
 <script src="js/monsterpedia.js"></script>

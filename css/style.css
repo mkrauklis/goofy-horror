@@ -152,43 +152,63 @@ header.hero p {
   color: #7ac9e8;
 }
 
-.monster-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.25rem;
-  align-items: start;
+.wrap.monsterpedia-wrap {
+  max-width: 1400px;
 }
 
-.monster-card {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-start;
+.monster-entry {
+  padding: 1.75rem;
+  margin-bottom: 1.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--entry-color, var(--accent));
+  background: var(--panel);
+  overflow: hidden;
 }
 
-.monster-card canvas {
-  flex: 0 0 auto;
-  border-radius: 6px;
+.monster-entry canvas {
+  float: left;
+  margin: 0 1.75rem 1rem 0;
+  border-radius: 8px;
   background: #08050b;
   border: 1px solid var(--border);
+  box-shadow: 0 0 28px var(--entry-glow, rgba(255, 138, 61, 0.3));
 }
 
-.monster-card h2 {
-  margin: 0 0 0.3rem;
-  color: var(--accent);
-  font-size: 1.1rem;
+.monster-entry h2 {
+  margin: 0.2rem 0 0.5rem;
+  font-size: 1.5rem;
+  color: var(--entry-color, var(--accent));
+  text-shadow: 0 0 14px var(--entry-glow, rgba(255, 138, 61, 0.35));
 }
 
-.monster-card .monster-meta {
-  margin: 0 0 0.5rem;
+.monster-entry .monster-meta {
+  display: inline-block;
+  margin: 0 0 0.9rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
   color: var(--dim);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
 }
 
-.monster-card p {
+.monster-entry p {
   margin: 0;
   color: var(--ink);
-  font-size: 0.92rem;
-  line-height: 1.5;
+  font-size: 1.02rem;
+  line-height: 1.75;
+}
+
+.monster-entry p strong {
+  color: var(--entry-color, var(--accent));
+}
+
+.monster-entry::after {
+  content: '';
+  display: block;
+  clear: both;
 }
 
 .music-toggle {

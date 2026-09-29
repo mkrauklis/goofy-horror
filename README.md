@@ -39,7 +39,8 @@ spoiling the whole thing up front.
 
 Every level also scatters **item crates** you open just by walking into
 them, and a used crate quietly restocks with a new random item after a
-minute. Each one holds one of three items, decided at random when it
+minute (Level 4 changes both of these numbers — see its section below).
+Each one holds one of a handful of items, decided at random when it
 (re)loads:
 
 - **Radar** — shows a 10-second compass arrow pointing at the nearest
@@ -119,21 +120,45 @@ wherever the vine was.
 
 ## Level 4 — Overgrown
 
-The same facility as Level 3, years later — vegetation has swallowed the
-corridors (on top of the same patches of missing floor), and scattered
-fires flare up and die back down on their own slow, random cycles, briefly
-lighting up whatever's nearby before going dark again. There's no
-generator this time: find the electrical room and pull its lever (no
-co-op needed, either player can do it alone) to power up the train waiting
-at the platform, then get both players aboard it to finish.
+The same facility as Level 3, years later and noticeably bigger, with more
+dead-end side corridors to get turned around in — vegetation has swallowed
+the corridors (on top of the same patches of missing floor), and a good
+number of fires burn permanently once you find them, casting their own
+pool of light through the darkness. There's no generator this time: find
+the electrical room (wrapped in a mess of exposed wiring so it's
+unmistakable) and pull its lever — no co-op needed, either player can do
+it alone — to power up the subway train waiting at the platform, then get
+both players aboard it to finish.
 
-The creature disguises itself as a person and wanders the halls at close
+Three mimics disguise themselves as people and wander the halls at close
 to your own pace, imitating normal movement — genuinely hard to tell apart
-from your partner at a glance. Get within range of it, though, and the
+from your partner at a glance. Get within range of one, though, and the
 act drops instantly: it shrinks into a small tentacle creature with a
 mouth full of teeth instead of an eye, and charges at 2x your speed until
 it either catches someone or loses the trail, at which point it slinks
 back into disguise and resumes wandering.
+
+Item crates are everywhere in this level — about ten times as many as the
+other levels scatter, though each one only stays empty for half as long
+before restocking. A small fraction of them are secretly **mimic
+crates**: no item at all, just the faintest, barely-noticeable jitter
+while closed. Open one and a small purple tentacle creature bursts out
+and chases down whoever's closest until it catches them or gives up a few
+seconds later, then vanishes for good. Two more item types show up only
+in this level's crates:
+
+- **Super-radar** — for 10 seconds, every mimic's exact position shows up
+  as a dot on your explored-areas map, disguise or not.
+- **Smoke bomb** — drops on the spot, takes 3 seconds to go off, then
+  fills the area with a 10-second cloud that hides anyone standing in it
+  from every creature — can't be seen, can't be caught, even mid-chase.
+
+Double-tap a movement key to sprint at 2x speed. It's fueled by a small
+bar (shown under your own explored-areas map) that lasts 15 seconds of
+continuous sprinting and drains as you use it; empty it and you're stuck
+walking at half speed for 5 seconds while it refills halfway. It also
+refills while you're just walking normally, just at half the rate the
+exhaustion penalty does.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.

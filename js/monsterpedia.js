@@ -8,6 +8,8 @@
   const drifterCtx = ctxFor('monster-canvas-drifter');
   const caterpillarCtx = ctxFor('monster-canvas-caterpillar');
   const mimicCtx = ctxFor('monster-canvas-mimic');
+  const lurkerCtx = ctxFor('monster-canvas-lurker');
+  const PORTRAIT = 160;
 
   function clear(g, w, h) {
     g.clearRect(0, 0, w, h);
@@ -107,10 +109,10 @@
     g.save();
     g.translate(w / 2, h / 2);
     const seed = 12;
-    drawTentacles(g, 18, '#6a1826', t, seed);
-    drawBlobBody(g, 18, '#4a0f1c', '#7a1f2f', seed, t);
+    drawTentacles(g, 24, '#6a1826', t, seed);
+    drawBlobBody(g, 24, '#4a0f1c', '#7a1f2f', seed, t);
     const angle = t * 0.0006;
-    drawEye(g, 18, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    drawEye(g, 24, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
     g.restore();
   }
 
@@ -119,10 +121,10 @@
     g.save();
     g.translate(w / 2, h / 2);
     const seed = 47;
-    drawTentacles(g, 24, '#1a6a2e', t, seed);
-    drawBlobBody(g, 24, '#0f4a1c', '#2f7a3f', seed, t);
+    drawTentacles(g, 32, '#1a6a2e', t, seed);
+    drawBlobBody(g, 32, '#0f4a1c', '#2f7a3f', seed, t);
     const angle = -t * 0.0004;
-    drawEye(g, 24, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    drawEye(g, 32, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
     g.restore();
   }
 
@@ -130,15 +132,15 @@
     clear(g, w, h);
     g.save();
     g.translate(w / 2, h / 2);
-    const segCount = 7, spacing = 13;
+    const segCount = 7, spacing = 17;
     for (let i = segCount - 1; i >= 0; i--) {
       const along = i * spacing;
-      const wob = Math.sin(t * 0.002 + i * 0.6) * 5;
-      const x = -34 + along;
+      const wob = Math.sin(t * 0.002 + i * 0.6) * 6;
+      const x = -46 + along;
       const y = wob;
-      const r = 12 * (1 - i * 0.06);
+      const r = 15 * (1 - i * 0.06);
       g.beginPath();
-      g.arc(x, y, Math.max(4, r), 0, Math.PI * 2);
+      g.arc(x, y, Math.max(5, r), 0, Math.PI * 2);
       g.fillStyle = i % 2 === 0 ? '#4a3a1e' : '#5a4726';
       g.shadowColor = '#2a2010';
       g.shadowBlur = 6;
@@ -146,13 +148,13 @@
       g.shadowBlur = 0;
     }
     g.save();
-    const headY = Math.sin(t * 0.002) * 5;
-    g.translate(-34 + segCount * spacing, headY);
+    const headY = Math.sin(t * 0.002) * 6;
+    g.translate(-46 + segCount * spacing, headY);
     const points = 10;
     g.beginPath();
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
-      const r = 12 + Math.sin(t * 0.008 + i * 1.7) * 2.5;
+      const r = 15 + Math.sin(t * 0.008 + i * 1.7) * 3;
       const px = Math.cos(a) * r, py = Math.sin(a) * r;
       if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
     }
@@ -163,7 +165,7 @@
     g.fill();
     g.shadowBlur = 0;
     const angle = t * 0.0005;
-    drawEye(g, 12, 88, { x: Math.cos(angle), y: Math.sin(angle) * 0.4 });
+    drawEye(g, 15, 88, { x: Math.cos(angle), y: Math.sin(angle) * 0.4 });
     g.restore();
     g.restore();
   }
@@ -280,16 +282,16 @@
     if (!revealed) {
       g.save();
       g.rotate(Math.sin(t * 0.0008) * 0.3);
-      drawHazmatFigure(g, 18, '#7c8a72');
+      drawHazmatFigure(g, 24, '#7c8a72');
       g.restore();
     } else {
       const seed = 30;
-      drawTentacles(g, 13, '#3a1f4a', t, seed, 3);
+      drawTentacles(g, 17, '#3a1f4a', t, seed, 3);
       const points = 10;
       g.beginPath();
       for (let i = 0; i <= points; i++) {
         const a = (i / points) * Math.PI * 2;
-        const r = 13 + Math.sin(t * 0.008 + i * 1.7 + seed) * 3;
+        const r = 17 + Math.sin(t * 0.008 + i * 1.7 + seed) * 3;
         const px = Math.cos(a) * r, py = Math.sin(a) * r;
         if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
       }
@@ -300,16 +302,44 @@
       g.fill();
       g.shadowBlur = 0;
       const angle = t * 0.003;
-      drawMonsterTeeth(g, 13, { x: Math.cos(angle), y: Math.sin(angle) });
+      drawMonsterTeeth(g, 17, { x: Math.cos(angle), y: Math.sin(angle) });
     }
     g.restore();
   }
 
+  // The crate lurker: a small purple tentacle ambusher, always "revealed"
+  // since it has no disguise to keep up -- just a faint idle wobble.
+  function drawLurker(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 61;
+    drawTentacles(g, 15, '#3a1f4a', t, seed, 2.5);
+    const points = 10;
+    g.beginPath();
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const r = 15 + Math.sin(t * 0.01 + i * 1.7 + seed) * 3;
+      const px = Math.cos(a) * r, py = Math.sin(a) * r;
+      if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+    }
+    g.closePath();
+    g.fillStyle = '#3a1550';
+    g.shadowColor = '#a03fd6';
+    g.shadowBlur = 16;
+    g.fill();
+    g.shadowBlur = 0;
+    const angle = t * 0.004;
+    drawMonsterTeeth(g, 15, { x: Math.cos(angle), y: Math.sin(angle) });
+    g.restore();
+  }
+
   function loop(t) {
-    if (crawlerCtx) drawCrawler(crawlerCtx, 120, 120, t);
-    if (drifterCtx) drawDrifter(drifterCtx, 120, 120, t);
-    if (caterpillarCtx) drawCaterpillar(caterpillarCtx, 120, 120, t);
-    if (mimicCtx) drawMimic(mimicCtx, 120, 120, t);
+    if (crawlerCtx) drawCrawler(crawlerCtx, PORTRAIT, PORTRAIT, t);
+    if (drifterCtx) drawDrifter(drifterCtx, PORTRAIT, PORTRAIT, t);
+    if (caterpillarCtx) drawCaterpillar(caterpillarCtx, PORTRAIT, PORTRAIT, t);
+    if (mimicCtx) drawMimic(mimicCtx, PORTRAIT, PORTRAIT, t);
+    if (lurkerCtx) drawLurker(lurkerCtx, PORTRAIT, PORTRAIT, t);
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
