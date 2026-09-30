@@ -73,6 +73,18 @@
   const BOMBTHROW_FUSE_MS = 900; // time armed on the ground before it goes off
   const BOMBTHROW_RADIUS = 60;
 
+  // 6. Blink: plants itself, pulses a 3s warning, then strobes color for 2s
+  // before whipping all 9 tentacles out twice in a row. Each tentacle is a
+  // straight raycast that stops dead at the first wall tile it hits --
+  // ducking behind a wall (a vent, most reliably) blocks it completely.
+  const BLINK_WARNING_MS = 3000;
+  const BLINK_DURATION_MS = 2000;
+  const BLINK_STRIKE_COUNT = 2;
+  const BLINK_STRIKE_HOLD_MS = 180; // how long each strike stays visually extended
+  const BLINK_STRIKE_GAP_MS = 450; // pause between the two strikes
+  const TENTACLE_STRIKE_RANGE = BOSS_RADIUS * 3.2;
+  const TENTACLE_STRIKE_WIDTH = 22; // half-width of each tentacle's hit line
+
   const ATTACKS_PER_STUN = 10;
   const STUN_DURATION_MS = 10000;
 
@@ -89,6 +101,7 @@
   const FREEZE_DURATION_MS = 10000;
   const EAT_DURATION_MS = 3000;
   const CRATE_RESPAWN_MS = 60000;
+  const MEAT_REFILL_COOLDOWN_MS = 1500; // how often a revisited meat crate can be re-eaten
   const CATCH_CUTSCENE_MS = 2000;
   const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner'];
 
@@ -482,6 +495,50 @@
     osc.stop(start + 0.7);
   }
 
+  // Marks the exact moment the 3s warning ends and the 2s color-blink
+  // starts -- a stuttering, alternating two-tone flicker to match the
+  // strobing visual.
+  function playBossBlink() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const gain = audioCtx.createGain();
+    gain.connect(audioCtx.destination);
+    gain.gain.setValueAtTime(0.0001, start);
+    for (let i = 0; i < 8; i++) {
+      const t = start + i * 0.09;
+      const osc = audioCtx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = i % 2 === 0 ? 880 : 660;
+      const env = audioCtx.createGain();
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.exponentialRampToValueAtTime(0.14, t + 0.015);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+      osc.connect(env);
+      env.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.08);
+    }
+  }
+
+  // The tentacle lash itself -- a fast, wet crack, distinct from the
+  // spike attack's single ground-strike sound since this one fires twice
+  // in quick succession.
+  function playTentacleStrike() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(900, start);
+    osc.frequency.exponentialRampToValueAtTime(80, start + 0.12);
+    gain.gain.setValueAtTime(0.32, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.2);
+  }
+
   function playWinJingle() {
     [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
   }
@@ -710,7 +767,7 @@
       path: [], pathIndex: 0, nextRepathAt: 0, // only used while lured, via BFS to the meat item
 
       // ---- attack cycle ----
-      // 'idle' | 'spin' | 'throw' | 'spike' | 'charge' | 'bombs' | 'stunned'
+      // 'idle' | 'spin' | 'throw' | 'spike' | 'charge' | 'bombs' | 'blink' | 'stunned'
       phase: 'idle',
       phaseStartedAt: 0,
       nextIdleUntil: 0,
@@ -722,6 +779,11 @@
       chargeDir: { x: 1, y: 0 },
       chargeSubPhase: 'windup', // 'windup' | 'dash' | 'recover'
       chargeSubStartedAt: 0,
+      blinkSubPhase: 'warning', // 'warning' | 'blinking' | 'strike' | 'gap'
+      blinkSubStartedAt: 0,
+      blinkStrikesLeft: 0,
+      lastStrikeAt: 0,
+      lastStrikeReaches: null, // per-tentacle reach from the most recent strike, for drawing
     };
   }
 
@@ -785,6 +847,7 @@
     boss.defeated = false;
     boss.phase = 'idle'; boss.phaseStartedAt = 0; boss.nextIdleUntil = 0;
     boss.attackCount = 0; boss.lastAttack = null; boss.spinAngle = 0;
+    boss.blinkSubPhase = 'warning'; boss.blinkStrikesLeft = 0; boss.lastStrikeAt = 0; boss.lastStrikeReaches = null;
     telegraphs = []; spikeTelegraphs = []; bossBombs = [];
 
     bossHealth = 1;
@@ -798,7 +861,8 @@
     if (audioCtx && bossPulseTimer === null) { bossStep = 0; scheduleBossStep(); }
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
-      x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
+      x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)],
+      opened: false, openedAt: 0, lastEatenAt: 0,
     }));
     fires = (LEVEL.fireSpawns || []).map((f, i) => ({
       x: f.x, y: f.y, seed: i * 1471.7 + Math.random() * 5000,
@@ -819,6 +883,13 @@
     if (ch === '#') return true;
     if (ch === 'D') return !doorUnlocked;
     return false;
+  }
+
+  // Standing in a vent takes you out of play entirely -- every attack's hit
+  // test and the boss's own contact-catch all check this before landing.
+  function isHidden(p) {
+    const t = worldToTile(p.x, p.y);
+    return tileChar(t.x, t.y) === 'V';
   }
 
   function canStandAt(x, y) {
@@ -899,7 +970,7 @@
   function minimapColorFor(ch) {
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
-    if (ch === 'S') return '#3ddc84';
+    if (ch === 'V') return '#3ddc84';
     if (ch === 'T') return '#5a4127';
     return '#3c3c46';
   }
@@ -1066,7 +1137,7 @@
     return best;
   }
 
-  function applyItemEffect(item, x, y, now) {
+  function applyItemEffect(item, x, y, now, p) {
     if (item === 'radar') {
       radarUntil = now + RADAR_DURATION_MS;
       spawnFloatingText(x, y, 'RADAR');
@@ -1075,6 +1146,7 @@
       boss.luredState = 'lured';
       boss.lureTarget = { x, y };
       boss.path = []; boss.pathIndex = 0;
+      if (p) p.stamina = STAMINA_MAX;
       spawnFloatingText(x, y, 'MEAT');
       playItemChime(220);
     } else if (item === 'co2') {
@@ -1092,16 +1164,26 @@
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
       crates.forEach((c) => {
-        if (c.opened) return;
-        if (c.x === t.x && c.y === t.y) {
+        if (c.x !== t.x || c.y !== t.y) return;
+        if (!c.opened) {
           c.opened = true;
           c.openedAt = now;
-          applyItemEffect(c.item, tileCenter(c.x, c.y).x, tileCenter(c.x, c.y).y, now);
+          c.lastEatenAt = now;
+          applyItemEffect(c.item, tileCenter(c.x, c.y).x, tileCenter(c.x, c.y).y, now, p);
+        } else if (c.item === 'meat' && p.stamina < STAMINA_MAX && now - c.lastEatenAt >= MEAT_REFILL_COOLDOWN_MS) {
+          // Meat never respawns as something else (see below) specifically
+          // so it stays a resource worth walking back to -- eating it again
+          // just tops the stamina bar back up, on a short cooldown so
+          // standing on it doesn't retrigger every single frame.
+          c.lastEatenAt = now;
+          p.stamina = STAMINA_MAX;
+          spawnFloatingText(p.x, p.y, '+STAMINA');
+          playItemChime(760);
         }
       });
     });
     crates.forEach((c) => {
-      if (c.opened && now - c.openedAt >= CRATE_RESPAWN_MS) {
+      if (c.opened && c.item !== 'meat' && now - c.openedAt >= CRATE_RESPAWN_MS) {
         c.opened = false;
         c.item = CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)];
       }
@@ -1151,7 +1233,7 @@
 
   // ---- boss AI ----
   function monsterCanOccupy(ch) {
-    if (ch === '#' || ch === 'S') return false;
+    if (ch === '#' || ch === 'V') return false;
     if (ch === 'D') return doorUnlocked;
     return true;
   }
@@ -1222,11 +1304,13 @@
     ];
     return corners.every(([cx, cy]) => {
       const t = worldToTile(cx, cy);
-      return !isWallForPlayer(t.x, t.y);
+      // Vents block the boss even though they don't block players -- that's
+      // what makes them an actual hiding spot rather than just a label.
+      return !isWallForPlayer(t.x, t.y) && tileChar(t.x, t.y) !== 'V';
     });
   }
 
-  const ALL_ATTACKS = ['spin', 'throw', 'spike', 'charge', 'bombs'];
+  const ALL_ATTACKS = ['spin', 'throw', 'spike', 'charge', 'bombs', 'blink'];
 
   function nearestPlayer(x, y) {
     return players.reduce((a, b) => (Math.hypot(x - a.x, y - a.y) <= Math.hypot(x - b.x, y - b.y) ? a : b));
@@ -1302,6 +1386,11 @@
         });
       }
       playBossWindup();
+    } else if (kind === 'blink') {
+      boss.blinkSubPhase = 'warning';
+      boss.blinkSubStartedAt = now;
+      boss.blinkStrikesLeft = BLINK_STRIKE_COUNT;
+      playBossWindup();
     }
   }
 
@@ -1354,7 +1443,7 @@
       if (now >= tg.firesAt) {
         onFire(tg);
         players.forEach((p) => {
-          if (p.caught || now < p.invulnerableUntil) return;
+          if (p.caught || now < p.invulnerableUntil || isHidden(p)) return;
           if (Math.hypot(p.x - tg.x, p.y - tg.y) < radius) triggerCaught(p, now);
         });
         arr.splice(i, 1);
@@ -1418,7 +1507,7 @@
       b.exploded = true;
       playBombBlast();
       players.forEach((p) => {
-        if (p.caught || now < p.invulnerableUntil) return;
+        if (p.caught || now < p.invulnerableUntil || isHidden(p)) return;
         if (Math.hypot(p.x - b.x, p.y - b.y) < BOMBTHROW_RADIUS) triggerCaught(p, now);
       });
     });
@@ -1428,6 +1517,80 @@
     if (now - boss.phaseStartedAt >= STUN_DURATION_MS) {
       boss.phase = 'idle';
       boss.nextIdleUntil = now;
+    }
+  }
+
+  // Fires one lash of all 9 tentacles at once: each is a straight raycast
+  // from the boss's own position, stepping outward until it either hits a
+  // wall (stops dead -- it can't penetrate) or reaches max range. A player
+  // counts as hit if they're within TENTACLE_STRIKE_WIDTH of that ray and
+  // not beyond wherever it stopped.
+  function performTentacleStrike(now) {
+    boss.lastStrikeAt = now;
+    playTentacleStrike();
+    const reaches = boss.tentacleAngles.map((angle) => {
+      const dirX = Math.cos(angle), dirY = Math.sin(angle);
+      const steps = Math.ceil(TENTACLE_STRIKE_RANGE / (TILE / 2));
+      let reach = TENTACLE_STRIKE_RANGE;
+      for (let i = 1; i <= steps; i++) {
+        const d = (i / steps) * TENTACLE_STRIKE_RANGE;
+        const t = worldToTile(boss.x + dirX * d, boss.y + dirY * d);
+        if (tileChar(t.x, t.y) === '#') { reach = d - TENTACLE_STRIKE_RANGE / steps; break; }
+      }
+      return Math.max(reach, 0);
+    });
+    boss.lastStrikeReaches = reaches;
+
+    boss.tentacleAngles.forEach((angle, i) => {
+      const dirX = Math.cos(angle), dirY = Math.sin(angle);
+      const reach = reaches[i];
+      players.forEach((p) => {
+        if (p.caught || now < p.invulnerableUntil || isHidden(p)) return;
+        const relX = p.x - boss.x, relY = p.y - boss.y;
+        const along = relX * dirX + relY * dirY;
+        if (along < 0 || along > reach) return;
+        const perp = Math.abs(relX * dirY - relY * dirX);
+        if (perp < TENTACLE_STRIKE_WIDTH) triggerCaught(p, now);
+      });
+    });
+  }
+
+  function updateBossBlink(now) {
+    const elapsed = now - boss.blinkSubStartedAt;
+    switch (boss.blinkSubPhase) {
+      case 'warning':
+        if (elapsed >= BLINK_WARNING_MS) {
+          boss.blinkSubPhase = 'blinking';
+          boss.blinkSubStartedAt = now;
+          playBossBlink();
+        }
+        break;
+      case 'blinking':
+        if (elapsed >= BLINK_DURATION_MS) {
+          boss.blinkSubPhase = 'strike';
+          boss.blinkSubStartedAt = now;
+          performTentacleStrike(now);
+          boss.blinkStrikesLeft--;
+        }
+        break;
+      case 'strike':
+        if (elapsed >= BLINK_STRIKE_HOLD_MS) {
+          if (boss.blinkStrikesLeft > 0) {
+            boss.blinkSubPhase = 'gap';
+            boss.blinkSubStartedAt = now;
+          } else {
+            finishAttack(now);
+          }
+        }
+        break;
+      case 'gap':
+        if (elapsed >= BLINK_STRIKE_GAP_MS) {
+          boss.blinkSubPhase = 'strike';
+          boss.blinkSubStartedAt = now;
+          performTentacleStrike(now);
+          boss.blinkStrikesLeft--;
+        }
+        break;
     }
   }
 
@@ -1482,6 +1645,7 @@
       case 'spike': updateBossSpike(now); break;
       case 'charge': updateBossCharge(now, dt); break;
       case 'bombs': updateBossBombsAttack(now); break;
+      case 'blink': updateBossBlink(now); break;
     }
   }
 
@@ -1496,6 +1660,7 @@
     players.forEach((p) => {
       if (p.caught) return;
       if (now < p.invulnerableUntil) return;
+      if (isHidden(p)) return;
       if (Math.hypot(p.x - boss.x, p.y - boss.y) < BOSS_CATCH_RADIUS) triggerCaught(p, now);
     });
   }
@@ -1727,7 +1892,7 @@
         let color;
         switch (ch) {
           case '#': color = '#262629'; break;
-          case 'S': color = floorShade(x, y); break;
+          case 'V': color = '#16302a'; break;
           case 'T': color = dirtShade(x, y); break;
           case 'E': color = '#3a301f'; break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
@@ -1739,6 +1904,25 @@
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+        }
+
+        // A grated-vent look (a dim teal glow plus a few slats) -- reads as
+        // distinctly safe rather than just another floor tile.
+        if (ch === 'V') {
+          g.fillStyle = 'rgba(61,220,132,0.12)';
+          g.fillRect(px, py, TILE, TILE);
+          g.strokeStyle = 'rgba(61,220,132,0.5)';
+          g.lineWidth = 2;
+          for (let s = 1; s <= 3; s++) {
+            const sy = py + (TILE / 4) * s;
+            g.beginPath();
+            g.moveTo(px + 3, sy);
+            g.lineTo(px + TILE - 3, sy);
+            g.stroke();
+          }
+          g.strokeStyle = 'rgba(61,220,132,0.65)';
+          g.lineWidth = 1.5;
+          g.strokeRect(px + 1.5, py + 1.5, TILE - 3, TILE - 3);
         }
       }
     }
@@ -1911,7 +2095,17 @@
 
   // ---- the boss: a Crawler blown up 8x and set on fire ----
   function drawBossTentacles(g, t) {
+    // Mid-lash: rigid and fully extended to the same reach the hit test
+    // used (including where a wall cut a tentacle short), instead of the
+    // usual idle sway -- the visual IS the hitbox here.
+    const striking = t - boss.lastStrikeAt < BLINK_STRIKE_HOLD_MS && boss.lastStrikeReaches;
     boss.tentacleAngles.forEach((baseA, i) => {
+      if (striking) {
+        const reach = boss.lastStrikeReaches[i];
+        const tx = Math.cos(baseA) * reach, ty = Math.sin(baseA) * reach;
+        drawTaperedTentacle(g, tx, ty, tx * 0.5, ty * 0.5, boss.radius * 0.1, '#ffd27a');
+        return;
+      }
       const sway = Math.sin(t * 0.0017 + i * 1.6 + boss.seed) * 0.5;
       const a = baseA + sway * 0.3;
       const len = boss.radius * (1.5 + 0.25 * Math.sin(t * 0.0013 + i * 2.3));
@@ -2150,6 +2344,29 @@
       g.strokeStyle = 'rgba(220,250,255,0.75)';
       g.lineWidth = 2;
       g.stroke();
+    }
+
+    if (boss.phase === 'blink') {
+      if (boss.blinkSubPhase === 'warning') {
+        // A steady 3s pulse building toward the blink -- the clock is
+        // literally how long you have left to reach a vent.
+        const pulse = 0.5 + 0.5 * Math.sin(t / 110);
+        g.beginPath();
+        g.arc(0, 0, boss.radius * 1.08, 0, Math.PI * 2);
+        g.strokeStyle = `rgba(255,220,60,${0.35 + pulse * 0.45})`;
+        g.lineWidth = 6;
+        g.stroke();
+      } else if (boss.blinkSubPhase === 'blinking') {
+        // A hard strobe rather than a smooth fade -- "blinking" should
+        // read as a glitchy warning light, not a gentle glow.
+        const strobeOn = Math.floor((t - boss.blinkSubStartedAt) / 80) % 2 === 0;
+        if (strobeOn) {
+          g.beginPath();
+          g.arc(0, 0, boss.radius, 0, Math.PI * 2);
+          g.fillStyle = 'rgba(160,230,255,0.55)';
+          g.fill();
+        }
+      }
     }
 
     if (boss.phase === 'stunned') {

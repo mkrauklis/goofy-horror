@@ -168,10 +168,17 @@ originally shipped with. The old version had room for the boss to patrol
 a loop and lose interest; this one doesn't, and it isn't built to. It's
 one continuous fight from the moment you walk in.
 
+Punched into the outer wall here and there are a handful of **vents** —
+small dead-end pockets the boss physically cannot enter (its own
+pathing treats them as solid) and that every one of its attacks
+explicitly skips over. They're the room's only real hiding spots, and
+with a boss this aggressive, finding one on the way in is worth doing
+before you need it, not after.
+
 Planted in the middle is the boss: a Crawler, the very same creature
 from Level 1, burnt black, still on fire, and **8 times** its normal
 size — filling enough of the now-small room on its own that there's
-nowhere in it that's really far from danger. It cycles through five
+nowhere in it that's really far from danger. It cycles through six
 attacks at random, back to back, for as long as it's alive:
 
 1. **Spin** — bounces off the arena walls DVD-logo style at **5x** your
@@ -186,6 +193,12 @@ attacks at random, back to back, for as long as it's alive:
 5. **Bombs** — throws ten short-fused charges out across the room at
    once; they arm on landing and go off fast, so standing near one when
    its fuse runs out is the same as walking into the throw attack.
+6. **Blink** — plants itself and pulses a slow 3-second warning, then
+   strobes color for 2 seconds before whipping all nine tentacles out
+   twice in a row. Each one is a straight line that stops dead at the
+   first wall it hits — it genuinely cannot punch through one — so a
+   vent isn't just "safe," it's the one place guaranteed to block this
+   specific attack outright.
 
 Its own touch still catches you at any point in that cycle, same as
 every other level's monsters — this is on top of that, not instead of
@@ -203,6 +216,13 @@ remotely worth it next to just waiting the ten seconds out. Up to
 they're always pinged on the minimap, so the fight is about survival
 and timing, not a blind scavenger hunt. Ten stunned hits and the fire
 goes out for good.
+
+Crates still drop the same items as elsewhere, but a **meat** crate is
+now worth remembering the location of: eating it refills your sprint
+stamina on top of its usual lure effect, and unlike every other crate
+it never respawns into something else — walk back to it any time your
+stamina bar is low (on a short cooldown, so standing on it doesn't
+refill it every single frame) and eat it again.
 
 Getting caught doesn't respawn just that one player anymore, either —
 you're held down (the same catch cutscene, just not timing out into a
