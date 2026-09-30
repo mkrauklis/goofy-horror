@@ -36,6 +36,16 @@
   const BOSS_CATCH_RADIUS = BOSS_RADIUS * 1.25;
   const REPATH_MS = 500;
   const ALERT_GRACE_MS = 3200;
+
+  // A ranged fire-nova is the boss's actual attack beyond just bumping into
+  // it -- it telegraphs with a growing ring (dodge-able) before it hits, on
+  // a cooldown that shrinks as its health drops so the fight visibly gets
+  // more dangerous as bombs run out instead of staying flat the whole way.
+  const NOVA_RADIUS = BOSS_RADIUS * 2.4;
+  const NOVA_TELEGRAPH_MS = 650;
+  const NOVA_ACTIVE_MS = 250;
+  const NOVA_COOLDOWN_MAX = 7000; // at full health
+  const NOVA_COOLDOWN_MIN = 3000; // near defeat
   const FLASHLIGHT_RADIUS = 260;
   const RADAR_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
@@ -86,59 +96,18 @@
 
   // ---- procedural audio (no asset files) ----
   let audioCtx = null;
-  let musicMasterGain = null; // both the ambient drone and the safe-room pad route through this
+  let musicMasterGain = null; // both the ambient drone and the boss theme route through this
   let musicEnabled = false;
   let ambientGain = null;
   let ambientSubOsc = null;
   let ambientMidGain = null;
-  let safeMusicGain = null;
-  let safeGlitchGain = null;
-  let safeVoices = [];
-
-  // A stepped/quantized waveshaper curve -- crushes a smooth sine into a
-  // rougher, lower-resolution digital stair-step, for a lo-fi "glitchy"
-  // texture instead of a clean tone.
-  function makeBitcrushCurve(steps) {
-    const curve = new Float32Array(1024);
-    for (let i = 0; i < 1024; i++) {
-      const x = (i / 1023) * 2 - 1;
-      curve[i] = Math.round(x * steps) / steps;
-    }
-    return curve;
-  }
-
-  // Every several seconds, a brief, gentle flutter in the safe-room music's
-  // volume and a soft pitch dip on a couple of voices -- runs continuously
-  // in the background; it's inaudible whenever safeMusicGain itself is
-  // faded near zero. Subtle on purpose: enough to read as "not quite
-  // right" without undercutting the calming point of the music.
-  function scheduleSafeMusicGlitch() {
-    const delay = 3000 + Math.random() * 4500;
-    setTimeout(() => {
-      if (!audioCtx || !safeGlitchGain) return;
-      const t = audioCtx.currentTime;
-      safeGlitchGain.gain.cancelScheduledValues(t);
-      safeGlitchGain.gain.setValueAtTime(1, t);
-      let tt = t;
-      const stutters = 1 + Math.floor(Math.random() * 2);
-      for (let i = 0; i < stutters; i++) {
-        tt += 0.05 + Math.random() * 0.04;
-        safeGlitchGain.gain.setValueAtTime(0.4, tt);
-        tt += 0.04 + Math.random() * 0.04;
-        safeGlitchGain.gain.setValueAtTime(1, tt);
-      }
-      if (Math.random() < 0.4) {
-        safeVoices.forEach((osc) => {
-          const base = osc.frequency.value;
-          osc.frequency.cancelScheduledValues(t);
-          osc.frequency.setValueAtTime(base, t);
-          osc.frequency.linearRampToValueAtTime(base * 0.975, t + 0.09);
-          osc.frequency.linearRampToValueAtTime(base, t + 0.22);
-        });
-      }
-      scheduleSafeMusicGlitch();
-    }, delay);
-  }
+  let bossMusicGain = null;
+  let bossBassFilter = null;
+  let bossBassGain = null;
+  let bossLeadGain = null;
+  let bossNoiseBuffer = null;
+  let bossStep = 0;
+  let bossPulseTimer = null;
 
   function ensureAudio() {
     if (audioCtx) return;
@@ -198,69 +167,133 @@
     ambientMidGain = addDroneVoice(97, 'sawtooth', 0, 0.15, 6).gain; // dissonant edge, fades in with tension
     addDroneVoice(660, 'triangle', 0.05, 0.02, 40); // faint distant ringing
 
-    // Gentle chord pad that fades in while a player is resting in the safe
-    // zone -- pitched down a bit, softly bitcrushed and lightly echoed for
-    // a lower, dreamier "liminal elevator music" character, with an
-    // occasional subtle flutter (see scheduleSafeMusicGlitch) rather than
-    // anything harsh.
-    safeMusicGain = audioCtx.createGain();
-    safeMusicGain.gain.value = 0.0001;
-    safeMusicGain.connect(musicMasterGain);
+    // A real short loop -- a bassline riff, a kick/hat pulse, and a
+    // call-and-response lead motif -- instead of randomized stabs, so it
+    // reads as an actual boss theme rather than noise. The whole level is
+    // the boss encounter (unlike earlier levels, there's no separate "safe"
+    // state to score against), so it runs continuously once music is on,
+    // and its tempo climbs with bossHitsTaken so the fight escalates toward
+    // the last couple of bombs.
+    bossMusicGain = audioCtx.createGain();
+    bossMusicGain.gain.value = 0.55;
+    bossMusicGain.connect(musicMasterGain);
 
-    const safeCrusher = audioCtx.createWaveShaper();
-    safeCrusher.curve = makeBitcrushCurve(14);
-    safeCrusher.oversample = '2x';
+    // The riff and kick share a gentle lowpass so the sawtooth reads as a
+    // rounded synth-bass tone rather than a buzzy raw wave.
+    bossBassFilter = audioCtx.createBiquadFilter();
+    bossBassFilter.type = 'lowpass';
+    bossBassFilter.frequency.value = 900;
+    bossBassFilter.Q.value = 0.7;
+    bossBassGain = audioCtx.createGain();
+    bossBassGain.gain.value = 1;
+    bossBassFilter.connect(bossBassGain);
+    bossBassGain.connect(bossMusicGain);
 
-    const safeFilter = audioCtx.createBiquadFilter();
-    safeFilter.type = 'lowpass';
-    safeFilter.frequency.value = 1600;
-    safeFilter.Q.value = 0.3;
+    bossLeadGain = audioCtx.createGain();
+    bossLeadGain.gain.value = 1;
+    bossLeadGain.connect(bossMusicGain);
 
-    // A soft echo gives the pad some room/space instead of sounding dry
-    // and flat, like a real elevator's reverberant little box.
-    const safeDelay = audioCtx.createDelay(1.0);
-    safeDelay.delayTime.value = 0.24;
-    const safeDelayFeedback = audioCtx.createGain();
-    safeDelayFeedback.gain.value = 0.25;
-    const safeDelayMix = audioCtx.createGain();
-    safeDelayMix.gain.value = 0.3;
-    safeDelay.connect(safeDelayFeedback);
-    safeDelayFeedback.connect(safeDelay);
-    safeDelay.connect(safeDelayMix);
-    safeDelayMix.connect(safeMusicGain);
+    bossNoiseBuffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * 0.08), audioCtx.sampleRate);
+    const noiseData = bossNoiseBuffer.getChannelData(0);
+    for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
 
-    safeGlitchGain = audioCtx.createGain();
-    safeGlitchGain.gain.value = 1;
-    safeGlitchGain.connect(safeCrusher);
-    safeCrusher.connect(safeFilter);
-    safeFilter.connect(safeMusicGain);
-    safeFilter.connect(safeDelay);
-
-    safeVoices = [];
-    [261.6, 329.6, 392.0, 523.2].map((f) => f * 0.8).forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      const voiceGain = audioCtx.createGain();
-      voiceGain.gain.value = 0.16;
-      const vibrato = audioCtx.createOscillator();
-      vibrato.frequency.value = 0.1 + i * 0.03;
-      const vibratoGain = audioCtx.createGain();
-      vibratoGain.gain.value = 1.5;
-      vibrato.connect(vibratoGain);
-      vibratoGain.connect(osc.frequency);
-      vibrato.start();
-      osc.connect(voiceGain);
-      voiceGain.connect(safeGlitchGain);
-      osc.start();
-      safeVoices.push(osc);
-    });
-    scheduleSafeMusicGlitch();
+    bossStep = 0;
+    scheduleBossStep();
   }
 
-  function updateSafeMusic(inSafeZone) {
-    if (!audioCtx) return;
-    safeMusicGain.gain.setTargetAtTime(inSafeZone ? 0.09 : 0.0001, audioCtx.currentTime, 0.8);
+  // A minor-key riff and lead phrase, low register for the ostinato, an
+  // octave up for the melody -- deliberately a fixed, memorable pattern
+  // rather than randomized notes.
+  const BOSS_NOTE = { A1: 55.0, C2: 65.41, D2: 73.42, E2: 82.41, G2: 98.0, A2: 110.0, C3: 130.81, D3: 146.83, E3: 164.81 };
+  const BOSS_BASS_RIFF = [
+    BOSS_NOTE.A1, 0, BOSS_NOTE.C2, 0, BOSS_NOTE.A1, 0, BOSS_NOTE.E2, 0,
+    BOSS_NOTE.A1, 0, BOSS_NOTE.C2, 0, BOSS_NOTE.G2, 0, BOSS_NOTE.E2, 0,
+  ];
+  const BOSS_LEAD_PHRASE = [BOSS_NOTE.A2, BOSS_NOTE.C3, BOSS_NOTE.D3, BOSS_NOTE.E3, BOSS_NOTE.D3, BOSS_NOTE.C3, BOSS_NOTE.A2, BOSS_NOTE.G2];
+
+  function playBossBassNote(freq, t, dur, peak) {
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.value = freq;
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(peak, t + 0.015);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(env);
+    env.connect(bossBassFilter);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+
+  function playBossLeadNote(freq, t, dur, peak) {
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(peak, t + 0.02);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(env);
+    env.connect(bossLeadGain);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+
+  function playBossKick(t) {
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(130, t);
+    osc.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+    env.gain.setValueAtTime(0.5, t);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    osc.connect(env);
+    env.connect(bossBassGain);
+    osc.start(t);
+    osc.stop(t + 0.18);
+  }
+
+  function playBossHat(t, peak) {
+    const src = audioCtx.createBufferSource();
+    src.buffer = bossNoiseBuffer;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 7000;
+    const env = audioCtx.createGain();
+    env.gain.setValueAtTime(peak, t);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+    src.connect(filter);
+    filter.connect(env);
+    env.connect(bossLeadGain);
+    src.start(t);
+  }
+
+  // Self-rescheduling via setTimeout at 16th-note resolution rather than a
+  // fixed-interval clock, so tempo can change between steps just by
+  // changing how long until the next call.
+  function scheduleBossStep() {
+    if (!audioCtx || !bossBassGain) return;
+    if (boss.defeated) { bossPulseTimer = null; return; }
+
+    const healthFrac = bossHealthFrac();
+    const bpm = 96 + (1 - healthFrac) * 48; // 96 BPM at full health -> 144 BPM near defeat
+    const stepDur = 60 / bpm / 4;
+    const t = audioCtx.currentTime;
+    const i = bossStep % 16;
+    const bar = Math.floor(bossStep / 16) % 2;
+
+    const bassNote = BOSS_BASS_RIFF[i];
+    if (bassNote) playBossBassNote(bassNote, t, stepDur * 1.8, 0.18 + (1 - healthFrac) * 0.07);
+    if (i === 0 || i === 8) playBossKick(t);
+    if (i % 2 === 1) playBossHat(t, 0.04 + (1 - healthFrac) * 0.02);
+
+    // The lead phrase answers the riff every other bar, call-and-response.
+    if (bar === 1 && i < 8) {
+      playBossLeadNote(BOSS_LEAD_PHRASE[i], t + stepDur * 0.15, stepDur * 1.6, 0.07);
+    }
+
+    bossStep++;
+    bossPulseTimer = setTimeout(scheduleBossStep, stepDur * 1000);
   }
 
   function playTone(freq, duration, type, peakGain, delay) {
@@ -339,6 +372,49 @@
     gain.connect(audioCtx.destination);
     osc.start(start);
     osc.stop(start + 0.25);
+  }
+
+  // Fires right as the nova starts charging -- a rising growl gives players
+  // an audio cue to start moving before the visual ring even shows up.
+  function playBossRoar() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(70, start);
+    osc.frequency.exponentialRampToValueAtTime(180, start + NOVA_TELEGRAPH_MS / 1000);
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(300, start);
+    filter.frequency.exponentialRampToValueAtTime(1400, start + NOVA_TELEGRAPH_MS / 1000);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.3, start + 0.08);
+    gain.gain.setValueAtTime(0.3, start + NOVA_TELEGRAPH_MS / 1000 - 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + NOVA_TELEGRAPH_MS / 1000 + 0.05);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + NOVA_TELEGRAPH_MS / 1000 + 0.1);
+  }
+
+  // The release itself -- plays regardless of whether it actually caught
+  // anyone, so dodging it successfully still feels like something happened.
+  function playNovaBlast() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(260, start);
+    osc.frequency.exponentialRampToValueAtTime(45, start + 0.3);
+    gain.gain.setValueAtTime(0.3, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.4);
   }
 
   function playWinJingle() {
@@ -515,12 +591,21 @@
     return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
   }
   const BOMB_HITS_NEEDED = 10;
-  const BOMB_MIN_PLAYER_DIST = 100; // don't spawn a bomb right under someone's feet
+  const BOMB_MIN_PLAYER_DIST = 100; // don't spawn a bomb right under someone's feet, at full health
+  const BOMB_MIN_PLAYER_DIST_LOW = 55; // shrinks toward this near the boss's last bomb, so the
+                                         // endgame doesn't turn into a long, undramatic walk
   let bombs = []; // at most one active at a time: [{x, y, seed}]
   let bossHitsTaken = 0;
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
+
+  // 1 at full health -> 0 once the last bomb lands; drives the boss's
+  // enrage (chase speed, nova cooldown), the bomb search distance, and the
+  // boss theme's tempo, so all of them escalate together as the fight goes on.
+  function bossHealthFrac() {
+    return clamp(1 - bossHitsTaken / BOMB_HITS_NEEDED, 0, 1);
+  }
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
@@ -565,6 +650,10 @@
       lureTarget: null,
       eatingUntil: 0,
       defeated: false,
+      novaState: 'idle', // 'idle' | 'charging' | 'active'
+      novaStartedAt: 0,
+      novaFiredAt: 0,
+      nextNovaAt: 0,
     };
   }
 
@@ -584,10 +673,11 @@
   })();
 
   function spawnBomb() {
+    const minDist = BOMB_MIN_PLAYER_DIST_LOW + bossHealthFrac() * (BOMB_MIN_PLAYER_DIST - BOMB_MIN_PLAYER_DIST_LOW);
     for (let tries = 0; tries < 30; tries++) {
       const t = OPEN_FLOOR_TILES[Math.floor(Math.random() * OPEN_FLOOR_TILES.length)];
       const c = tileCenter(t.x, t.y);
-      if (players.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < BOMB_MIN_PLAYER_DIST)) continue;
+      if (players.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < minDist)) continue;
       bombs.push({ x: c.x, y: c.y, seed: Math.random() * 1000 });
       return;
     }
@@ -623,11 +713,17 @@
     boss.state = 'patrol'; boss.alertUntil = 0; boss.alertTargetTile = null;
     boss.frozenUntil = 0; boss.luredState = 'none'; boss.lureTarget = null; boss.eatingUntil = 0;
     boss.defeated = false;
+    boss.novaState = 'idle'; boss.nextNovaAt = 0;
 
     bossHitsTaken = 0;
     bombs = [];
     spawnBomb();
     doorUnlocked = false;
+
+    // A replay after a win leaves the sequencer stopped (see
+    // scheduleBossStep's boss.defeated check) -- restart it now that the
+    // boss is alive again.
+    if (audioCtx && bossPulseTimer === null) { bossStep = 0; scheduleBossStep(); }
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
       x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
@@ -728,11 +824,6 @@
     return tileChar(t.x, t.y) === 'S';
   }
 
-  function isInSafeZone(p) {
-    const t = worldToTile(p.x, p.y);
-    return tileChar(t.x, t.y) === 'S';
-  }
-
   function resetExploration() {
     explored = new Uint8Array(COLS * ROWS);
     exploredCtx.clearRect(0, 0, COLS, ROWS);
@@ -785,6 +876,22 @@
       ctx.fillStyle = pl.color;
       ctx.fill();
     });
+    // Always-visible (not tied to the scanner pickup) -- there's exactly one
+    // bomb live at a time and the arena is huge, so making players search it
+    // blind on top of dodging the boss was tedium, not challenge.
+    if (bombs.length && !boss.defeated) {
+      const bomb = bombs[0];
+      const bmx = mx + (bomb.x / WORLD_W) * MINIMAP_W;
+      const bmy = my + (bomb.y / WORLD_H) * mh;
+      const pulse = 0.6 + 0.4 * Math.sin(now / 180);
+      ctx.beginPath();
+      ctx.arc(bmx, bmy, 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,200,80,${pulse})`;
+      ctx.shadowColor = '#ffcf6a';
+      ctx.shadowBlur = 4;
+      ctx.fill();
+    }
+
     const bx = mx + (boss.x / WORLD_W) * MINIMAP_W;
     const by = my + (boss.y / WORLD_H) * mh;
     ctx.beginPath();
@@ -810,6 +917,57 @@
     ctx.fillStyle = color;
     ctx.fillRect(bx, by, barW * frac, barH);
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, barW - 1, barH - 1);
+    ctx.restore();
+  }
+
+  // A classic top-of-screen boss bar rather than folding this into the HUD
+  // text spans -- the boss fight is the entire level, so it earns the same
+  // prominent treatment a dedicated boss encounter would get elsewhere.
+  function drawBossHealthBar(vx, now) {
+    // Centered in the strip between the minimap (top-left) and the
+    // radar/scanner corner icons (top-right) rather than spanning the full
+    // viewport width, so it never overlaps either.
+    const barW = 210;
+    const barH = 10;
+    const bx = vx + (VIEW_W - barW) / 2;
+    const by = 12;
+    const frac = clamp(1 - bossHitsTaken / BOMB_HITS_NEEDED, 0, 1);
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,5,8,0.7)';
+    ctx.fillRect(bx - 6, by - 16, barW + 12, barH + 22);
+
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = boss.defeated ? '#8a8578' : '#e8b06a';
+    ctx.fillText(boss.defeated ? 'BOSS — DEFEATED' : 'BOSS', bx + barW / 2, by - 4);
+
+    ctx.fillStyle = '#1a1a1c';
+    ctx.fillRect(bx, by, barW, barH);
+
+    if (boss.defeated) {
+      ctx.fillStyle = '#4a4640';
+      ctx.fillRect(bx, by, barW * frac, barH);
+    } else {
+      const grad = ctx.createLinearGradient(bx, 0, bx + barW, 0);
+      grad.addColorStop(0, '#ffb43d');
+      grad.addColorStop(0.5, '#e8461f');
+      grad.addColorStop(1, '#a3321f');
+      ctx.fillStyle = grad;
+      ctx.fillRect(bx, by, barW * frac, barH);
+
+      // A soft flicker over the fill once the boss is close to defeated,
+      // to read as "critical" without needing a separate warning UI.
+      if (frac > 0 && frac < 0.3) {
+        const flicker = 0.5 + 0.5 * Math.sin(now / 120);
+        ctx.fillStyle = `rgba(255,255,255,${0.14 * flicker})`;
+        ctx.fillRect(bx, by, barW * frac, barH);
+      }
+    }
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.lineWidth = 1;
     ctx.strokeRect(bx + 0.5, by + 0.5, barW - 1, barH - 1);
     ctx.restore();
@@ -994,7 +1152,9 @@
       const d = Math.hypot(p.x - boss.x, p.y - boss.y);
       if (d <= FLASHLIGHT_RADIUS && hasLineOfSight(boss.x, boss.y, p.x, p.y)) {
         boss.state = 'alert';
-        boss.alertUntil = now + ALERT_GRACE_MS;
+        // Holds a grudge longer as its health drops -- losing it becomes a
+        // real reprieve instead of something that happens by default.
+        boss.alertUntil = now + ALERT_GRACE_MS * (1 + (1 - bossHealthFrac()) * 0.6);
         boss.alertTargetTile = worldToTile(p.x, p.y);
       }
     }
@@ -1002,6 +1162,38 @@
       boss.state = 'patrol';
       boss.path = [];
       boss.pathIndex = 0;
+    }
+  }
+
+  // The boss's ranged attack: a telegraphed ring that expands from its own
+  // position and catches anyone still inside it once it fully lands. Only
+  // fires while actively hunting (state 'alert') -- a patrolling boss that
+  // hasn't spotted anyone yet has nothing to aim it at.
+  function updateBossNova(now) {
+    if (boss.state !== 'alert') { boss.novaState = 'idle'; return; }
+    const healthFrac = bossHealthFrac();
+    const cooldown = NOVA_COOLDOWN_MIN + healthFrac * (NOVA_COOLDOWN_MAX - NOVA_COOLDOWN_MIN);
+    if (boss.novaState === 'idle') {
+      if (now >= boss.nextNovaAt) {
+        boss.novaState = 'charging';
+        boss.novaStartedAt = now;
+        playBossRoar();
+      }
+    } else if (boss.novaState === 'charging') {
+      if (now - boss.novaStartedAt >= NOVA_TELEGRAPH_MS) {
+        boss.novaState = 'active';
+        boss.novaFiredAt = now;
+        playNovaBlast();
+        players.forEach((p) => {
+          if (p.caught || isHidden(p) || now < p.invulnerableUntil) return;
+          if (Math.hypot(p.x - boss.x, p.y - boss.y) < NOVA_RADIUS) triggerCaught(p, now);
+        });
+      }
+    } else if (boss.novaState === 'active') {
+      if (now - boss.novaFiredAt >= NOVA_ACTIVE_MS) {
+        boss.novaState = 'idle';
+        boss.nextNovaAt = now + cooldown;
+      }
     }
   }
 
@@ -1053,6 +1245,13 @@
     }
 
     updateDetection(now);
+    updateBossNova(now);
+
+    // Planting itself to cast the nova (rather than still chasing while it
+    // charges) is what makes the telegraph fair -- the ring's center is
+    // wherever the boss stood still, so dodging it is about reading the
+    // warning, not guessing where a moving target will be.
+    if (boss.novaState !== 'idle') return;
 
     if (now >= boss.nextRepathAt) {
       boss.nextRepathAt = now + REPATH_MS;
@@ -1073,7 +1272,10 @@
     }
 
     if (boss.path && boss.pathIndex < boss.path.length) {
-      const step = (boss.state === 'alert' ? BOSS_CHASE_SPEED : BOSS_PATROL_SPEED) * dt;
+      // Chases noticeably faster as its health drops -- the fight
+      // visibly escalates instead of staying flat until the last bomb.
+      const enrageMult = boss.state === 'alert' ? 1 + (1 - bossHealthFrac()) * 0.4 : 1;
+      const step = (boss.state === 'alert' ? BOSS_CHASE_SPEED : BOSS_PATROL_SPEED) * enrageMult * dt;
       const target = tileTargetSimple(boss.path[boss.pathIndex]);
       const dx = target.x - boss.x, dy = target.y - boss.y;
       const d = Math.hypot(dx, dy);
@@ -1686,6 +1888,28 @@
       g.stroke();
     }
 
+    if (boss.novaState === 'charging') {
+      // Ring grows from the boss's own radius out to the strike radius over
+      // the telegraph window -- its size at any moment IS the countdown.
+      const progress = clamp((t - boss.novaStartedAt) / NOVA_TELEGRAPH_MS, 0, 1);
+      const r = boss.radius + (NOVA_RADIUS - boss.radius) * progress;
+      const pulse = 0.6 + 0.4 * Math.sin(t / 55);
+      g.beginPath();
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.strokeStyle = `rgba(255,90,30,${0.55 * pulse})`;
+      g.lineWidth = 5;
+      g.stroke();
+    } else if (boss.novaState === 'active') {
+      const progress = clamp((t - boss.novaFiredAt) / NOVA_ACTIVE_MS, 0, 1);
+      g.beginPath();
+      g.arc(0, 0, NOVA_RADIUS, 0, Math.PI * 2);
+      g.fillStyle = `rgba(255,140,50,${0.35 * (1 - progress)})`;
+      g.fill();
+      g.strokeStyle = `rgba(255,225,160,${0.85 * (1 - progress)})`;
+      g.lineWidth = 3;
+      g.stroke();
+    }
+
     g.restore();
   }
 
@@ -1898,6 +2122,7 @@
     buildDarknessMask(camX, camY);
     ctx.drawImage(maskCanvas, vx, 0);
 
+    drawBossHealthBar(vx, now);
     drawProximityWarning(vx, Math.hypot(p.x - boss.x, p.y - boss.y), now);
     drawRadar(vx, p, now);
     drawScanner(vx, p, now);
@@ -2084,7 +2309,6 @@
       updateCutscenes(now);
       updateExploration();
       updateAmbientTension();
-      updateSafeMusic(players.some(isInSafeZone));
     }
     updateParticles(dt);
     updateFloatingTexts(dt);

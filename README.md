@@ -169,8 +169,12 @@ many as it first shipped with — permanently, casting their glow across
 most of the room between them. There's no button puzzle this time either:
 find the one live bomb hidden somewhere in the room and walk it onto the
 boss's own path to detonate it, taking 10% off its health. A fresh bomb
-appears elsewhere the instant the last one goes off; land ten hits and
-the boss goes out for good and the exit unlocks.
+appears elsewhere the instant the last one goes off — closer to you as
+its health drops, so the endgame doesn't turn into a long undramatic walk
+— and it's always pinged on the minimap so hunting for it never means
+wandering blind. Land ten hits and the boss goes out for good and the
+exit unlocks. A boss bar at the top of each viewport tracks its health
+directly, on top of the numeric readout in the HUD.
 
 Planted dead center is the boss: a Crawler, the very same creature from
 Level 1, burnt black, still on fire, and **8 times** its normal size. It
@@ -183,8 +187,19 @@ so its whole patrol loop stays in view at once. It hunts the same way the
 original Crawler does — blind until your own flashlight lands fully on it
 — and once it locks on it closes in at **2x** your speed, slower than the
 original 2.5x, but its reach and sheer bulk more than make up the
-difference. Getting caught only respawns that one player, same as every
-other level; bomb progress is never lost.
+difference.
+
+Beyond just closing distance, it has a real ranged attack: once it's
+hunting you, it periodically plants itself and charges a fire nova,
+telegraphed by a growing ring around its body and a rising growl, before
+releasing a burst that catches anyone still standing in it. Both its
+chase speed and how often it can nova get worse as its health drops, and
+it holds a grudge longer too — the fight is meant to visibly escalate
+toward the last couple of bombs rather than stay flat the whole way.
+Getting caught only respawns that one player, same as every other level;
+bomb progress is never lost. A procedural boss theme (bassline, kick/hat
+pulse, and an answering lead phrase) plays throughout the fight and
+speeds up right along with it.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.
