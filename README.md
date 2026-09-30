@@ -164,11 +164,13 @@ exhaustion penalty does.
 
 No facility this time — one single, giant room, big enough to get lost
 in on its own. Patches of floor have crumbled to bare dirt throughout,
-same as Levels 3 and 4, and fires burn everywhere you look, permanently,
-casting their glow across most of the room between them. Find all 3
-buttons together to unlock the exit — no fuse, generator, or lever this
-time, just the same button puzzle as Level 1, reused here for one last
-lap around the room.
+same as Levels 3 and 4, and fires burn everywhere you look — twice as
+many as it first shipped with — permanently, casting their glow across
+most of the room between them. There's no button puzzle this time either:
+find the one live bomb hidden somewhere in the room and walk it onto the
+boss's own path to detonate it, taking 10% off its health. A fresh bomb
+appears elsewhere the instant the last one goes off; land ten hits and
+the boss goes out for good and the exit unlocks.
 
 Planted dead center is the boss: a Crawler, the very same creature from
 Level 1, burnt black, still on fire, and **8 times** its normal size. It
@@ -176,12 +178,13 @@ never leaves the middle of the room, patrolling a small loop there rather
 than roaming the whole map — but it doesn't need to chase you far, since
 its own flames already light up most of the room from wherever it's
 standing, giving away roughly where it is long before you're anywhere
-near it. It hunts the same way the original Crawler does — blind until
-your own flashlight lands fully on it — and once it locks on it closes
-in at **2x** your speed, slower than the original 2.5x, but its
-reach and sheer bulk more than make up the difference. Getting caught
-only respawns that one player, same as every other level; button
-progress is never lost.
+near it. The camera sits noticeably further back than every other level's
+so its whole patrol loop stays in view at once. It hunts the same way the
+original Crawler does — blind until your own flashlight lands fully on it
+— and once it locks on it closes in at **2x** your speed, slower than the
+original 2.5x, but its reach and sheer bulk more than make up the
+difference. Getting caught only respawns that one player, same as every
+other level; bomb progress is never lost.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.

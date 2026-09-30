@@ -1661,49 +1661,54 @@
       drawLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
       drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
 
-      // head group, bobbing with the torso
+      // head group -- smaller than the torso and pushed out toward the
+      // front, so the silhouette reads as a body with a head on it rather
+      // than one circle sitting concentrically inside another (which, at
+      // this scale, just looked like an eyeball: white sclera, dark iris,
+      // catchlight).
       g.save();
-      g.translate(0, -bob);
+      g.translate(R * 0.55, -bob);
+      const headR = R * 0.5;
 
       // sealed collar ring
       g.beginPath();
-      g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
+      g.arc(0, 0, headR * 1.05, 0, Math.PI * 2);
       g.strokeStyle = '#1c1c18';
-      g.lineWidth = 3;
+      g.lineWidth = 2.5;
       g.stroke();
 
       // glassy helmet dome
-      const helmetGrad = g.createRadialGradient(-R * 0.25, -R * 0.32, 1, 0, 0, R * 0.85);
+      const helmetGrad = g.createRadialGradient(-headR * 0.3, -headR * 0.35, 1, 0, 0, headR * 1.05);
       helmetGrad.addColorStop(0, '#ffffff');
       helmetGrad.addColorStop(0.35, 'rgba(224,226,216,0.95)');
       helmetGrad.addColorStop(1, 'rgba(150,155,146,0.92)');
       g.beginPath();
-      g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
+      g.arc(0, 0, headR, 0, Math.PI * 2);
       g.fillStyle = helmetGrad;
       g.fill();
       g.strokeStyle = '#1c1c18';
       g.lineWidth = 1.5;
       g.stroke();
 
-      // big face visor, facing forward, with a wet double highlight
-      const visorGrad = g.createLinearGradient(-R * 0.4, -R * 0.4, R * 0.6, R * 0.4);
+      // a narrow faceplate slit, not a big round visor -- a flat band
+      // across the front of the helmet reads as a mask, not a pupil.
+      const visorGrad = g.createLinearGradient(0, -headR * 0.3, 0, headR * 0.3);
       visorGrad.addColorStop(0, '#1c2a33');
       visorGrad.addColorStop(1, '#03060a');
       g.beginPath();
-      g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
+      g.ellipse(headR * 0.32, 0, headR * 0.34, headR * 0.62, 0, 0, Math.PI * 2);
       g.fillStyle = visorGrad;
       g.fill();
       g.strokeStyle = 'rgba(0,0,0,0.5)';
       g.lineWidth = 1;
       g.stroke();
       g.beginPath();
-      g.ellipse(R * 0.28, -R * 0.14, R * 0.14, R * 0.08, -0.4, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(255,255,255,0.6)';
-      g.fill();
-      g.beginPath();
-      g.ellipse(R * 0.1, R * 0.12, R * 0.06, R * 0.03, -0.4, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(255,255,255,0.25)';
-      g.fill();
+      g.moveTo(headR * 0.18, -headR * 0.4);
+      g.lineTo(headR * 0.42, -headR * 0.15);
+      g.strokeStyle = 'rgba(255,255,255,0.4)';
+      g.lineWidth = headR * 0.12;
+      g.lineCap = 'round';
+      g.stroke();
 
       g.restore();
 
@@ -1717,6 +1722,7 @@
   }
 
   function punchLight(g, x, y, radius, intensity) {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius)) return;
     g.save();
     g.globalCompositeOperation = 'destination-out';
     const grad = g.createRadialGradient(x, y, 0, x, y, radius);
@@ -1948,6 +1954,7 @@
   let lastFrameTime = null;
 
   function loop(now) {
+    try {
     const dt = lastFrameTime === null ? 1 / 60 : Math.min((now - lastFrameTime) / 1000, 0.05);
     lastFrameTime = now;
 
@@ -1979,6 +1986,12 @@
 
     updateOverlay();
     updateHud();
+    } catch (err) {
+      // A single bad frame should never freeze the whole game -- log it
+      // and keep the loop running instead of letting the exception cancel
+      // the next requestAnimationFrame.
+      console.error('goofy-horror: frame skipped after an error', err);
+    }
     requestAnimationFrame(loop);
   }
 

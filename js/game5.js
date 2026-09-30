@@ -8,6 +8,13 @@
 
   const VIEW_W = 460;
   const VIEW_H = 340;
+  // The arena is huge and the boss is the whole point of the level, so the
+  // camera sits noticeably further back than the other levels' 1:1 view --
+  // enough to see the boss's full patrol loop at once instead of just
+  // whatever's a few tiles away.
+  const ZOOM = 0.55;
+  const VISIBLE_HALF_W = (VIEW_W / 2) / ZOOM;
+  const VISIBLE_HALF_H = (VIEW_H / 2) / ZOOM;
 
   // Speeds are px/second and movement is scaled by the real elapsed time
   // each frame (see `dt` in loop()) rather than a fixed px/frame step --
@@ -60,7 +67,7 @@
   maskCanvas.width = VIEW_W;
   maskCanvas.height = VIEW_H;
   const maskCtx = maskCanvas.getContext('2d');
-  const hudButtonsEl = document.getElementById('hud-buttons');
+  const hudBossEl = document.getElementById('hud-boss');
   const hudDoorEl = document.getElementById('hud-door');
   const hudTimerEl = document.getElementById('hud-timer');
   const hudBestEl = document.getElementById('hud-best');
@@ -274,6 +281,22 @@
 
   function playButtonChime() {
     playTone(880, 0.18, 'sine', 0.2);
+  }
+
+  function playBombBlast() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(180, start);
+    osc.frequency.exponentialRampToValueAtTime(30, start + 0.35);
+    gain.gain.setValueAtTime(0.32, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.4);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.45);
   }
 
   function playItemChime(freq) {
@@ -491,7 +514,10 @@
     const s = totalSec % 60;
     return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
   }
-  let buttonsPressed = [false, false, false];
+  const BOMB_HITS_NEEDED = 10;
+  const BOMB_MIN_PLAYER_DIST = 100; // don't spawn a bomb right under someone's feet
+  let bombs = []; // at most one active at a time: [{x, y, seed}]
+  let bossHitsTaken = 0;
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
@@ -538,10 +564,34 @@
       luredState: 'none', // 'none' | 'lured' | 'eating'
       lureTarget: null,
       eatingUntil: 0,
+      defeated: false,
     };
   }
 
   const boss = makeBoss(0);
+
+  // Every open floor tile, precomputed once so spawning a bomb is just a
+  // pick from a list instead of re-scanning the whole grid each time.
+  const OPEN_FLOOR_TILES = (() => {
+    const list = [];
+    for (let y = 1; y < ROWS - 1; y++) {
+      for (let x = 1; x < COLS - 1; x++) {
+        const ch = LEVEL.grid[y][x];
+        if (ch === '.' || ch === 'T') list.push({ x, y });
+      }
+    }
+    return list;
+  })();
+
+  function spawnBomb() {
+    for (let tries = 0; tries < 30; tries++) {
+      const t = OPEN_FLOOR_TILES[Math.floor(Math.random() * OPEN_FLOOR_TILES.length)];
+      const c = tileCenter(t.x, t.y);
+      if (players.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < BOMB_MIN_PLAYER_DIST)) continue;
+      bombs.push({ x: c.x, y: c.y, seed: Math.random() * 1000 });
+      return;
+    }
+  }
 
   let crates = [];
   let fires = [];
@@ -572,8 +622,11 @@
     boss.path = []; boss.pathIndex = 0; boss.nextRepathAt = 0;
     boss.state = 'patrol'; boss.alertUntil = 0; boss.alertTargetTile = null;
     boss.frozenUntil = 0; boss.luredState = 'none'; boss.lureTarget = null; boss.eatingUntil = 0;
+    boss.defeated = false;
 
-    buttonsPressed = [false, false, false];
+    bossHitsTaken = 0;
+    bombs = [];
+    spawnBomb();
     doorUnlocked = false;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
@@ -773,16 +826,15 @@
     }
   }
 
-  // The scanner points at the nearest button that hasn't been pressed yet --
-  // once a button's done, it drops out of consideration entirely so the
-  // scanner never wastes a reading on somewhere you've already been.
+  // The scanner points at the live bomb -- there's only ever one -- so it
+  // never has to choose between multiple objectives the way earlier
+  // levels' scanners did.
   function nearestUnpressedButton(x, y) {
+    if (boss.defeated || bombs.length === 0) return null;
     let best = null, bestD = Infinity;
-    LEVEL.buttons.forEach((b, i) => {
-      if (buttonsPressed[i]) return;
-      const c = tileCenter(b.x, b.y);
-      const d = Math.hypot(x - c.x, y - c.y);
-      if (d < bestD) { bestD = d; best = c; }
+    bombs.forEach((b) => {
+      const d = Math.hypot(x - b.x, y - b.y);
+      if (d < bestD) { bestD = d; best = b; }
     });
     return best;
   }
@@ -833,20 +885,36 @@
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
       const ch = tileChar(t.x, t.y);
-      if (ch === 'B') {
-        const idx = LEVEL.buttons.findIndex((b) => b.x === t.x && b.y === t.y);
-        if (idx >= 0 && !buttonsPressed[idx]) {
-          buttonsPressed[idx] = true;
-          playButtonChime();
-          if (buttonsPressed.every(Boolean)) {
-            doorUnlocked = true;
-            playDoorUnlockChime();
-          }
-        }
-      }
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
         playWinJingle();
+      }
+    });
+  }
+
+  // Walking onto a bomb detonates it immediately -- no carrying it
+  // anywhere first. Only one bomb is ever live at a time; a fresh one
+  // spawns elsewhere as soon as the last one goes off, until the boss is
+  // out of health.
+  function updateBombs(now) {
+    if (boss.defeated) return;
+    players.forEach((p) => {
+      const t = worldToTile(p.x, p.y);
+      for (let i = bombs.length - 1; i >= 0; i--) {
+        const b = bombs[i];
+        const bt = worldToTile(b.x, b.y);
+        if (bt.x !== t.x || bt.y !== t.y) continue;
+        bombs.splice(i, 1);
+        bossHitsTaken++;
+        spawnFloatingText(b.x, b.y, 'BOOM!');
+        playBombBlast();
+        if (bossHitsTaken >= BOMB_HITS_NEEDED) {
+          boss.defeated = true;
+          doorUnlocked = true;
+          playDoorUnlockChime();
+        } else {
+          spawnBomb();
+        }
       }
     });
   }
@@ -942,6 +1010,7 @@
   }
 
   function updateBoss(now, dt) {
+    if (boss.defeated) return; // its last bomb landed -- done for good, not just frozen
     if (now < boss.frozenUntil) return; // frozen solid: no movement, no perception
 
     if (boss.luredState === 'eating') {
@@ -1023,6 +1092,7 @@
   }
 
   function updateCatch(now) {
+    if (boss.defeated) return;
     if (now < boss.frozenUntil) return;
     if (boss.luredState !== 'none') return;
     if (boss.state !== 'alert') return;
@@ -1182,11 +1252,11 @@
   }
 
   // ---- rendering ----
-  function drawTiles(g, camX, camY) {
-    const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
-    const maxTX = Math.min(COLS - 1, Math.ceil((camX + VIEW_W / 2) / TILE) + 1);
-    const minTY = Math.max(0, Math.floor((camY - VIEW_H / 2) / TILE) - 1);
-    const maxTY = Math.min(ROWS - 1, Math.ceil((camY + VIEW_H / 2) / TILE) + 1);
+  function drawTiles(g, camX, camY, now) {
+    const minTX = Math.max(0, Math.floor((camX - VISIBLE_HALF_W) / TILE) - 1);
+    const maxTX = Math.min(COLS - 1, Math.ceil((camX + VISIBLE_HALF_W) / TILE) + 1);
+    const minTY = Math.max(0, Math.floor((camY - VISIBLE_HALF_H) / TILE) - 1);
+    const maxTY = Math.min(ROWS - 1, Math.ceil((camY + VISIBLE_HALF_H) / TILE) + 1);
     for (let y = minTY; y <= maxTY; y++) {
       for (let x = minTX; x <= maxTX; x++) {
         const ch = LEVEL.grid[y][x];
@@ -1237,58 +1307,67 @@
       }
     }
 
-    LEVEL.buttons.forEach((b, i) => {
-      const c = tileCenter(b.x, b.y);
-      g.beginPath();
-      g.arc(c.x, c.y, 9, 0, Math.PI * 2);
-      g.fillStyle = buttonsPressed[i] ? '#3ddc84' : '#e0546b';
-      g.shadowColor = g.fillStyle;
-      g.shadowBlur = 10;
-      g.fill();
-      g.shadowBlur = 0;
-    });
-
     const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
     g.beginPath();
     g.arc(ex.x, ex.y, doorUnlocked ? 12 : 6, 0, Math.PI * 2);
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
 
-    drawSafeZone(g);
     drawCorpses(g);
     drawBloodSplatters(g);
     drawCrates(g);
+    drawBombs(g, now);
     drawMeatLure(g);
   }
 
-  function drawTable(g, cx, cy) {
-    g.fillStyle = '#5a4530';
-    g.fillRect(cx - 12, cy - 8, 24, 16);
-    g.strokeStyle = '#382a1c';
-    g.lineWidth = 1.5;
-    g.strokeRect(cx - 12, cy - 8, 24, 16);
-    g.fillStyle = '#4a3826';
-    [[-10, -6], [10, -6], [-10, 6], [10, 6]].forEach(([dx, dy]) => {
-      g.fillRect(cx + dx - 1.5, cy + dy - 1.5, 3, 3);
+  // The live bomb: a boxy charge with a lit, sparking fuse so it reads as
+  // "pick this up" rather than another crate.
+  function drawBombs(g, now) {
+    bombs.forEach((b) => {
+      g.save();
+      g.translate(b.x, b.y);
+      const pulse = 0.8 + Math.sin(now * 0.012 + b.seed) * 0.2;
+      const glow = g.createRadialGradient(0, 0, 2, 0, 0, 20 * pulse);
+      glow.addColorStop(0, 'rgba(255,90,40,0.5)');
+      glow.addColorStop(1, 'rgba(255,90,40,0)');
+      g.fillStyle = glow;
+      g.beginPath();
+      g.arc(0, 0, 20 * pulse, 0, Math.PI * 2);
+      g.fill();
+
+      g.fillStyle = '#2a2a2e';
+      g.beginPath();
+      g.arc(0, 2, 9, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = '#111113';
+      g.lineWidth = 1.5;
+      g.stroke();
+
+      g.strokeStyle = 'rgba(255,255,255,0.25)';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(-4, -2); g.lineTo(4, -2);
+      g.moveTo(-4, 4); g.lineTo(4, 4);
+      g.stroke();
+
+      g.strokeStyle = '#c9903a';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(0, -7);
+      g.quadraticCurveTo(4, -12, 1, -16);
+      g.stroke();
+      g.beginPath();
+      g.arc(1, -17, 2 + pulse, 0, Math.PI * 2);
+      g.fillStyle = '#ffd27a';
+      g.shadowColor = '#ff9c3d';
+      g.shadowBlur = 8;
+      g.fill();
+      g.shadowBlur = 0;
+
+      g.restore();
     });
   }
 
-  function drawSafeZone(g) {
-    const sz = LEVEL.safeZone;
-    const x0 = sz.x0 * TILE, y0 = sz.y0 * TILE;
-    const w = (sz.x1 - sz.x0 + 1) * TILE, h = (sz.y1 - sz.y0 + 1) * TILE;
-
-    g.strokeStyle = '#3ddc84';
-    g.lineWidth = 3;
-    g.shadowColor = '#3ddc84';
-    g.shadowBlur = 6;
-    g.strokeRect(x0 + 1.5, y0 + 1.5, w - 3, h - 3);
-    g.shadowBlur = 0;
-
-    const cx = x0 + w / 2, cy = y0 + h / 2;
-    drawTable(g, cx - w / 4, cy);
-    drawTable(g, cx + w / 4, cy);
-  }
 
   function drawCorpses(g) {
     (LEVEL.corpseSpawns || []).forEach((cs) => {
@@ -1411,13 +1490,21 @@
 
     trace();
     const grad = g.createRadialGradient(-boss.radius * 0.2, -boss.radius * 0.25, boss.radius * 0.2, 0, 0, boss.radius);
-    grad.addColorStop(0, '#a3321f');
-    grad.addColorStop(0.5, '#7a1c14');
-    grad.addColorStop(0.8, '#4a0f0a');
-    grad.addColorStop(1, '#200705');
+    if (boss.defeated) {
+      // burnt out and cold -- the same silhouette, drained of the fire glow
+      grad.addColorStop(0, '#4a4640');
+      grad.addColorStop(0.5, '#302d28');
+      grad.addColorStop(0.8, '#201e1a');
+      grad.addColorStop(1, '#0d0c0a');
+    } else {
+      grad.addColorStop(0, '#a3321f');
+      grad.addColorStop(0.5, '#7a1c14');
+      grad.addColorStop(0.8, '#4a0f0a');
+      grad.addColorStop(1, '#200705');
+    }
     g.fillStyle = grad;
-    g.shadowColor = '#ff6a2a';
-    g.shadowBlur = boss.radius * 0.4;
+    g.shadowColor = boss.defeated ? 'transparent' : '#ff6a2a';
+    g.shadowBlur = boss.defeated ? 0 : boss.radius * 0.4;
     g.fill();
     g.shadowBlur = 0;
 
@@ -1564,8 +1651,23 @@
 
     drawBossTentacles(g, t);
     drawBossBody(g, t);
-    drawBossFlames(g, t);
-    drawBossEye(g);
+    if (!boss.defeated) {
+      drawBossFlames(g, t);
+      drawBossEye(g);
+    } else {
+      // one last dim ember and a closed, dead eye -- the fight is over
+      g.beginPath();
+      g.arc(0, 0, boss.radius * 0.15, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,120,40,0.25)';
+      g.fill();
+      g.beginPath();
+      g.moveTo(-boss.radius * 0.22, 0);
+      g.lineTo(boss.radius * 0.22, 0);
+      g.strokeStyle = 'rgba(20,10,8,0.85)';
+      g.lineWidth = boss.radius * 0.06;
+      g.lineCap = 'round';
+      g.stroke();
+    }
 
     if (t < boss.frozenUntil) {
       const points = 14;
@@ -1673,49 +1775,54 @@
       drawLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
       drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
 
-      // head group, bobbing with the torso
+      // head group -- smaller than the torso and pushed out toward the
+      // front, so the silhouette reads as a body with a head on it rather
+      // than one circle sitting concentrically inside another (which, at
+      // this scale, just looked like an eyeball: white sclera, dark iris,
+      // catchlight).
       g.save();
-      g.translate(0, -bob);
+      g.translate(R * 0.55, -bob);
+      const headR = R * 0.5;
 
       // sealed collar ring
       g.beginPath();
-      g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
+      g.arc(0, 0, headR * 1.05, 0, Math.PI * 2);
       g.strokeStyle = '#1c1c18';
-      g.lineWidth = 3;
+      g.lineWidth = 2.5;
       g.stroke();
 
       // glassy helmet dome
-      const helmetGrad = g.createRadialGradient(-R * 0.25, -R * 0.32, 1, 0, 0, R * 0.85);
+      const helmetGrad = g.createRadialGradient(-headR * 0.3, -headR * 0.35, 1, 0, 0, headR * 1.05);
       helmetGrad.addColorStop(0, '#ffffff');
       helmetGrad.addColorStop(0.35, 'rgba(224,226,216,0.95)');
       helmetGrad.addColorStop(1, 'rgba(150,155,146,0.92)');
       g.beginPath();
-      g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
+      g.arc(0, 0, headR, 0, Math.PI * 2);
       g.fillStyle = helmetGrad;
       g.fill();
       g.strokeStyle = '#1c1c18';
       g.lineWidth = 1.5;
       g.stroke();
 
-      // big face visor, facing forward, with a wet double highlight
-      const visorGrad = g.createLinearGradient(-R * 0.4, -R * 0.4, R * 0.6, R * 0.4);
+      // a narrow faceplate slit, not a big round visor -- a flat band
+      // across the front of the helmet reads as a mask, not a pupil.
+      const visorGrad = g.createLinearGradient(0, -headR * 0.3, 0, headR * 0.3);
       visorGrad.addColorStop(0, '#1c2a33');
       visorGrad.addColorStop(1, '#03060a');
       g.beginPath();
-      g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
+      g.ellipse(headR * 0.32, 0, headR * 0.34, headR * 0.62, 0, 0, Math.PI * 2);
       g.fillStyle = visorGrad;
       g.fill();
       g.strokeStyle = 'rgba(0,0,0,0.5)';
       g.lineWidth = 1;
       g.stroke();
       g.beginPath();
-      g.ellipse(R * 0.28, -R * 0.14, R * 0.14, R * 0.08, -0.4, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(255,255,255,0.6)';
-      g.fill();
-      g.beginPath();
-      g.ellipse(R * 0.1, R * 0.12, R * 0.06, R * 0.03, -0.4, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(255,255,255,0.25)';
-      g.fill();
+      g.moveTo(headR * 0.18, -headR * 0.4);
+      g.lineTo(headR * 0.42, -headR * 0.15);
+      g.strokeStyle = 'rgba(255,255,255,0.4)';
+      g.lineWidth = headR * 0.12;
+      g.lineCap = 'round';
+      g.stroke();
 
       g.restore();
 
@@ -1724,6 +1831,7 @@
   }
 
   function punchLight(g, x, y, radius, intensity) {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius)) return;
     g.save();
     g.globalCompositeOperation = 'destination-out';
     const grad = g.createRadialGradient(x, y, 0, x, y, radius);
@@ -1737,44 +1845,36 @@
   }
 
   function buildDarknessMask(camX, camY) {
-    const worldToScreen = (wx, wy) => ({ x: wx - camX + VIEW_W / 2, y: wy - camY + VIEW_H / 2 });
+    const worldToScreen = (wx, wy) => ({ x: (wx - camX) * ZOOM + VIEW_W / 2, y: (wy - camY) * ZOOM + VIEW_H / 2 });
 
     maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
     maskCtx.globalCompositeOperation = 'source-over';
     maskCtx.fillStyle = '#000000';
     maskCtx.fillRect(0, 0, VIEW_W, VIEW_H);
 
-    const sz = LEVEL.safeZone;
-    const s0 = worldToScreen(sz.x0 * TILE, sz.y0 * TILE);
-    maskCtx.save();
-    maskCtx.globalCompositeOperation = 'destination-out';
-    maskCtx.fillStyle = 'rgba(0,0,0,1)';
-    maskCtx.fillRect(s0.x, s0.y, (sz.x1 - sz.x0 + 1) * TILE, (sz.y1 - sz.y0 + 1) * TILE);
-    maskCtx.restore();
-
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 90, 1);
-      punchLight(maskCtx, s.x, s.y, 230, 0.85);
+      punchLight(maskCtx, s.x, s.y, 90 * ZOOM, 1);
+      punchLight(maskCtx, s.x, s.y, 230 * ZOOM, 0.85);
     });
 
     fireLightPunches().forEach((fc) => {
       const s = worldToScreen(fc.x, fc.y);
-      punchLight(maskCtx, s.x, s.y, 130, 0.75);
+      punchLight(maskCtx, s.x, s.y, 130 * ZOOM, 0.75);
     });
 
     // the boss is on fire -- it lights up its own surroundings, giving
     // players a chance to spot the glow before they're close enough for
     // its own detection range to find them.
     const bs = worldToScreen(boss.x, boss.y);
-    punchLight(maskCtx, bs.x, bs.y, boss.radius * 2.2, 0.6);
+    punchLight(maskCtx, bs.x, bs.y, boss.radius * 2.2 * ZOOM, 0.6);
   }
 
   function renderViewport(index, now) {
     const p = players[index];
     const vx = index * VIEW_W;
-    const camX = clamp(p.x, VIEW_W / 2, WORLD_W - VIEW_W / 2);
-    const camY = clamp(p.y, VIEW_H / 2, WORLD_H - VIEW_H / 2);
+    const camX = clamp(p.x, VISIBLE_HALF_W, WORLD_W - VISIBLE_HALF_W);
+    const camY = clamp(p.y, VISIBLE_HALF_H, WORLD_H - VISIBLE_HALF_H);
 
     ctx.save();
     ctx.beginPath();
@@ -1784,8 +1884,10 @@
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
 
     ctx.save();
-    ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
-    drawTiles(ctx, camX, camY);
+    ctx.translate(vx + VIEW_W / 2, VIEW_H / 2);
+    ctx.scale(ZOOM, ZOOM);
+    ctx.translate(-camX, -camY);
+    drawTiles(ctx, camX, camY, now);
     drawFires(ctx, now);
     drawBoss(ctx, now);
     drawPlayers(ctx);
@@ -1947,9 +2049,9 @@
   }
 
   function updateHud() {
-    const pressedCount = buttonsPressed.filter(Boolean).length;
-    hudButtonsEl.textContent = `Buttons: ${pressedCount} / ${LEVEL.buttons.length}`;
-    hudButtonsEl.classList.toggle('done', pressedCount === LEVEL.buttons.length);
+    const bossPct = Math.round(100 * (1 - bossHitsTaken / BOMB_HITS_NEEDED));
+    hudBossEl.textContent = boss.defeated ? 'Boss: defeated' : `Boss: ${bossPct}%`;
+    hudBossEl.classList.toggle('done', boss.defeated);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
 
@@ -1967,6 +2069,7 @@
   let lastFrameTime = null;
 
   function loop(now) {
+    try {
     const dt = lastFrameTime === null ? 1 / 60 : Math.min((now - lastFrameTime) / 1000, 0.05);
     lastFrameTime = now;
 
@@ -1975,6 +2078,7 @@
       updateInputMovement(now, dt);
       updateTriggers();
       updateCrates(now);
+      updateBombs(now);
       updateBoss(now, dt);
       updateCatch(now);
       updateCutscenes(now);
@@ -1998,6 +2102,12 @@
 
     updateOverlay();
     updateHud();
+    } catch (err) {
+      // A single bad frame should never freeze the whole game -- log it
+      // and keep the loop running instead of letting the exception cancel
+      // the next requestAnimationFrame.
+      console.error('goofy-horror: frame skipped after an error', err);
+    }
     requestAnimationFrame(loop);
   }
 

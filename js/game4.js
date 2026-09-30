@@ -25,6 +25,7 @@
   const SUPER_RADAR_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
   const EAT_DURATION_MS = 3000;
+  const LURE_TIMEOUT_MS = 15000; // give up on a lure that's taking too long to reach, rather than staying revealed forever
   const CRATE_RESPAWN_MS = 30000; // half of the other levels' 60s
   const CATCH_CUTSCENE_MS = 2000;
   const SMOKE_FUSE_MS = 3000;
@@ -613,6 +614,7 @@
       frozenUntil: 0,
       luredState: 'none', // 'none' | 'lured' | 'eating'
       lureTarget: null,
+      luredSince: 0,
       eatingUntil: 0,
       walkPhase: 0,
     };
@@ -683,7 +685,7 @@
       mon.x = m.x; mon.y = m.y;
       mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
       mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
-      mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.eatingUntil = 0;
+      mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.luredSince = 0; mon.eatingUntil = 0;
     });
 
     leverPulled = false;
@@ -908,6 +910,7 @@
       monsters.forEach((m) => {
         m.luredState = 'lured';
         m.lureTarget = { x, y };
+        m.luredSince = now;
         m.path = []; m.pathIndex = 0;
       });
       spawnFloatingText(x, y, 'MEAT');
@@ -1170,6 +1173,15 @@
     }
 
     if (m.luredState === 'lured') {
+      if (now - m.luredSince > LURE_TIMEOUT_MS) {
+        // Something kept it from ever reaching the meat (an unreachable
+        // drop spot, a path that never quite resolves) -- rather than
+        // stay stuck disguise-less forever, give up on the lure like it
+        // would if it had actually finished eating.
+        m.luredState = 'none';
+        m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
+        return;
+      }
       if (now >= m.nextRepathAt) {
         m.nextRepathAt = now + REPATH_MS;
         const startTile = worldToTile(m.x, m.y);
@@ -1222,7 +1234,8 @@
     }
 
     if (m.path && m.pathIndex < m.path.length) {
-      const step = (m.state === 'alert' ? CHARGE_SPEED : PATROL_SPEED) * dt;
+      const speed = m.state === 'alert' ? CHARGE_SPEED : PATROL_SPEED;
+      const step = speed * dt;
       const target = tileTargetWithOffset(m.path[m.pathIndex]);
       const dx = target.x - m.x, dy = target.y - m.y;
       const d = Math.hypot(dx, dy);
@@ -1237,7 +1250,12 @@
         m.x += (dx / d) * step;
         m.y += (dy / d) * step;
       }
-      if (!isRevealed(m)) m.walkPhase += dt * WALK_CYCLE_SPEED * (step / dt / PLAYER_SPEED);
+      // Written as dt * (speed/PLAYER_SPEED) rather than step/dt -- step
+      // already has a dt factor baked in, and dividing back out by dt blows
+      // up to NaN on any frame where dt lands on exactly 0 (two rAF
+      // callbacks can share a timestamp), which then poisons every trig
+      // call downstream and throws inside the darkness-mask gradient.
+      if (!isRevealed(m)) m.walkPhase += dt * WALK_CYCLE_SPEED * (speed / PLAYER_SPEED);
     }
   }
 
@@ -1907,44 +1925,44 @@
     drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, color, '#e8d94a', R * 0.22);
 
     g.save();
-    g.translate(0, -bob);
+    g.translate(R * 0.55, -bob);
+    const headR = R * 0.5;
 
     g.beginPath();
-    g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
+    g.arc(0, 0, headR * 1.05, 0, Math.PI * 2);
     g.strokeStyle = '#1c1c18';
-    g.lineWidth = 3;
+    g.lineWidth = 2.5;
     g.stroke();
 
-    const helmetGrad = g.createRadialGradient(-R * 0.25, -R * 0.32, 1, 0, 0, R * 0.85);
+    const helmetGrad = g.createRadialGradient(-headR * 0.3, -headR * 0.35, 1, 0, 0, headR * 1.05);
     helmetGrad.addColorStop(0, '#ffffff');
     helmetGrad.addColorStop(0.35, 'rgba(224,226,216,0.95)');
     helmetGrad.addColorStop(1, 'rgba(150,155,146,0.92)');
     g.beginPath();
-    g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
+    g.arc(0, 0, headR, 0, Math.PI * 2);
     g.fillStyle = helmetGrad;
     g.fill();
     g.strokeStyle = '#1c1c18';
     g.lineWidth = 1.5;
     g.stroke();
 
-    const visorGrad = g.createLinearGradient(-R * 0.4, -R * 0.4, R * 0.6, R * 0.4);
+    const visorGrad = g.createLinearGradient(0, -headR * 0.3, 0, headR * 0.3);
     visorGrad.addColorStop(0, '#1c2a33');
     visorGrad.addColorStop(1, '#03060a');
     g.beginPath();
-    g.ellipse(R * 0.18, 0, R * 0.56, R * 0.44, 0, 0, Math.PI * 2);
+    g.ellipse(headR * 0.32, 0, headR * 0.34, headR * 0.62, 0, 0, Math.PI * 2);
     g.fillStyle = visorGrad;
     g.fill();
     g.strokeStyle = 'rgba(0,0,0,0.5)';
     g.lineWidth = 1;
     g.stroke();
     g.beginPath();
-    g.ellipse(R * 0.28, -R * 0.14, R * 0.14, R * 0.08, -0.4, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.6)';
-    g.fill();
-    g.beginPath();
-    g.ellipse(R * 0.1, R * 0.12, R * 0.06, R * 0.03, -0.4, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.25)';
-    g.fill();
+    g.moveTo(headR * 0.18, -headR * 0.4);
+    g.lineTo(headR * 0.42, -headR * 0.15);
+    g.strokeStyle = 'rgba(255,255,255,0.4)';
+    g.lineWidth = headR * 0.12;
+    g.lineCap = 'round';
+    g.stroke();
 
     g.restore();
   }
@@ -2081,6 +2099,7 @@
   }
 
   function punchLight(g, x, y, radius, intensity) {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius)) return;
     g.save();
     g.globalCompositeOperation = 'destination-out';
     const grad = g.createRadialGradient(x, y, 0, x, y, radius);
@@ -2317,6 +2336,7 @@
   let lastFrameTime = null;
 
   function loop(now) {
+    try {
     const dt = lastFrameTime === null ? 1 / 60 : Math.min((now - lastFrameTime) / 1000, 0.05);
     lastFrameTime = now;
 
@@ -2350,6 +2370,13 @@
 
     updateOverlay();
     updateHud();
+    } catch (err) {
+      // A single bad frame (e.g. a stray NaN slipping into a light-punch
+      // position) should never freeze the whole game -- log it and keep
+      // the loop running instead of letting the exception cancel the next
+      // requestAnimationFrame.
+      console.error('goofy-horror: frame skipped after an error', err);
+    }
     requestAnimationFrame(loop);
   }
 
