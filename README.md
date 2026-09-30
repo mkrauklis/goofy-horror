@@ -162,44 +162,55 @@ exhaustion penalty does.
 
 ## Level 5 — The Cinder Pit
 
-No facility this time — one single, giant room, big enough to get lost
-in on its own. Patches of floor have crumbled to bare dirt throughout,
-same as Levels 3 and 4, and fires burn everywhere you look — twice as
-many as it first shipped with — permanently, casting their glow across
-most of the room between them. There's no button puzzle this time either:
-find the one live bomb hidden somewhere in the room and walk it onto the
-boss's own path to detonate it, taking 10% off its health. A fresh bomb
-appears elsewhere the instant the last one goes off — closer to you as
-its health drops, so the endgame doesn't turn into a long undramatic walk
-— and it's always pinged on the minimap so hunting for it never means
-wandering blind. Land ten hits and the boss goes out for good and the
-exit unlocks. A boss bar at the top of each viewport tracks its health
-directly, on top of the numeric readout in the HUD.
+A single crumbling room, patches of floor gone to bare dirt, fires
+burning throughout — but **a third the size** of the room this level
+originally shipped with. The old version had room for the boss to patrol
+a loop and lose interest; this one doesn't, and it isn't built to. It's
+one continuous fight from the moment you walk in.
 
-Planted dead center is the boss: a Crawler, the very same creature from
-Level 1, burnt black, still on fire, and **8 times** its normal size. It
-never leaves the middle of the room, patrolling a small loop there rather
-than roaming the whole map — but it doesn't need to chase you far, since
-its own flames already light up most of the room from wherever it's
-standing, giving away roughly where it is long before you're anywhere
-near it. The camera sits noticeably further back than every other level's
-so its whole patrol loop stays in view at once. It hunts the same way the
-original Crawler does — blind until your own flashlight lands fully on it
-— and once it locks on it closes in at **2x** your speed, slower than the
-original 2.5x, but its reach and sheer bulk more than make up the
-difference.
+Planted in the middle is the boss: a Crawler, the very same creature
+from Level 1, burnt black, still on fire, and **8 times** its normal
+size — filling enough of the now-small room on its own that there's
+nowhere in it that's really far from danger. It cycles through five
+attacks at random, back to back, for as long as it's alive:
 
-Beyond just closing distance, it has a real ranged attack: once it's
-hunting you, it periodically plants itself and charges a fire nova,
-telegraphed by a growing ring around its body and a rising growl, before
-releasing a burst that catches anyone still standing in it. Both its
-chase speed and how often it can nova get worse as its health drops, and
-it holds a grudge longer too — the fight is meant to visibly escalate
-toward the last couple of bombs rather than stay flat the whole way.
-Getting caught only respawns that one player, same as every other level;
-bomb progress is never lost. A procedural boss theme (bassline, kick/hat
-pulse, and an answering lead phrase) plays throughout the fight and
-speeds up right along with it.
+1. **Spin** — bounces off the arena walls DVD-logo style at **5x** your
+   speed for 5 seconds, changing direction off every wall it hits.
+2. **Throw** — grabs three chunks of rubble and lobs them near the
+   players; each lands inside a **red circle** that's been marked on the
+   ground for a full 2.5 seconds beforehand.
+3. **Spike** — tentacles burst up out of the ground at several spots,
+   each marked with a dashed warning ring for 2.5 seconds first.
+4. **Charge** — a brief wind-up, then a straight-line dash at **3x**
+   speed toward whoever's closest, three times in a row.
+5. **Bombs** — throws ten short-fused charges out across the room at
+   once; they arm on landing and go off fast, so standing near one when
+   its fuse runs out is the same as walking into the throw attack.
+
+Its own touch still catches you at any point in that cycle, same as
+every other level's monsters — this is on top of that, not instead of
+it. Every 10th attack, though, it keels over **stunned** for 10 seconds
+instead of attacking: a ring of dazed stars over its head and a distinct
+sound cue mark the window, and it's the one moment its own contact won't
+catch you either.
+
+That stun window is the entire strategy. A bomb landed on the boss
+while it's stunned takes a real **1/10** off its health; landed at any
+other point in the cycle, the same hit only does **1/50** — walking up
+mid-charge to land a "free" hit is technically possible but not
+remotely worth it next to just waiting the ten seconds out. Up to
+**three** of your own bombs sit on the map at once (not one), and
+they're always pinged on the minimap, so the fight is about survival
+and timing, not a blind scavenger hunt. Ten stunned hits and the fire
+goes out for good.
+
+Getting caught doesn't respawn just that one player anymore, either —
+you're held down (the same catch cutscene, just not timing out into a
+respawn) until your teammate is caught too, at which point it's a full
+wipe: a retry screen, Enter to start the fight over from scratch, boss
+health and attack count included. A procedural boss theme (bassline,
+kick/hat pulse, and an answering lead phrase) plays throughout and
+speeds up as its health drops, same as before.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.

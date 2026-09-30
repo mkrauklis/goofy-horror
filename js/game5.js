@@ -27,26 +27,63 @@
   // The boss is a single Crawler (Level 1) blown up to 8x normal size and
   // set alight -- slower and heavier than the original, but its sheer bulk
   // and reach more than make up for it. Everything below is scaled off the
-  // original Crawler's numbers (radius 16, catch 20, chase 2.5x) rather
-  // than picked arbitrarily.
+  // original Crawler's numbers (radius 16, catch 20) rather than picked
+  // arbitrarily.
   const BOSS_RADIUS = 16 * 8;
-  const BOSS_CHASE_SPEED = PLAYER_SPEED * 2;
-  const BOSS_PATROL_SPEED = PLAYER_SPEED * 0.3;
   const BOSS_LURE_SPEED = PLAYER_SPEED * 0.5;
   const BOSS_CATCH_RADIUS = BOSS_RADIUS * 1.25;
-  const REPATH_MS = 500;
-  const ALERT_GRACE_MS = 3200;
+  const REPATH_MS = 500; // only used while lured by a meat item -- see the 'lured' boss state
 
-  // A ranged fire-nova is the boss's actual attack beyond just bumping into
-  // it -- it telegraphs with a growing ring (dodge-able) before it hits, on
-  // a cooldown that shrinks as its health drops so the fight visibly gets
-  // more dangerous as bombs run out instead of staying flat the whole way.
-  const NOVA_RADIUS = BOSS_RADIUS * 2.4;
-  const NOVA_TELEGRAPH_MS = 650;
-  const NOVA_ACTIVE_MS = 250;
-  const NOVA_COOLDOWN_MAX = 7000; // at full health
-  const NOVA_COOLDOWN_MIN = 3000; // near defeat
-  const FLASHLIGHT_RADIUS = 260;
+  // ---- boss attack cycle ----
+  // Five attacks fire in random order for as long as the boss is alive,
+  // each separated by a short recovery pause where it drifts toward
+  // whoever's nearest. Every ATTACKS_PER_STUN'th attack it's stunned
+  // instead -- see BOMB_DAMAGE_* for why that window matters.
+  const BOSS_IDLE_SPEED = PLAYER_SPEED * 0.35;
+  const BOSS_IDLE_MIN_MS = 700;
+  const BOSS_IDLE_MAX_MS = 1400;
+
+  // 1. Spin: bounces off the arena walls DVD-logo style at high speed.
+  const SPIN_DURATION_MS = 5000;
+  const SPIN_SPEED = PLAYER_SPEED * 5;
+
+  // 2. Throw: 3 chunks of rubble land near the players after a telegraphed
+  // delay -- a red circle marks each landing spot for the full delay.
+  const THROW_COUNT = 3;
+  const THROW_TELEGRAPH_MS = 2500;
+  const THROW_RADIUS = 52;
+
+  // 3. Spike: tentacles burst up out of the ground at telegraphed spots.
+  const SPIKE_COUNT = 4;
+  const SPIKE_TELEGRAPH_MS = 2500;
+  const SPIKE_RADIUS = 40;
+
+  // 4. Charge: three straight-line dashes at a chosen player, each with a
+  // brief wind-up (so there's *some* warning) and recovery beat.
+  const CHARGE_COUNT = 3;
+  const CHARGE_SPEED = PLAYER_SPEED * 3;
+  const CHARGE_WINDUP_MS = 350;
+  const CHARGE_MAX_DASH_MS = 1200;
+  const CHARGE_RECOVER_MS = 450;
+
+  // 5. Bombs: 10 smoke-bomb-style charges dropped across the arena that
+  // arm on landing and go off fast -- stand in the blast and you're caught.
+  const BOMBTHROW_COUNT = 10;
+  const BOMBTHROW_LAND_MS = 700; // time in the air before landing
+  const BOMBTHROW_FUSE_MS = 900; // time armed on the ground before it goes off
+  const BOMBTHROW_RADIUS = 60;
+
+  const ATTACKS_PER_STUN = 10;
+  const STUN_DURATION_MS = 10000;
+
+  // The bombs players themselves use against the boss: up to BOMB_LIVE_COUNT
+  // sit on the map at once. A hit only really counts while the boss is
+  // stunned (1/10 health) -- landing one outside that window still chips
+  // it, but only for 1/50, so the stun window is where the fight is won.
+  const BOMB_LIVE_COUNT = 3;
+  const BOMB_DAMAGE_STUNNED = 0.10;
+  const BOMB_DAMAGE_NORMAL = 0.02;
+
   const RADAR_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
@@ -172,7 +209,7 @@
     // reads as an actual boss theme rather than noise. The whole level is
     // the boss encounter (unlike earlier levels, there's no separate "safe"
     // state to score against), so it runs continuously once music is on,
-    // and its tempo climbs with bossHitsTaken so the fight escalates toward
+    // and its tempo climbs as bossHealth drops so the fight escalates toward
     // the last couple of bombs.
     bossMusicGain = audioCtx.createGain();
     bossMusicGain.gain.value = 0.55;
@@ -374,47 +411,75 @@
     osc.stop(start + 0.25);
   }
 
-  // Fires right as the nova starts charging -- a rising growl gives players
-  // an audio cue to start moving before the visual ring even shows up.
-  function playBossRoar() {
+  // Fires right as the boss commits to any of its five attacks -- a short
+  // rising growl gives players an audio cue that something's starting
+  // before the visual telegraph (if that attack even has one) catches up.
+  function playBossWindup() {
     if (!audioCtx) return;
     const start = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(70, start);
-    osc.frequency.exponentialRampToValueAtTime(180, start + NOVA_TELEGRAPH_MS / 1000);
+    osc.frequency.exponentialRampToValueAtTime(200, start + 0.4);
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(300, start);
-    filter.frequency.exponentialRampToValueAtTime(1400, start + NOVA_TELEGRAPH_MS / 1000);
+    filter.frequency.exponentialRampToValueAtTime(1400, start + 0.4);
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.3, start + 0.08);
-    gain.gain.setValueAtTime(0.3, start + NOVA_TELEGRAPH_MS / 1000 - 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + NOVA_TELEGRAPH_MS / 1000 + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.28, start + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.45);
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start(start);
-    osc.stop(start + NOVA_TELEGRAPH_MS / 1000 + 0.1);
+    osc.stop(start + 0.5);
   }
 
-  // The release itself -- plays regardless of whether it actually caught
-  // anyone, so dodging it successfully still feels like something happened.
-  function playNovaBlast() {
+  // The spike attack's own impact sound -- a sharper crack than the
+  // throw/bomb explosions, so the three telegraphed attacks stay tellable
+  // apart by ear alone.
+  function playSpikeStrike() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(500, start);
+    osc.frequency.exponentialRampToValueAtTime(60, start + 0.15);
+    gain.gain.setValueAtTime(0.3, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.2);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.25);
+  }
+
+  // The stun's own sting -- a falling, dazed wobble, distinct from every
+  // other cue since it's the one moment players should feel safe.
+  function playBossStunned() {
     if (!audioCtx) return;
     const start = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(260, start);
-    osc.frequency.exponentialRampToValueAtTime(45, start + 0.3);
-    gain.gain.setValueAtTime(0.3, start);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
+    osc.frequency.setValueAtTime(520, start);
+    osc.frequency.exponentialRampToValueAtTime(90, start + 0.6);
+    const vibrato = audioCtx.createOscillator();
+    vibrato.frequency.value = 11;
+    const vibratoGain = audioCtx.createGain();
+    vibratoGain.gain.value = 25;
+    vibrato.connect(vibratoGain);
+    vibratoGain.connect(osc.frequency);
+    vibrato.start(start);
+    vibrato.stop(start + 0.6);
+    gain.gain.setValueAtTime(0.001, start);
+    gain.gain.exponentialRampToValueAtTime(0.26, start + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.65);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start(start);
-    osc.stop(start + 0.4);
+    osc.stop(start + 0.7);
   }
 
   function playWinJingle() {
@@ -480,7 +545,7 @@
       keys[e.key] = true;
       e.preventDefault();
     }
-    if (e.key === 'Enter' && gameState === 'complete') {
+    if (e.key === 'Enter' && (gameState === 'complete' || gameState === 'wiped')) {
       resetLevel();
       gameState = 'playing';
     }
@@ -590,21 +655,19 @@
     const s = totalSec % 60;
     return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
   }
-  const BOMB_HITS_NEEDED = 10;
   const BOMB_MIN_PLAYER_DIST = 100; // don't spawn a bomb right under someone's feet, at full health
-  const BOMB_MIN_PLAYER_DIST_LOW = 55; // shrinks toward this near the boss's last bomb, so the
-                                         // endgame doesn't turn into a long, undramatic walk
-  let bombs = []; // at most one active at a time: [{x, y, seed}]
-  let bossHitsTaken = 0;
+  const BOMB_MIN_PLAYER_DIST_LOW = 55; // shrinks toward this near defeat, so the endgame doesn't
+                                         // turn into a long, undramatic walk
+  let bombs = []; // BOMB_LIVE_COUNT live at once: [{x, y, seed}]
+  let bossHealth = 1; // 1 -> 0; decremented by BOMB_DAMAGE_STUNNED/BOMB_DAMAGE_NORMAL per hit
   let doorUnlocked = false;
-  let gameState = 'playing'; // 'playing' | 'complete'
+  let gameState = 'playing'; // 'playing' | 'complete' | 'wiped'
   let catchFlash = 0;
 
-  // 1 at full health -> 0 once the last bomb lands; drives the boss's
-  // enrage (chase speed, nova cooldown), the bomb search distance, and the
-  // boss theme's tempo, so all of them escalate together as the fight goes on.
+  // Drives the boss theme's tempo and the bomb search distance, so both
+  // escalate together as the fight goes on.
   function bossHealthFrac() {
-    return clamp(1 - bossHitsTaken / BOMB_HITS_NEEDED, 0, 1);
+    return clamp(bossHealth, 0, 1);
   }
 
   function makePlayer(spawn, color) {
@@ -625,7 +688,7 @@
   // The boss: one giant, burnt Crawler. There's only ever one, so it's a
   // single object rather than an array of monsters like the other levels --
   // no need for the multi-monster machinery when there's nothing to iterate.
-  function makeBoss(patrolStartIndex) {
+  function makeBoss() {
     const tentacleCount = 9;
     const tentacleAngles = [];
     for (let i = 0; i < tentacleCount; i++) {
@@ -636,28 +699,36 @@
       y: 0,
       radius: BOSS_RADIUS,
       seed: Math.random() * 100,
-      path: [],
-      pathIndex: 0,
-      nextRepathAt: 0,
       lookDir: { x: 1, y: 0 },
       tentacleAngles,
-      state: 'patrol', // 'patrol' | 'alert'
-      alertUntil: 0,
-      alertTargetTile: null,
-      patrolIndex: patrolStartIndex,
+      defeated: false,
+
       frozenUntil: 0,
-      luredState: 'none', // 'none' | 'lured' | 'eating'
+      luredState: 'none', // 'none' | 'lured' | 'eating' -- pauses the attack cycle below
       lureTarget: null,
       eatingUntil: 0,
-      defeated: false,
-      novaState: 'idle', // 'idle' | 'charging' | 'active'
-      novaStartedAt: 0,
-      novaFiredAt: 0,
-      nextNovaAt: 0,
+      path: [], pathIndex: 0, nextRepathAt: 0, // only used while lured, via BFS to the meat item
+
+      // ---- attack cycle ----
+      // 'idle' | 'spin' | 'throw' | 'spike' | 'charge' | 'bombs' | 'stunned'
+      phase: 'idle',
+      phaseStartedAt: 0,
+      nextIdleUntil: 0,
+      attackCount: 0,
+      lastAttack: null,
+      spinAngle: 0,
+      spinDir: { x: 1, y: 0 },
+      chargeDashesLeft: 0,
+      chargeDir: { x: 1, y: 0 },
+      chargeSubPhase: 'windup', // 'windup' | 'dash' | 'recover'
+      chargeSubStartedAt: 0,
     };
   }
 
-  const boss = makeBoss(0);
+  const boss = makeBoss();
+  let telegraphs = []; // throw attack: [{x, y, firesAt}]
+  let spikeTelegraphs = []; // spike attack: [{x, y, firesAt}]
+  let bossBombs = []; // bombs attack: [{x, y, landAt, explodeAt, exploded}]
 
   // Every open floor tile, precomputed once so spawning a bomb is just a
   // pick from a list instead of re-scanning the whole grid each time.
@@ -710,14 +781,15 @@
     const m = tileCenter(spawn.x, spawn.y);
     boss.x = m.x; boss.y = m.y;
     boss.path = []; boss.pathIndex = 0; boss.nextRepathAt = 0;
-    boss.state = 'patrol'; boss.alertUntil = 0; boss.alertTargetTile = null;
     boss.frozenUntil = 0; boss.luredState = 'none'; boss.lureTarget = null; boss.eatingUntil = 0;
     boss.defeated = false;
-    boss.novaState = 'idle'; boss.nextNovaAt = 0;
+    boss.phase = 'idle'; boss.phaseStartedAt = 0; boss.nextIdleUntil = 0;
+    boss.attackCount = 0; boss.lastAttack = null; boss.spinAngle = 0;
+    telegraphs = []; spikeTelegraphs = []; bossBombs = [];
 
-    bossHitsTaken = 0;
+    bossHealth = 1;
     bombs = [];
-    spawnBomb();
+    for (let i = 0; i < BOMB_LIVE_COUNT; i++) spawnBomb();
     doorUnlocked = false;
 
     // A replay after a win leaves the sequencer stopped (see
@@ -819,11 +891,6 @@
     updatePlayerMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), now, dt);
   }
 
-  function isHidden(p) {
-    const t = worldToTile(p.x, p.y);
-    return tileChar(t.x, t.y) === 'S';
-  }
-
   function resetExploration() {
     explored = new Uint8Array(COLS * ROWS);
     exploredCtx.clearRect(0, 0, COLS, ROWS);
@@ -876,20 +943,21 @@
       ctx.fillStyle = pl.color;
       ctx.fill();
     });
-    // Always-visible (not tied to the scanner pickup) -- there's exactly one
-    // bomb live at a time and the arena is huge, so making players search it
-    // blind on top of dodging the boss was tedium, not challenge.
-    if (bombs.length && !boss.defeated) {
-      const bomb = bombs[0];
-      const bmx = mx + (bomb.x / WORLD_W) * MINIMAP_W;
-      const bmy = my + (bomb.y / WORLD_H) * mh;
+    // Always-visible (not tied to the scanner pickup) -- up to BOMB_LIVE_COUNT
+    // are live at once and the arena is big enough that making players
+    // search them blind on top of dodging the boss was tedium, not challenge.
+    if (!boss.defeated) {
       const pulse = 0.6 + 0.4 * Math.sin(now / 180);
-      ctx.beginPath();
-      ctx.arc(bmx, bmy, 2.6, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,200,80,${pulse})`;
-      ctx.shadowColor = '#ffcf6a';
-      ctx.shadowBlur = 4;
-      ctx.fill();
+      bombs.forEach((bomb) => {
+        const bmx = mx + (bomb.x / WORLD_W) * MINIMAP_W;
+        const bmy = my + (bomb.y / WORLD_H) * mh;
+        ctx.beginPath();
+        ctx.arc(bmx, bmy, 2.6, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,200,80,${pulse})`;
+        ctx.shadowColor = '#ffcf6a';
+        ctx.shadowBlur = 4;
+        ctx.fill();
+      });
     }
 
     const bx = mx + (boss.x / WORLD_W) * MINIMAP_W;
@@ -933,7 +1001,7 @@
     const barH = 10;
     const bx = vx + (VIEW_W - barW) / 2;
     const by = 12;
-    const frac = clamp(1 - bossHitsTaken / BOMB_HITS_NEEDED, 0, 1);
+    const frac = clamp(bossHealth, 0, 1);
 
     ctx.save();
     ctx.fillStyle = 'rgba(5,5,8,0.7)';
@@ -941,8 +1009,9 @@
 
     ctx.font = '11px monospace';
     ctx.textAlign = 'center';
-    ctx.fillStyle = boss.defeated ? '#8a8578' : '#e8b06a';
-    ctx.fillText(boss.defeated ? 'BOSS — DEFEATED' : 'BOSS', bx + barW / 2, by - 4);
+    ctx.fillStyle = boss.defeated ? '#8a8578' : boss.phase === 'stunned' ? '#8fd6ff' : '#e8b06a';
+    const label = boss.defeated ? 'BOSS — DEFEATED' : boss.phase === 'stunned' ? 'BOSS — STUNNED' : 'BOSS';
+    ctx.fillText(label, bx + barW / 2, by - 4);
 
     ctx.fillStyle = '#1a1a1c';
     ctx.fillRect(bx, by, barW, barH);
@@ -1050,10 +1119,11 @@
     });
   }
 
-  // Walking onto a bomb detonates it immediately -- no carrying it
-  // anywhere first. Only one bomb is ever live at a time; a fresh one
-  // spawns elsewhere as soon as the last one goes off, until the boss is
-  // out of health.
+  // Walking onto a bomb detonates it immediately -- no carrying it anywhere
+  // first. Up to BOMB_LIVE_COUNT are live at once; a fresh one spawns
+  // elsewhere the instant one goes off, until the boss is out of health.
+  // The damage it actually does depends entirely on whether the boss is
+  // stunned right now -- see BOMB_DAMAGE_STUNNED/BOMB_DAMAGE_NORMAL.
   function updateBombs(now) {
     if (boss.defeated) return;
     players.forEach((p) => {
@@ -1063,10 +1133,12 @@
         const bt = worldToTile(b.x, b.y);
         if (bt.x !== t.x || bt.y !== t.y) continue;
         bombs.splice(i, 1);
-        bossHitsTaken++;
-        spawnFloatingText(b.x, b.y, 'BOOM!');
+        const stunned = boss.phase === 'stunned';
+        const dmg = stunned ? BOMB_DAMAGE_STUNNED : BOMB_DAMAGE_NORMAL;
+        bossHealth = Math.max(0, bossHealth - dmg);
+        spawnFloatingText(b.x, b.y, stunned ? 'BOOM! -10%' : 'boom -2%');
         playBombBlast();
-        if (bossHitsTaken >= BOMB_HITS_NEEDED) {
+        if (bossHealth <= 0) {
           boss.defeated = true;
           doorUnlocked = true;
           playDoorUnlockChime();
@@ -1135,75 +1207,233 @@
     return path;
   }
 
-  function hasLineOfSight(x0, y0, x1, y1) {
-    const dist = Math.hypot(x1 - x0, y1 - y0);
-    const steps = Math.ceil(dist / (TILE / 2));
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps;
-      const t2 = worldToTile(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
-      if (tileChar(t2.x, t2.y) === '#') return false;
-    }
-    return true;
-  }
-
-  function updateDetection(now) {
-    for (const p of players) {
-      if (p.caught || isHidden(p)) continue;
-      const d = Math.hypot(p.x - boss.x, p.y - boss.y);
-      if (d <= FLASHLIGHT_RADIUS && hasLineOfSight(boss.x, boss.y, p.x, p.y)) {
-        boss.state = 'alert';
-        // Holds a grudge longer as its health drops -- losing it becomes a
-        // real reprieve instead of something that happens by default.
-        boss.alertUntil = now + ALERT_GRACE_MS * (1 + (1 - bossHealthFrac()) * 0.6);
-        boss.alertTargetTile = worldToTile(p.x, p.y);
-      }
-    }
-    if (boss.state === 'alert' && now >= boss.alertUntil) {
-      boss.state = 'patrol';
-      boss.path = [];
-      boss.pathIndex = 0;
-    }
-  }
-
-  // The boss's ranged attack: a telegraphed ring that expands from its own
-  // position and catches anyone still inside it once it fully lands. Only
-  // fires while actively hunting (state 'alert') -- a patrolling boss that
-  // hasn't spotted anyone yet has nothing to aim it at.
-  function updateBossNova(now) {
-    if (boss.state !== 'alert') { boss.novaState = 'idle'; return; }
-    const healthFrac = bossHealthFrac();
-    const cooldown = NOVA_COOLDOWN_MIN + healthFrac * (NOVA_COOLDOWN_MAX - NOVA_COOLDOWN_MIN);
-    if (boss.novaState === 'idle') {
-      if (now >= boss.nextNovaAt) {
-        boss.novaState = 'charging';
-        boss.novaStartedAt = now;
-        playBossRoar();
-      }
-    } else if (boss.novaState === 'charging') {
-      if (now - boss.novaStartedAt >= NOVA_TELEGRAPH_MS) {
-        boss.novaState = 'active';
-        boss.novaFiredAt = now;
-        playNovaBlast();
-        players.forEach((p) => {
-          if (p.caught || isHidden(p) || now < p.invulnerableUntil) return;
-          if (Math.hypot(p.x - boss.x, p.y - boss.y) < NOVA_RADIUS) triggerCaught(p, now);
-        });
-      }
-    } else if (boss.novaState === 'active') {
-      if (now - boss.novaFiredAt >= NOVA_ACTIVE_MS) {
-        boss.novaState = 'idle';
-        boss.nextNovaAt = now + cooldown;
-      }
-    }
-  }
-
   function tileTargetSimple(t) {
     return tileCenter(t.x, t.y);
   }
 
+  // A boss-sized version of the player's canStandAt -- corner-checks a box
+  // of the boss's own radius against walls, so its attacks respect the
+  // same geometry players do instead of clipping through walls.
+  function canBossStandAt(x, y) {
+    const r = boss.radius * 0.7;
+    const corners = [
+      [x - r, y - r], [x + r, y - r],
+      [x - r, y + r], [x + r, y + r],
+    ];
+    return corners.every(([cx, cy]) => {
+      const t = worldToTile(cx, cy);
+      return !isWallForPlayer(t.x, t.y);
+    });
+  }
+
+  const ALL_ATTACKS = ['spin', 'throw', 'spike', 'charge', 'bombs'];
+
+  function nearestPlayer(x, y) {
+    return players.reduce((a, b) => (Math.hypot(x - a.x, y - a.y) <= Math.hypot(x - b.x, y - b.y) ? a : b));
+  }
+
+  // Called once an attack has fully played out: every ATTACKS_PER_STUN'th
+  // one, the boss keels over stunned instead of picking the next one --
+  // that's the window a bomb hit actually costs it real health.
+  function finishAttack(now) {
+    boss.attackCount++;
+    if (boss.attackCount % ATTACKS_PER_STUN === 0) {
+      boss.phase = 'stunned';
+      boss.phaseStartedAt = now;
+      playBossStunned();
+    } else {
+      boss.phase = 'idle';
+      boss.nextIdleUntil = now + BOSS_IDLE_MIN_MS + Math.random() * (BOSS_IDLE_MAX_MS - BOSS_IDLE_MIN_MS);
+    }
+  }
+
+  function pickAttack() {
+    const choices = ALL_ATTACKS.filter((a) => a !== boss.lastAttack);
+    return choices[Math.floor(Math.random() * choices.length)];
+  }
+
+  function startAttack(kind, now) {
+    boss.phase = kind;
+    boss.phaseStartedAt = now;
+    boss.lastAttack = kind;
+
+    if (kind === 'spin') {
+      const a = Math.random() * Math.PI * 2;
+      boss.spinDir = { x: Math.cos(a), y: Math.sin(a) };
+      playBossWindup();
+    } else if (kind === 'throw') {
+      telegraphs = [];
+      for (let i = 0; i < THROW_COUNT; i++) {
+        const p = players[i % players.length];
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.random() * 50;
+        telegraphs.push({
+          x: clamp(p.x + Math.cos(a) * d, TILE, WORLD_W - TILE),
+          y: clamp(p.y + Math.sin(a) * d, TILE, WORLD_H - TILE),
+          firesAt: now + THROW_TELEGRAPH_MS,
+        });
+      }
+      playBossWindup();
+    } else if (kind === 'spike') {
+      spikeTelegraphs = [];
+      for (let i = 0; i < SPIKE_COUNT; i++) {
+        const p = players[i % players.length];
+        const a = (i / SPIKE_COUNT) * Math.PI * 2;
+        const d = 20 + (i % 2) * 40;
+        spikeTelegraphs.push({
+          x: clamp(p.x + Math.cos(a) * d, TILE, WORLD_W - TILE),
+          y: clamp(p.y + Math.sin(a) * d, TILE, WORLD_H - TILE),
+          firesAt: now + SPIKE_TELEGRAPH_MS,
+        });
+      }
+      playBossWindup();
+    } else if (kind === 'charge') {
+      boss.chargeDashesLeft = CHARGE_COUNT;
+      startChargeDash(now);
+    } else if (kind === 'bombs') {
+      bossBombs = [];
+      for (let i = 0; i < BOMBTHROW_COUNT; i++) {
+        const t = OPEN_FLOOR_TILES[Math.floor(Math.random() * OPEN_FLOOR_TILES.length)];
+        const c = tileCenter(t.x, t.y);
+        bossBombs.push({
+          x: c.x, y: c.y, exploded: false,
+          landAt: now + BOMBTHROW_LAND_MS,
+          explodeAt: now + BOMBTHROW_LAND_MS + BOMBTHROW_FUSE_MS,
+        });
+      }
+      playBossWindup();
+    }
+  }
+
+  function startChargeDash(now) {
+    const target = nearestPlayer(boss.x, boss.y);
+    const dx = target.x - boss.x, dy = target.y - boss.y;
+    const d = Math.hypot(dx, dy) || 1;
+    boss.chargeDir = { x: dx / d, y: dy / d };
+    boss.lookDir = boss.chargeDir;
+    boss.chargeSubPhase = 'windup';
+    boss.chargeSubStartedAt = now;
+  }
+
+  function updateBossIdle(now, dt) {
+    if (now >= boss.nextIdleUntil) {
+      startAttack(pickAttack(), now);
+      return;
+    }
+    // A slow, direct drift toward whoever's nearest, so the room between
+    // attacks never feels totally static -- no pathfinding, just a step
+    // that backs off on whichever axis a wall blocks.
+    const target = nearestPlayer(boss.x, boss.y);
+    const dx = target.x - boss.x, dy = target.y - boss.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1) return;
+    const step = BOSS_IDLE_SPEED * dt;
+    const nx = boss.x + (dx / d) * step, ny = boss.y + (dy / d) * step;
+    if (canBossStandAt(nx, boss.y)) boss.x = nx;
+    if (canBossStandAt(boss.x, ny)) boss.y = ny;
+    boss.lookDir = { x: dx / d, y: dy / d };
+  }
+
+  function updateBossSpin(now, dt) {
+    if (now - boss.phaseStartedAt >= SPIN_DURATION_MS) { finishAttack(now); return; }
+    boss.spinAngle += dt * 26;
+    const step = SPIN_SPEED * dt;
+    const nx = boss.x + boss.spinDir.x * step;
+    const ny = boss.y + boss.spinDir.y * step;
+    if (canBossStandAt(nx, boss.y)) boss.x = nx; else boss.spinDir.x *= -1;
+    if (canBossStandAt(boss.x, ny)) boss.y = ny; else boss.spinDir.y *= -1;
+    boss.lookDir = boss.spinDir;
+  }
+
+  // Shared resolution for the throw/spike telegraph arrays: fires whatever
+  // has reached its timer, catches anyone still standing in it, and
+  // reports back whether the whole batch is now resolved.
+  function resolveTelegraphs(arr, radius, now, onFire) {
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const tg = arr[i];
+      if (now >= tg.firesAt) {
+        onFire(tg);
+        players.forEach((p) => {
+          if (p.caught || now < p.invulnerableUntil) return;
+          if (Math.hypot(p.x - tg.x, p.y - tg.y) < radius) triggerCaught(p, now);
+        });
+        arr.splice(i, 1);
+      }
+    }
+    return arr.length === 0;
+  }
+
+  function updateBossThrow(now) {
+    const done = resolveTelegraphs(telegraphs, THROW_RADIUS, now, (tg) => {
+      spawnFloatingText(tg.x, tg.y, 'BOOM!');
+      playBombBlast();
+    });
+    if (done) finishAttack(now);
+  }
+
+  function updateBossSpike(now) {
+    const done = resolveTelegraphs(spikeTelegraphs, SPIKE_RADIUS, now, (tg) => {
+      spawnFloatingText(tg.x, tg.y, 'SPIKE!');
+      playSpikeStrike();
+    });
+    if (done) finishAttack(now);
+  }
+
+  function updateBossCharge(now, dt) {
+    const elapsed = now - boss.chargeSubStartedAt;
+    if (boss.chargeSubPhase === 'windup') {
+      if (elapsed >= CHARGE_WINDUP_MS) { boss.chargeSubPhase = 'dash'; boss.chargeSubStartedAt = now; }
+      return;
+    }
+    if (boss.chargeSubPhase === 'dash') {
+      const step = CHARGE_SPEED * dt;
+      const nx = boss.x + boss.chargeDir.x * step;
+      const ny = boss.y + boss.chargeDir.y * step;
+      const blockedX = !canBossStandAt(nx, boss.y);
+      const blockedY = !canBossStandAt(boss.x, ny);
+      if (!blockedX) boss.x = nx;
+      if (!blockedY) boss.y = ny;
+      if ((blockedX && blockedY) || elapsed >= CHARGE_MAX_DASH_MS) {
+        boss.chargeSubPhase = 'recover';
+        boss.chargeSubStartedAt = now;
+        boss.chargeDashesLeft--;
+      }
+      return;
+    }
+    if (boss.chargeSubPhase === 'recover' && elapsed >= CHARGE_RECOVER_MS) {
+      if (boss.chargeDashesLeft > 0) startChargeDash(now);
+      else finishAttack(now);
+    }
+  }
+
+  function updateBossBombsAttack(now) {
+    if (bossBombs.length && bossBombs.every((b) => b.exploded)) finishAttack(now);
+  }
+
+  // Runs every frame regardless of boss.phase -- once thrown, a bomb keeps
+  // ticking toward its own fuse even if the boss has already moved on.
+  function updateBossBombHazards(now) {
+    bossBombs.forEach((b) => {
+      if (b.exploded || now < b.explodeAt) return;
+      b.exploded = true;
+      playBombBlast();
+      players.forEach((p) => {
+        if (p.caught || now < p.invulnerableUntil) return;
+        if (Math.hypot(p.x - b.x, p.y - b.y) < BOMBTHROW_RADIUS) triggerCaught(p, now);
+      });
+    });
+  }
+
+  function updateBossStunned(now) {
+    if (now - boss.phaseStartedAt >= STUN_DURATION_MS) {
+      boss.phase = 'idle';
+      boss.nextIdleUntil = now;
+    }
+  }
+
   function updateBoss(now, dt) {
     if (boss.defeated) return; // its last bomb landed -- done for good, not just frozen
-    if (now < boss.frozenUntil) return; // frozen solid: no movement, no perception
+    if (now < boss.frozenUntil) return; // frozen solid: no movement, no attacks
 
     if (boss.luredState === 'eating') {
       if (now >= boss.eatingUntil) {
@@ -1244,63 +1474,27 @@
       return;
     }
 
-    updateDetection(now);
-    updateBossNova(now);
-
-    // Planting itself to cast the nova (rather than still chasing while it
-    // charges) is what makes the telegraph fair -- the ring's center is
-    // wherever the boss stood still, so dodging it is about reading the
-    // warning, not guessing where a moving target will be.
-    if (boss.novaState !== 'idle') return;
-
-    if (now >= boss.nextRepathAt) {
-      boss.nextRepathAt = now + REPATH_MS;
-      const startTile = worldToTile(boss.x, boss.y);
-      const goalTile = boss.state === 'alert' ? boss.alertTargetTile : LEVEL.patrolPoints[boss.patrolIndex];
-      const graph = buildMonsterGraph();
-      const path = bfsPath(graph, startTile, goalTile);
-      if (path && path.length > 1) {
-        boss.path = path.slice(1);
-        boss.pathIndex = 0;
-      } else {
-        boss.path = [];
-        boss.pathIndex = 0;
-        if (boss.state === 'patrol') {
-          boss.patrolIndex = (boss.patrolIndex + 1) % LEVEL.patrolPoints.length;
-        }
-      }
-    }
-
-    if (boss.path && boss.pathIndex < boss.path.length) {
-      // Chases noticeably faster as its health drops -- the fight
-      // visibly escalates instead of staying flat until the last bomb.
-      const enrageMult = boss.state === 'alert' ? 1 + (1 - bossHealthFrac()) * 0.4 : 1;
-      const step = (boss.state === 'alert' ? BOSS_CHASE_SPEED : BOSS_PATROL_SPEED) * enrageMult * dt;
-      const target = tileTargetSimple(boss.path[boss.pathIndex]);
-      const dx = target.x - boss.x, dy = target.y - boss.y;
-      const d = Math.hypot(dx, dy);
-      if (d > 0.001) boss.lookDir = { x: dx / d, y: dy / d };
-      if (d < step) {
-        boss.x = target.x; boss.y = target.y;
-        boss.pathIndex++;
-        if (boss.pathIndex >= boss.path.length && boss.state === 'patrol') {
-          boss.patrolIndex = (boss.patrolIndex + 1) % LEVEL.patrolPoints.length;
-        }
-      } else {
-        boss.x += (dx / d) * step;
-        boss.y += (dy / d) * step;
-      }
+    switch (boss.phase) {
+      case 'stunned': updateBossStunned(now); break;
+      case 'idle': updateBossIdle(now, dt); break;
+      case 'spin': updateBossSpin(now, dt); break;
+      case 'throw': updateBossThrow(now); break;
+      case 'spike': updateBossSpike(now); break;
+      case 'charge': updateBossCharge(now, dt); break;
+      case 'bombs': updateBossBombsAttack(now); break;
     }
   }
 
+  // Contact with the boss's own body still catches you at any point in the
+  // cycle except while it's stunned -- that window is deliberately the one
+  // safe moment to walk up and land a bomb hit instead of dodging it.
   function updateCatch(now) {
     if (boss.defeated) return;
     if (now < boss.frozenUntil) return;
     if (boss.luredState !== 'none') return;
-    if (boss.state !== 'alert') return;
+    if (boss.phase === 'stunned') return;
     players.forEach((p) => {
       if (p.caught) return;
-      if (isHidden(p)) return;
       if (now < p.invulnerableUntil) return;
       if (Math.hypot(p.x - boss.x, p.y - boss.y) < BOSS_CATCH_RADIUS) triggerCaught(p, now);
     });
@@ -1317,13 +1511,14 @@
     p.invulnerableUntil = now + CATCH_CUTSCENE_MS + 1200;
   }
 
+  // A caught player stays down (the held cutscene overlay reads as "downed")
+  // rather than auto-respawning -- nobody gets back up until the whole
+  // party is down, at which point it's a wipe and Enter starts the fight
+  // over from scratch, same as a win.
   function updateCutscenes(now) {
-    players.forEach((p) => {
-      if (p.caught && now - p.caughtAt >= CATCH_CUTSCENE_MS) {
-        respawnPlayer(p);
-        p.caught = false;
-      }
-    });
+    if (gameState === 'playing' && players.every((p) => p.caught)) {
+      gameState = 'wiped';
+    }
   }
 
   // ---- blood splatter / particles ----
@@ -1451,6 +1646,72 @@
 
   function fireLightPunches() {
     return fires.map((f) => tileCenter(f.x, f.y));
+  }
+
+  // The throw attack's red circles and the spike attack's dashed rings --
+  // deliberately different styles so the two are tellable apart at a
+  // glance, not just by which one happens to be active.
+  function drawAttackTelegraphs(g, now) {
+    telegraphs.forEach((tg) => {
+      const remain = clamp((tg.firesAt - now) / THROW_TELEGRAPH_MS, 0, 1);
+      const pulse = 0.5 + 0.5 * Math.sin(now / 90);
+      g.beginPath();
+      g.arc(tg.x, tg.y, THROW_RADIUS, 0, Math.PI * 2);
+      g.fillStyle = `rgba(200,20,20,${0.15 + (1 - remain) * 0.25})`;
+      g.fill();
+      g.strokeStyle = `rgba(255,40,40,${0.6 * pulse})`;
+      g.lineWidth = 3;
+      g.stroke();
+    });
+    spikeTelegraphs.forEach((tg) => {
+      const pulse = 0.5 + 0.5 * Math.sin(now / 70);
+      g.save();
+      g.setLineDash([6, 5]);
+      g.beginPath();
+      g.arc(tg.x, tg.y, SPIKE_RADIUS, 0, Math.PI * 2);
+      g.strokeStyle = `rgba(255,140,30,${0.75 * pulse})`;
+      g.lineWidth = 3;
+      g.stroke();
+      g.restore();
+      g.beginPath();
+      g.arc(tg.x, tg.y, 3, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,140,30,0.6)';
+      g.fill();
+    });
+  }
+
+  // Bomb-throw hazards: a small falling shadow that grows into a lit fuse
+  // once it lands, with a last-moment blast-radius outline as a final cue.
+  function drawBossBombHazards(g, now) {
+    bossBombs.forEach((b) => {
+      if (b.exploded) return;
+      if (now < b.landAt) {
+        const t = clamp(1 - (b.landAt - now) / BOMBTHROW_LAND_MS, 0, 1);
+        g.beginPath();
+        g.arc(b.x, b.y, 5 + t * 6, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(255,160,60,0.5)';
+        g.fill();
+      } else {
+        const fuseT = clamp((now - b.landAt) / BOMBTHROW_FUSE_MS, 0, 1);
+        const pulseRate = 60 - fuseT * 40;
+        const pulse = 0.5 + 0.5 * Math.sin(now / pulseRate);
+        g.beginPath();
+        g.arc(b.x, b.y, 10, 0, Math.PI * 2);
+        g.fillStyle = '#201512';
+        g.fill();
+        g.beginPath();
+        g.arc(b.x, b.y, 3 + pulse * 3, 0, Math.PI * 2);
+        g.fillStyle = `rgba(255,${180 - fuseT * 120},40,0.9)`;
+        g.fill();
+        if (fuseT > 0.7) {
+          g.beginPath();
+          g.arc(b.x, b.y, BOMBTHROW_RADIUS * fuseT, 0, Math.PI * 2);
+          g.strokeStyle = `rgba(255,60,20,${(fuseT - 0.7) * 2})`;
+          g.lineWidth = 2;
+          g.stroke();
+        }
+      }
+    });
   }
 
   // ---- rendering ----
@@ -1850,11 +2111,14 @@
   function drawBoss(g, t) {
     g.save();
     g.translate(boss.x, boss.y);
+    // Visibly spinning (rather than just relocating fast) is what sells the
+    // DVD-logo bounce as an attack in progress and not just fast pathing.
+    if (boss.phase === 'spin') g.rotate(boss.spinAngle);
 
     drawBossTentacles(g, t);
     drawBossBody(g, t);
     if (!boss.defeated) {
-      drawBossFlames(g, t);
+      if (boss.phase !== 'stunned') drawBossFlames(g, t);
       drawBossEye(g);
     } else {
       // one last dim ember and a closed, dead eye -- the fight is over
@@ -1888,26 +2152,30 @@
       g.stroke();
     }
 
-    if (boss.novaState === 'charging') {
-      // Ring grows from the boss's own radius out to the strike radius over
-      // the telegraph window -- its size at any moment IS the countdown.
-      const progress = clamp((t - boss.novaStartedAt) / NOVA_TELEGRAPH_MS, 0, 1);
-      const r = boss.radius + (NOVA_RADIUS - boss.radius) * progress;
-      const pulse = 0.6 + 0.4 * Math.sin(t / 55);
-      g.beginPath();
-      g.arc(0, 0, r, 0, Math.PI * 2);
-      g.strokeStyle = `rgba(255,90,30,${0.55 * pulse})`;
-      g.lineWidth = 5;
-      g.stroke();
-    } else if (boss.novaState === 'active') {
-      const progress = clamp((t - boss.novaFiredAt) / NOVA_ACTIVE_MS, 0, 1);
-      g.beginPath();
-      g.arc(0, 0, NOVA_RADIUS, 0, Math.PI * 2);
-      g.fillStyle = `rgba(255,140,50,${0.35 * (1 - progress)})`;
-      g.fill();
-      g.strokeStyle = `rgba(255,225,160,${0.85 * (1 - progress)})`;
-      g.lineWidth = 3;
-      g.stroke();
+    if (boss.phase === 'stunned') {
+      // A small ring of dazed stars orbiting overhead -- the clearest
+      // possible signal that this is the safe window to walk up and land
+      // a bomb hit, as opposed to every other phase.
+      const starCount = 5;
+      for (let i = 0; i < starCount; i++) {
+        const a = (i / starCount) * Math.PI * 2 + t * 0.003;
+        const sx = Math.cos(a) * boss.radius * 0.7;
+        const sy = -boss.radius * 1.15 + Math.sin(a) * boss.radius * 0.18;
+        g.save();
+        g.translate(sx, sy);
+        g.rotate(a * 2);
+        g.beginPath();
+        for (let k = 0; k < 5; k++) {
+          const sa = (k / 5) * Math.PI * 2 - Math.PI / 2;
+          const rr = k % 2 === 0 ? 7 : 3;
+          const px = Math.cos(sa) * rr, py = Math.sin(sa) * rr;
+          if (k === 0) g.moveTo(px, py); else g.lineTo(px, py);
+        }
+        g.closePath();
+        g.fillStyle = '#8fd6ff';
+        g.fill();
+        g.restore();
+      }
     }
 
     g.restore();
@@ -2113,6 +2381,8 @@
     ctx.translate(-camX, -camY);
     drawTiles(ctx, camX, camY, now);
     drawFires(ctx, now);
+    drawAttackTelegraphs(ctx, now);
+    drawBossBombHazards(ctx, now);
     drawBoss(ctx, now);
     drawPlayers(ctx);
     drawParticles(ctx);
@@ -2268,14 +2538,17 @@
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
       messageEl.innerHTML = 'THE FIRE GOES OUT &mdash; press Enter to replay, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
+    } else if (gameState === 'wiped') {
+      messageEl.style.display = 'flex';
+      messageEl.innerHTML = 'BOTH OF YOU ARE DOWN &mdash; press Enter to try again, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
     } else {
       messageEl.style.display = 'none';
     }
   }
 
   function updateHud() {
-    const bossPct = Math.round(100 * (1 - bossHitsTaken / BOMB_HITS_NEEDED));
-    hudBossEl.textContent = boss.defeated ? 'Boss: defeated' : `Boss: ${bossPct}%`;
+    const bossPct = Math.round(100 * clamp(bossHealth, 0, 1));
+    hudBossEl.textContent = boss.defeated ? 'Boss: defeated' : boss.phase === 'stunned' ? `Boss: ${bossPct}% (stunned)` : `Boss: ${bossPct}%`;
     hudBossEl.classList.toggle('done', boss.defeated);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
@@ -2305,6 +2578,7 @@
       updateCrates(now);
       updateBombs(now);
       updateBoss(now, dt);
+      updateBossBombHazards(now);
       updateCatch(now);
       updateCutscenes(now);
       updateExploration();
