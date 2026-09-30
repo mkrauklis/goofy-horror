@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Goofy Horror &mdash; Level 2</title>
+<title>Goofy Horror &mdash; Level 6</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -12,7 +12,7 @@
   <span>&middot;</span>
   <a href="level1.html">Level 1</a>
   <span>&middot;</span>
-  <a href="level2.html" class="active">Level 2</a>
+  <a href="level2.html">Level 2</a>
   <span>&middot;</span>
   <a href="level3.html">Level 3</a>
   <span>&middot;</span>
@@ -20,19 +20,19 @@
   <span>&middot;</span>
   <a href="level5.html">Level 5</a>
   <span>&middot;</span>
-  <a href="level6.html">Level 6</a>
+  <a href="level6.html" class="active">Level 6</a>
   <span>&middot;</span>
   <a href="monsterpedia.html">Monsterpedia</a>
 </nav>
 
 <header class="hero">
-  <h1>Level 2 &mdash; Blackout</h1>
-  <p class="objective">Find the <strong>fuse</strong> and seat it in the one real fuse box &mdash; hold still whenever a creature's close, since they hunt by sound alone.</p>
+  <h1>Level 6 &mdash; The Undercroft</h1>
+  <p class="objective">Find and throw all <strong>3 levers</strong> to unlock the exit &mdash; three armored knights patrol the stone halls, blind until your flashlight lands on one.</p>
 </header>
 
 <div class="wrap">
   <div id="hud">
-    <span id="hud-fuse">Fuse: on the ground</span>
+    <span id="hud-buttons">Levers: 0 / 3</span>
     <span id="hud-door">Door: locked</span>
     <span id="hud-timer">Time: 0:00.0</span>
     <span id="hud-best">Best: --:--</span>
@@ -47,19 +47,20 @@
 
 <div class="wrap">
   <p class="level-description">
-    The power's still out, but this time there's no button panel &mdash;
-    find the fuse and seat it in the one fuse box in the facility that's
-    actually wired to the door (follow the wire once you spot it). Two
-    creatures patrol the dark slowly and can't find you at all if you hold
-    still &mdash; but move while one is close and it charges at eight times
-    your speed. Item crates can turn up a radar, a scanner pointing at the
-    fuse (or the real box once it's picked up), a distracting slab of meat,
-    or a CO2 blast that freezes a creature solid.
+    The floor gave way under Level 5's boss and dropped you both into
+    whatever this place is &mdash; cobblestone halls lit by wall torches,
+    a stone statue standing watch over every crossing. Three of the same
+    blind, wall-crawling creature from Level 1 are down here too, except
+    someone's put them in armor and handed each one a sword: slower than
+    the original (1.2x your speed instead of 2.5x), but there are three of
+    them, and they'll still catch you if your own flashlight lands on one
+    first. Three levers, each trailing a green wire toward the door, need
+    to be thrown before it opens &mdash; find all three and get out.
   </p>
 </div>
 
 <script src="js/story.js"></script>
-<script src="levels/level2/level.js"></script>
-<script src="js/game2.js"></script>
+<script src="levels/level6/level.js"></script>
+<script src="js/game6.js"></script>
 </body>
 </html>

@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<canvas id="lobby-bg"></canvas>
 <nav class="level-nav">
   <a href="index.html" class="active">Menu</a>
   <span>&middot;</span>
@@ -19,6 +20,8 @@
   <a href="level4.html">Level 4</a>
   <span>&middot;</span>
   <a href="level5.html">Level 5</a>
+  <span>&middot;</span>
+  <a href="level6.html">Level 6</a>
   <span>&middot;</span>
   <a href="monsterpedia.html">Monsterpedia</a>
 </nav>
@@ -33,35 +36,51 @@
 </header>
 
 <div class="wrap">
+  <div id="story-cta" class="story-cta">
+    <a id="story-continue" class="story-continue-btn" href="level1.html">Start the Story</a>
+    <button id="story-reset" class="story-reset-btn" type="button">Reset progress</button>
+  </div>
   <div class="menu-list">
-    <a class="menu-item panel" href="level1.html">
-      <h2>Level 1 &mdash; The Facility <span class="best-time" data-level="level1"></span></h2>
+    <a class="menu-item panel" href="level1.html" data-chapter="1">
+      <h2>Chapter 1 &mdash; The Facility <span class="best-time" data-level="level1"></span></h2>
       <p>A huge, pitch-black facility. Two identical wall-crawling
         creatures patrol independently &mdash; find all 3 buttons to
         unlock the exit.</p>
+      <p class="lock-note"></p>
     </a>
-    <a class="menu-item panel" href="level2.html">
-      <h2>Level 2 &mdash; Blackout <span class="best-time" data-level="level2"></span></h2>
+    <a class="menu-item panel" href="level2.html" data-chapter="2">
+      <h2>Chapter 2 &mdash; Blackout <span class="best-time" data-level="level2"></span></h2>
       <p>A sprawling lattice of corridors. Two creatures hunt by sound, not
         sight &mdash; find the fuse and the one real fuse box wired to the
         door.</p>
+      <p class="lock-note"></p>
     </a>
-    <a class="menu-item panel" href="level3.html">
-      <h2>Level 3 &mdash; Sinkhole <span class="best-time" data-level="level3"></span></h2>
+    <a class="menu-item panel" href="level3.html" data-chapter="3">
+      <h2>Chapter 3 &mdash; Sinkhole <span class="best-time" data-level="level3"></span></h2>
       <p>The floor is crumbling to dirt. A slow caterpillar creature is
         harmless on its own &mdash; until someone steps on a meat vine.</p>
+      <p class="lock-note"></p>
     </a>
-    <a class="menu-item panel" href="level4.html">
-      <h2>Level 4 &mdash; Overgrown <span class="best-time" data-level="level4"></span></h2>
+    <a class="menu-item panel" href="level4.html" data-chapter="4">
+      <h2>Chapter 4 &mdash; Overgrown <span class="best-time" data-level="level4"></span></h2>
       <p>Same facility, gone to seed, fires flickering in the dark. Power
         the train with the electrical room's lever &mdash; and watch out
         for the thing that looks like your partner.</p>
+      <p class="lock-note"></p>
     </a>
-    <a class="menu-item panel" href="level5.html">
-      <h2>Level 5 &mdash; The Cinder Pit <span class="best-time" data-level="level5"></span></h2>
+    <a class="menu-item panel" href="level5.html" data-chapter="5">
+      <h2>Chapter 5 &mdash; The Cinder Pit <span class="best-time" data-level="level5"></span></h2>
       <p>A small room on fire from end to end, dominated by a burnt giant
         cycling through five attacks. Survive until it stuns itself, then
         make your bombs count.</p>
+      <p class="lock-note"></p>
+    </a>
+    <a class="menu-item panel" href="level6.html" data-chapter="6">
+      <h2>Chapter 6 &mdash; The Undercroft <span class="best-time" data-level="level6"></span></h2>
+      <p>The floor gave way beneath the boss fight. Cobblestone halls, a
+        statue over every crossing, three armored knights &mdash; find and
+        throw all 3 levers to get out for good.</p>
+      <p class="lock-note"></p>
     </a>
     <a class="menu-item panel monsterpedia-item" href="monsterpedia.html">
       <h2>Monsterpedia</h2>
@@ -72,6 +91,7 @@
   <p class="hint">Player 1 (orange): W A S D &nbsp;&middot;&nbsp; Player 2 (green): Arrow keys &nbsp;&middot;&nbsp; local split-screen co-op, sound plays after your first key press in a level</p>
 </div>
 
+<script src="js/story.js"></script>
 <script>
   // Best times are saved per-level by each game's own script under
   // goofy-horror-best-levelN; read-only here, just for display.
@@ -83,6 +103,169 @@
     const s = totalSec % 60;
     el.textContent = `— best ${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
   });
+
+  // Story mode: chapters unlock in order, saved in one localStorage record
+  // (see js/story.js) rather than each level tracking its own "beaten" flag.
+  function renderStoryState() {
+    const story = window.GoofyStory;
+    if (!story) return;
+
+    document.querySelectorAll('.menu-item[data-chapter]').forEach((card) => {
+      const n = parseInt(card.dataset.chapter, 10);
+      const unlocked = story.isUnlocked(n);
+      const completed = story.isCompleted(n);
+      card.classList.toggle('locked', !unlocked);
+      card.classList.toggle('story-done', completed);
+      const note = card.querySelector('.lock-note');
+      if (note) {
+        note.textContent = !unlocked ? `Locked — finish Chapter ${n - 1} first` : completed ? 'Completed' : '';
+      }
+    });
+
+    const continueBtn = document.getElementById('story-continue');
+    const next = story.nextLevel();
+    continueBtn.href = `level${next}.html`;
+    continueBtn.textContent = story.isStoryComplete()
+      ? 'Replay the Finale'
+      : next === 1 ? 'Start the Story' : `Continue — Chapter ${next}`;
+  }
+  renderStoryState();
+
+  document.getElementById('story-reset').addEventListener('click', () => {
+    if (!window.GoofyStory) return;
+    if (!confirm('Reset story progress? This clears which chapters are unlocked (best times are kept).')) return;
+    window.GoofyStory.resetProgress();
+    renderStoryState();
+  });
+</script>
+
+<script>
+  // A tiny, dim facility with a handful of creatures wandering it, sitting
+  // fixed behind the menu instead of a flat color -- a preview of the game
+  // rather than a static backdrop. Deliberately simple silhouettes (not a
+  // reproduction of every level's exact monster) so this stays cheap to
+  // draw and reads fine at a glance behind the cards.
+  (function () {
+    const canvas = document.getElementById('lobby-bg');
+    const ctx = canvas.getContext('2d');
+    const TILE = 26;
+    let cols, rows;
+    let grid = [];
+
+    function buildFacility() {
+      cols = Math.ceil(window.innerWidth / TILE) + 2;
+      rows = Math.ceil(window.innerHeight / TILE) + 2;
+      grid = [];
+      // A simple room-and-corridor lattice: walls on a coarse spacing,
+      // corridors punched through at regular gaps -- not a real level,
+      // just enough structure to read as "a facility" behind the blur.
+      for (let y = 0; y < rows; y++) {
+        const row = [];
+        for (let x = 0; x < cols; x++) {
+          const onWallCol = x % 7 === 0;
+          const onWallRow = y % 5 === 0;
+          const isDoorGap = (x % 7 === 3) || (y % 5 === 2);
+          row.push((onWallCol || onWallRow) && !isDoorGap ? 1 : 0);
+        }
+        grid.push(row);
+      }
+    }
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      buildFacility();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function canStand(px, py) {
+      const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+      if (ty < 0 || ty >= rows || tx < 0 || tx >= cols) return false;
+      return grid[ty][tx] === 0;
+    }
+
+    const PALETTES = [
+      { body: '#7a1f2f', eye: '#ffcf6a' },
+      { body: '#1f4a3a', eye: '#6affc0' },
+      { body: '#3a2f6a', eye: '#b6a0ff' },
+      { body: '#5a3a1a', eye: '#ffb43d' },
+      { body: '#2f4a6a', eye: '#7ac9e8' },
+      { body: '#4a1a3a', eye: '#ff7ab0' },
+    ];
+
+    function spawnCreature(i) {
+      let x, y;
+      for (let tries = 0; tries < 50; tries++) {
+        x = Math.random() * window.innerWidth;
+        y = Math.random() * window.innerHeight;
+        if (canStand(x, y)) break;
+      }
+      const a = Math.random() * Math.PI * 2;
+      return {
+        x, y, angle: a, speed: 16 + Math.random() * 14,
+        radius: 9 + Math.random() * 5,
+        palette: PALETTES[i % PALETTES.length],
+        turnAt: 0, seed: Math.random() * 1000,
+      };
+    }
+
+    const creatures = Array.from({ length: 7 }, (_, i) => spawnCreature(i));
+
+    function updateCreature(c, now, dt) {
+      if (now > c.turnAt) {
+        c.angle += (Math.random() - 0.5) * 2.4;
+        c.turnAt = now + 800 + Math.random() * 1600;
+      }
+      const dx = Math.cos(c.angle) * c.speed * dt;
+      const dy = Math.sin(c.angle) * c.speed * dt;
+      if (canStand(c.x + dx, c.y)) c.x += dx; else c.angle = Math.PI - c.angle;
+      if (canStand(c.x, c.y + dy)) c.y += dy; else c.angle = -c.angle;
+    }
+
+    function drawFacility() {
+      ctx.fillStyle = '#120c18';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(58,42,68,0.35)';
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          if (grid[y][x]) ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+        }
+      }
+    }
+
+    function drawCreature(g, c, now) {
+      g.save();
+      g.translate(c.x, c.y);
+      g.rotate(c.angle);
+      const wob = Math.sin(now * 0.006 + c.seed) * c.radius * 0.12;
+      g.beginPath();
+      g.ellipse(0, wob, c.radius, c.radius * 0.82, 0, 0, Math.PI * 2);
+      g.fillStyle = c.palette.body;
+      g.globalAlpha = 0.55;
+      g.fill();
+      g.globalAlpha = 1;
+      g.beginPath();
+      g.arc(c.radius * 0.45, wob, c.radius * 0.22, 0, Math.PI * 2);
+      g.fillStyle = c.palette.eye;
+      g.shadowColor = c.palette.eye;
+      g.shadowBlur = 6;
+      g.fill();
+      g.shadowBlur = 0;
+      g.restore();
+    }
+
+    let last = null;
+    function frame(now) {
+      if (last === null) last = now;
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      drawFacility();
+      creatures.forEach((c) => { updateCreature(c, now, dt); drawCreature(ctx, c, now); });
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
 </script>
 </body>
 </html>

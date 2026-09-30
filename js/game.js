@@ -1,4 +1,15 @@
 (function () {
+  // Story mode gate: direct URL access can't skip ahead even though the
+  // menu already hides the link for a locked chapter.
+  if (window.GoofyStory && !window.GoofyStory.isUnlocked(1)) {
+    const msg = document.getElementById('game-message');
+    if (msg) {
+      msg.style.display = 'flex';
+      msg.innerHTML = 'LOCKED &mdash; finish the previous chapter first. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
+    }
+    return;
+  }
+
   const LEVEL = window.LEVEL1;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
@@ -827,6 +838,8 @@
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
         playWinJingle();
+        if (window.GoofyStory) window.GoofyStory.completeLevel(1);
+        setTimeout(() => { window.location.href = 'level2.html'; }, 650);
       }
     });
   }
@@ -1859,7 +1872,7 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'FACILITY CLEARED &mdash; press Enter to replay, or <a href="level2.html" style="color:var(--accent)">continue to Level 2 &rarr;</a>';
+      messageEl.innerHTML = 'FACILITY CLEARED &mdash; warping to Level 2&hellip;';
     } else {
       messageEl.style.display = 'none';
     }
@@ -1878,6 +1891,7 @@
         bestMs = elapsedMs;
         localStorage.setItem(BEST_TIME_KEY, String(bestMs));
       }
+      if (window.GoofyStory) window.GoofyStory.completeLevel(1);
     }
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;

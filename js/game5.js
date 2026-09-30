@@ -1,4 +1,15 @@
 (function () {
+  // Story mode gate: direct URL access can't skip ahead even though the
+  // menu already hides the link for a locked chapter.
+  if (window.GoofyStory && !window.GoofyStory.isUnlocked(5)) {
+    const msg = document.getElementById('game-message');
+    if (msg) {
+      msg.style.display = 'flex';
+      msg.innerHTML = 'LOCKED &mdash; finish the previous chapter first. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
+    }
+    return;
+  }
+
   const LEVEL = window.LEVEL5;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
@@ -89,12 +100,14 @@
   const STUN_DURATION_MS = 10000;
 
   // The bombs players themselves use against the boss: up to BOMB_LIVE_COUNT
-  // sit on the map at once. A hit only really counts while the boss is
-  // stunned (1/10 health) -- landing one outside that window still chips
-  // it, but only for 1/50, so the stun window is where the fight is won.
+  // sit on the map at once. Health is a flat point count now, not a
+  // percentage -- a hit only really counts while the boss is stunned (5
+  // points); landing one outside that window still chips it, but only 1
+  // point, so the stun window is still where the fight is actually won.
   const BOMB_LIVE_COUNT = 3;
-  const BOMB_DAMAGE_STUNNED = 0.10;
-  const BOMB_DAMAGE_NORMAL = 0.02;
+  const BOSS_MAX_HEALTH = 25;
+  const BOMB_DAMAGE_STUNNED = 5;
+  const BOMB_DAMAGE_NORMAL = 1;
 
   const RADAR_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
@@ -543,6 +556,32 @@
     [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
   }
 
+  // A long, grinding low rumble for the floor giving way -- deliberately as
+  // long as COLLAPSE_DURATION_MS itself so it never runs dry mid-cutscene.
+  function playCollapseRumble() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const dur = COLLAPSE_DURATION_MS / 1000;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(55, start);
+    osc.frequency.exponentialRampToValueAtTime(18, start + dur);
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(500, start);
+    filter.frequency.exponentialRampToValueAtTime(80, start + dur);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.4, start + 0.4);
+    gain.gain.setValueAtTime(0.4, start + dur - 0.6);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + dur + 0.1);
+  }
+
   function updateAmbientTension() {
     if (!audioCtx) return;
     const minDist = Math.min(...players.map((p) => Math.hypot(p.x - boss.x, p.y - boss.y)));
@@ -716,15 +755,19 @@
   const BOMB_MIN_PLAYER_DIST_LOW = 55; // shrinks toward this near defeat, so the endgame doesn't
                                          // turn into a long, undramatic walk
   let bombs = []; // BOMB_LIVE_COUNT live at once: [{x, y, seed}]
-  let bossHealth = 1; // 1 -> 0; decremented by BOMB_DAMAGE_STUNNED/BOMB_DAMAGE_NORMAL per hit
+  let bossHealth = BOSS_MAX_HEALTH; // BOSS_MAX_HEALTH -> 0 points; see BOMB_DAMAGE_STUNNED/BOMB_DAMAGE_NORMAL
   let doorUnlocked = false;
-  let gameState = 'playing'; // 'playing' | 'complete' | 'wiped'
+  let gameState = 'playing'; // 'playing' | 'collapsing' | 'complete' | 'wiped'
   let catchFlash = 0;
+  const COLLAPSE_DURATION_MS = 3600; // ground giving way before the warp to level 6
+  let collapseStartedAt = 0;
+  let collapseFinished = false;
 
   // Drives the boss theme's tempo and the bomb search distance, so both
-  // escalate together as the fight goes on.
+  // escalate together as the fight goes on. Everything else deals in raw
+  // HP points; this is the one place that needs a 0..1 fraction instead.
   function bossHealthFrac() {
-    return clamp(bossHealth, 0, 1);
+    return clamp(bossHealth / BOSS_MAX_HEALTH, 0, 1);
   }
 
   function makePlayer(spawn, color) {
@@ -850,7 +893,7 @@
     boss.blinkSubPhase = 'warning'; boss.blinkStrikesLeft = 0; boss.lastStrikeAt = 0; boss.lastStrikeReaches = null;
     telegraphs = []; spikeTelegraphs = []; bossBombs = [];
 
-    bossHealth = 1;
+    bossHealth = BOSS_MAX_HEALTH;
     bombs = [];
     for (let i = 0; i < BOMB_LIVE_COUNT; i++) spawnBomb();
     doorUnlocked = false;
@@ -1072,7 +1115,7 @@
     const barH = 10;
     const bx = vx + (VIEW_W - barW) / 2;
     const by = 12;
-    const frac = clamp(bossHealth, 0, 1);
+    const frac = bossHealthFrac();
 
     ctx.save();
     ctx.fillStyle = 'rgba(5,5,8,0.7)';
@@ -1081,7 +1124,8 @@
     ctx.font = '11px monospace';
     ctx.textAlign = 'center';
     ctx.fillStyle = boss.defeated ? '#8a8578' : boss.phase === 'stunned' ? '#8fd6ff' : '#e8b06a';
-    const label = boss.defeated ? 'BOSS — DEFEATED' : boss.phase === 'stunned' ? 'BOSS — STUNNED' : 'BOSS';
+    const label = boss.defeated ? 'BOSS — DEFEATED' : boss.phase === 'stunned'
+      ? `BOSS — STUNNED (${bossHealth}/${BOSS_MAX_HEALTH})` : `BOSS (${bossHealth}/${BOSS_MAX_HEALTH})`;
     ctx.fillText(label, bx + barW / 2, by - 4);
 
     ctx.fillStyle = '#1a1a1c';
@@ -1218,12 +1262,14 @@
         const stunned = boss.phase === 'stunned';
         const dmg = stunned ? BOMB_DAMAGE_STUNNED : BOMB_DAMAGE_NORMAL;
         bossHealth = Math.max(0, bossHealth - dmg);
-        spawnFloatingText(b.x, b.y, stunned ? 'BOOM! -10%' : 'boom -2%');
+        spawnFloatingText(b.x, b.y, stunned ? `BOOM! -${BOMB_DAMAGE_STUNNED}` : `boom -${BOMB_DAMAGE_NORMAL}`);
         playBombBlast();
         if (bossHealth <= 0) {
           boss.defeated = true;
           doorUnlocked = true;
-          playDoorUnlockChime();
+          gameState = 'collapsing';
+          collapseStartedAt = now;
+          playCollapseRumble();
         } else {
           spawnBomb();
         }
@@ -2764,8 +2810,8 @@
   }
 
   function updateHud() {
-    const bossPct = Math.round(100 * clamp(bossHealth, 0, 1));
-    hudBossEl.textContent = boss.defeated ? 'Boss: defeated' : boss.phase === 'stunned' ? `Boss: ${bossPct}% (stunned)` : `Boss: ${bossPct}%`;
+    const hp = `${bossHealth}/${BOSS_MAX_HEALTH}`;
+    hudBossEl.textContent = boss.defeated ? 'Boss: defeated' : boss.phase === 'stunned' ? `Boss: ${hp} HP (stunned)` : `Boss: ${hp} HP`;
     hudBossEl.classList.toggle('done', boss.defeated);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
@@ -2779,6 +2825,23 @@
     }
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
+  }
+
+  // Runs while the floor is giving way: records the win the instant the
+  // cutscene is over (not before -- elapsedMs is already frozen the moment
+  // gameState left 'playing') and warps to the next chapter.
+  function updateCollapse(now) {
+    if (collapseFinished || now - collapseStartedAt < COLLAPSE_DURATION_MS) return;
+    collapseFinished = true;
+    if (!bestRecorded) {
+      bestRecorded = true;
+      if (bestMs === null || elapsedMs < bestMs) {
+        bestMs = elapsedMs;
+        localStorage.setItem(BEST_TIME_KEY, String(bestMs));
+      }
+    }
+    if (window.GoofyStory) window.GoofyStory.completeLevel(5);
+    window.location.href = 'level6.html';
   }
 
   let lastFrameTime = null;
@@ -2801,13 +2864,31 @@
       updateExploration();
       updateAmbientTension();
     }
+    if (gameState === 'collapsing') updateCollapse(now);
     updateParticles(dt);
     updateFloatingTexts(dt);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const collapseT = gameState === 'collapsing' ? clamp((now - collapseStartedAt) / COLLAPSE_DURATION_MS, 0, 1) : 0;
+    if (collapseT > 0) {
+      const shakeMag = 14 * collapseT;
+      ctx.save();
+      ctx.translate((Math.random() - 0.5) * shakeMag, (Math.random() - 0.5) * shakeMag);
+    }
     renderViewport(0, now);
     renderViewport(1, now);
     drawDivider();
+    if (collapseT > 0) {
+      ctx.restore();
+      ctx.fillStyle = `rgba(10,5,5,${collapseT * 0.8})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (collapseT > 0.2) {
+        ctx.font = 'bold 22px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = `rgba(255,180,120,${Math.min(1, (collapseT - 0.2) * 2.5)})`;
+        ctx.fillText('THE FLOOR GIVES WAY...', canvas.width / 2, canvas.height / 2);
+      }
+    }
 
     if (catchFlash > 0) {
       ctx.fillStyle = `rgba(180,20,30,${catchFlash * 0.5})`;

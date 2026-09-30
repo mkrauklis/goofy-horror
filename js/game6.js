@@ -1,7 +1,7 @@
 (function () {
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked chapter.
-  if (window.GoofyStory && !window.GoofyStory.isUnlocked(4)) {
+  if (window.GoofyStory && !window.GoofyStory.isUnlocked(6)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
@@ -10,7 +10,7 @@
     return;
   }
 
-  const LEVEL = window.LEVEL4;
+  const LEVEL = window.LEVEL6;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
@@ -21,31 +21,26 @@
   const VIEW_H = 340;
 
   // Speeds are px/second and movement is scaled by the real elapsed time
-  // each frame (see `dt` in loop()) rather than a fixed px/frame step.
+  // each frame (see `dt` in loop()) rather than a fixed px/frame step --
+  // fixed-per-frame movement made real-world speed drift with the frame
+  // rate, which showed up as random-feeling slowdowns whenever a frame
+  // took longer than usual (e.g. a big tile grid redraw).
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  const PATROL_SPEED = PLAYER_SPEED * 0.85; // disguised, walking like a person
-  const CHARGE_SPEED = PLAYER_SPEED * 2; // revealed, twice your speed
+  const MONSTER_SPEED = PLAYER_SPEED * 1.2; // armored and slower, but there are three of them
+  const PATROL_SPEED = PLAYER_SPEED * 0.5;
   const LURE_SPEED = PLAYER_SPEED * 0.6;
   const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
   const ALERT_GRACE_MS = 2500;
-  const DETECT_RADIUS = 140; // how close before the disguise drops
+  const FLASHLIGHT_RADIUS = 230;
   const RADAR_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
-  const SUPER_RADAR_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
   const EAT_DURATION_MS = 3000;
-  const LURE_TIMEOUT_MS = 15000; // give up on a lure that's taking too long to reach, rather than staying revealed forever
-  const CRATE_RESPAWN_MS = 30000; // half of the other levels' 60s
+  const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
-  const SMOKE_FUSE_MS = 3000;
-  const SMOKE_DURATION_MS = 10000;
-  const SMOKE_RADIUS = 70;
-  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke'];
-  const MIMIC_CRATE_CHANCE = 0.12;
-  const MIMIC_CHASE_SPEED = PLAYER_SPEED * 2.2;
-  const MIMIC_TIMEOUT_MS = 8000;
+  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner'];
 
   // ---- sprint / stamina ----
   const DOUBLE_TAP_MS = 300;
@@ -62,11 +57,22 @@
   const ctx = canvas.getContext('2d');
   const messageEl = document.getElementById('game-message');
 
+  // Darkness is composited from a separate offscreen mask so that punching
+  // light holes (globalCompositeOperation 'destination-out') erases only the
+  // mask's own darkness pixels, not the scene already drawn on the main canvas.
   const maskCanvas = document.createElement('canvas');
   maskCanvas.width = VIEW_W;
   maskCanvas.height = VIEW_H;
   const maskCtx = maskCanvas.getContext('2d');
+  const hudButtonsEl = document.getElementById('hud-buttons');
+  const hudDoorEl = document.getElementById('hud-door');
+  const hudTimerEl = document.getElementById('hud-timer');
+  const hudBestEl = document.getElementById('hud-best');
 
+  // Explored-tiles minimap: an offscreen 1px-per-tile canvas that only ever
+  // gets painted to (never cleared), so it builds up a fog-of-war record of
+  // what each session has actually walked near, rather than showing the
+  // whole huge map from the start.
   const exploredCanvas = document.createElement('canvas');
   exploredCanvas.width = COLS;
   exploredCanvas.height = ROWS;
@@ -74,11 +80,6 @@
   let explored = new Uint8Array(COLS * ROWS);
   const EXPLORE_RADIUS = 7;
   const MINIMAP_W = 90;
-
-  const hudPowerEl = document.getElementById('hud-power');
-  const hudDoorEl = document.getElementById('hud-door');
-  const hudTimerEl = document.getElementById('hud-timer');
-  const hudBestEl = document.getElementById('hud-best');
 
   // ---- procedural audio (no asset files) ----
   let audioCtx = null;
@@ -106,7 +107,8 @@
   // Every several seconds, a brief, gentle flutter in the safe-room music's
   // volume and a soft pitch dip on a couple of voices -- runs continuously
   // in the background; it's inaudible whenever safeMusicGain itself is
-  // faded near zero.
+  // faded near zero. Subtle on purpose: enough to read as "not quite
+  // right" without undercutting the calming point of the music.
   function scheduleSafeMusicGlitch() {
     const delay = 3000 + Math.random() * 4500;
     setTimeout(() => {
@@ -274,6 +276,10 @@
     osc.stop(start + duration + 0.05);
   }
 
+  function playButtonChime() {
+    playTone(880, 0.18, 'sine', 0.2);
+  }
+
   function playItemChime(freq) {
     playTone(freq, 0.25, 'square', 0.18);
   }
@@ -282,23 +288,6 @@
     playTone(440, 0.2, 'triangle', 0.22, 0);
     playTone(660, 0.2, 'triangle', 0.22, 0.12);
     playTone(880, 0.3, 'triangle', 0.22, 0.24);
-  }
-
-  function playRevealScreech() {
-    if (!audioCtx) return;
-    const start = audioCtx.currentTime;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(220, start);
-    osc.frequency.exponentialRampToValueAtTime(1100, start + 0.25);
-    gain.gain.setValueAtTime(0.001, start);
-    gain.gain.exponentialRampToValueAtTime(0.22, start + 0.04);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(start);
-    osc.stop(start + 0.4);
   }
 
   function playCatchSting() {
@@ -333,25 +322,17 @@
     osc.stop(start + 0.25);
   }
 
-  function playSmokePoof() {
-    if (!audioCtx) return;
-    const start = audioCtx.currentTime;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(180, start);
-    osc.frequency.exponentialRampToValueAtTime(60, start + 0.3);
-    gain.gain.setValueAtTime(0.001, start);
-    gain.gain.exponentialRampToValueAtTime(0.3, start + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.4);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(start);
-    osc.stop(start + 0.45);
-  }
-
   function playWinJingle() {
     [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
+  }
+
+  function nearestMonster(x, y) {
+    let best = monsters[0], bestD = Infinity;
+    monsters.forEach((m) => {
+      const d = Math.hypot(x - m.x, y - m.y);
+      if (d < bestD) { bestD = d; best = m; }
+    });
+    return best;
   }
 
   function updateAmbientTension() {
@@ -445,26 +426,15 @@
 
   // A handful of near-identical grays, picked per-tile by hashing its
   // coordinates, so plain floor reads as worn/mottled concrete instead of
-  // one flat color.
-  const FLOOR_SHADES = ['#4c4c53', '#525258', '#58585f', '#5e5e66', '#54545c', '#605f68'];
+  // one flat color -- stable across frames since it's a function of (x, y),
+  // not random noise re-rolled every draw.
+  // Darker than a normal facility floor on purpose -- old, cracked
+  // cobblestone reads as older and grimmer than level 1's poured concrete.
+  const FLOOR_SHADES = ['#302f34', '#343338', '#38373c', '#3c3b41', '#363539', '#3a393e'];
   function floorShade(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length;
     return FLOOR_SHADES[idx];
-  }
-
-  const OVERGROWTH_SHADES = ['#33421f', '#3c4d24', '#2c391a', '#445a28'];
-  function overgrowthShade(x, y) {
-    const h = Math.imul(x + 91, 374761393) ^ Math.imul(y - 17, 668265263);
-    const idx = ((h ^ (h >>> 13)) >>> 0) % OVERGROWTH_SHADES.length;
-    return OVERGROWTH_SHADES[idx];
-  }
-
-  const DIRT_SHADES = ['#5a4127', '#63482b', '#4e3a22', '#6b4f30'];
-  function dirtShade(x, y) {
-    const h = Math.imul(x - 53, 374761393) ^ Math.imul(y + 29, 668265263);
-    const idx = ((h ^ (h >>> 13)) >>> 0) % DIRT_SHADES.length;
-    return DIRT_SHADES[idx];
   }
 
   // Shifts a '#rrggbb' color toward white (amt > 0) or black (amt < 0) --
@@ -510,65 +480,15 @@
     });
   }
 
-  // A fleshy, lit blob body: an irregular two-octave silhouette, an offset
-  // gradient for volume, one soft specular highlight and a couple of veins,
-  // all clipped to the silhouette. Kept deliberately light on draw calls --
-  // this runs per creature, per frame.
-  function drawBlobBody(g, radius, fillColor, shadowColor, seed, t, opts) {
-    opts = opts || {};
-    const points = 14;
-    const path = [];
-    for (let i = 0; i <= points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const r = radius
-        + Math.sin(t * 0.006 + i * 1.7 + seed) * radius * 0.1
-        + Math.sin(t * 0.0021 + i * 3.3 + seed * 1.7) * radius * 0.04;
-      path.push([Math.cos(a) * r, Math.sin(a) * r]);
-    }
-    const trace = () => {
-      g.beginPath();
-      path.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
-      g.closePath();
-    };
-
-    trace();
-    const base = g.createRadialGradient(-radius * 0.25, -radius * 0.3, radius * 0.1, 0, 0, radius * 1.05);
-    base.addColorStop(0, opts.core || shade(fillColor, 0.22));
-    base.addColorStop(0.55, fillColor);
-    base.addColorStop(1, opts.rim || shade(fillColor, -0.35));
-    g.fillStyle = base;
-    g.shadowColor = shadowColor;
-    g.shadowBlur = Math.min(radius * 0.4, 18);
-    g.fill();
-    g.shadowBlur = 0;
-
-    g.save();
-    trace();
-    g.clip();
-
-    g.beginPath();
-    g.ellipse(-radius * 0.32, -radius * 0.38, radius * 0.5, radius * 0.32, -0.5, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.14)';
-    g.fill();
-
-    g.strokeStyle = opts.veinColor || 'rgba(0,0,0,0.2)';
-    g.lineWidth = 1.3;
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2 + seed;
-      g.beginPath();
-      g.moveTo(Math.cos(a) * radius * 0.15, Math.sin(a) * radius * 0.15);
-      g.lineTo(Math.cos(a) * radius * 0.88, Math.sin(a) * radius * 0.88);
-      g.stroke();
-    }
-
-    g.restore();
-  }
-
   // ---- game state ----
+  let buttonsPressed = [false, false, false];
+  let doorUnlocked = false;
+  let gameState = 'playing'; // 'playing' | 'complete'
+  let catchFlash = 0;
 
   // ---- timer / best time (best is kept per-browser in localStorage, not
   // shared between players or devices) ----
-  const BEST_TIME_KEY = 'goofy-horror-best-level4';
+  const BEST_TIME_KEY = 'goofy-horror-best-level6';
   let bestMs = (() => {
     const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
     return Number.isFinite(v) ? v : null;
@@ -583,10 +503,6 @@
     const s = totalSec % 60;
     return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
   }
-  let leverPulled = false;
-  let doorUnlocked = false;
-  let gameState = 'playing'; // 'playing' | 'complete'
-  let catchFlash = 0;
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
@@ -603,15 +519,11 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
-  // Three mimics patrol disguised as people (state 'patrol'); once a player
-  // gets close, one drops the act, becomes a small toothy tentacle thing,
-  // and charges at 2x player speed (state 'alert') until it gives up or
-  // catches someone, then goes back to wandering in disguise.
   function makeMonster(patrolStartIndex) {
     return {
       x: 0,
       y: 0,
-      radius: 13,
+      radius: 16,
       seed: Math.random() * 100,
       path: [],
       pathIndex: 0,
@@ -625,57 +537,24 @@
       frozenUntil: 0,
       luredState: 'none', // 'none' | 'lured' | 'eating'
       lureTarget: null,
-      luredSince: 0,
       eatingUntil: 0,
-      walkPhase: 0,
     };
   }
 
-  const patrolLen = LEVEL.patrolPoints.length;
   const monsters = [
     makeMonster(0),
-    makeMonster(Math.floor(patrolLen / 3)),
-    makeMonster(Math.floor((patrolLen * 2) / 3)),
+    makeMonster(Math.floor(LEVEL.patrolPoints.length / 3)),
+    makeMonster(Math.floor((2 * LEVEL.patrolPoints.length) / 3)),
   ];
 
-  function isRevealed(m) {
-    return m.state === 'alert' || m.luredState !== 'none';
-  }
-
-  function nearestMonster(x, y) {
-    let best = monsters[0], bestD = Infinity;
-    monsters.forEach((m) => {
-      const d = Math.hypot(x - m.x, y - m.y);
-      if (d < bestD) { bestD = d; best = m; }
-    });
-    return best;
-  }
-
   let crates = [];
-  let fires = [];
-  let smokeBombs = [];
-  let mimicSpawns = [];
   let radarUntil = 0;
   let scannerUntil = 0;
-  let superRadarUntil = 0;
   let floatingTexts = [];
 
   function respawnPlayer(p) {
     const c = tileCenter(p.spawn.x, p.spawn.y);
     p.x = c.x; p.y = c.y; p.facing = { x: 0, y: 1 };
-  }
-
-  function resetExploration() {
-    explored = new Uint8Array(COLS * ROWS);
-    exploredCtx.clearRect(0, 0, COLS, ROWS);
-  }
-
-  // Most crates hold a normal item; a small fraction are secretly mimics
-  // instead -- same box, no item, but a barely-there jitter while it's
-  // still closed (see drawCrates).
-  function rollCrateContents() {
-    if (Math.random() < MIMIC_CRATE_CHANCE) return { item: null, isMimic: true };
-    return { item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], isMimic: false };
   }
 
   function resetLevel() {
@@ -692,28 +571,22 @@
 
     const spawns = LEVEL.monsterSpawns;
     monsters.forEach((mon, i) => {
-      const m = tileCenter(spawns[i].x, spawns[i].y);
+      const spawn = spawns[i % spawns.length];
+      const m = tileCenter(spawn.x, spawn.y);
       mon.x = m.x; mon.y = m.y;
       mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
       mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
-      mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.luredSince = 0; mon.eatingUntil = 0;
+      mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.eatingUntil = 0;
     });
 
-    leverPulled = false;
+    buttonsPressed = [false, false, false];
     doorUnlocked = false;
 
-    crates = (LEVEL.crateSpawns || []).map((c) => {
-      const roll = rollCrateContents();
-      return { x: c.x, y: c.y, item: roll.item, isMimic: roll.isMimic, opened: false, openedAt: 0 };
-    });
-    fires = (LEVEL.fireSpawns || []).map((f, i) => ({
-      x: f.x, y: f.y, seed: i * 1471.7 + Math.random() * 5000,
+    crates = (LEVEL.crateSpawns || []).map((c) => ({
+      x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
     }));
-    smokeBombs = [];
-    mimicSpawns = [];
     radarUntil = 0;
     scannerUntil = 0;
-    superRadarUntil = 0;
     floatingTexts = [];
     resetExploration();
     runStartTime = performance.now();
@@ -725,7 +598,7 @@
   // ---- player movement & collision ----
   function isWallForPlayer(tx, ty) {
     const ch = tileChar(tx, ty);
-    if (ch === '#') return true;
+    if (ch === '#' || ch === 'Z') return true;
     if (ch === 'D') return !doorUnlocked;
     return false;
   }
@@ -800,30 +673,27 @@
     updatePlayerMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), now, dt);
   }
 
+  function isHidden(p) {
+    const t = worldToTile(p.x, p.y);
+    const ch = tileChar(t.x, t.y);
+    return ch === 'S' || ch === 'V';
+  }
+
   function isInSafeZone(p) {
     const t = worldToTile(p.x, p.y);
     return tileChar(t.x, t.y) === 'S';
   }
 
-  function isInSmoke(p, now) {
-    return smokeBombs.some((b) => b.exploded && now < b.endsAt && Math.hypot(p.x - b.x, p.y - b.y) < SMOKE_RADIUS);
-  }
-
-  // The scanner points at the lever until it's pulled, then at the train
-  // itself so there's still something to follow once the power's on.
-  function scannerTarget() {
-    if (!leverPulled) return tileCenter(LEVEL.lever.x, LEVEL.lever.y);
-    if (gameState === 'playing') return tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
-    return null;
+  function resetExploration() {
+    explored = new Uint8Array(COLS * ROWS);
+    exploredCtx.clearRect(0, 0, COLS, ROWS);
   }
 
   function minimapColorFor(ch) {
-    if (ch === '#') return '#8f8f9a';
+    if (ch === '#' || ch === 'Z') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
     if (ch === 'S') return '#3ddc84';
-    if (ch === 'L') return '#5ec9e8';
-    if (ch === 'G') return '#3c5223';
-    if (ch === 'T') return '#7a5a34';
+    if (ch === 'V') return '#4a6a86';
     return '#3c3c46';
   }
 
@@ -847,7 +717,7 @@
     });
   }
 
-  function drawMinimap(vx, now) {
+  function drawMinimap(vx) {
     const mh = Math.round(MINIMAP_W * ROWS / COLS);
     const mx = vx + 8, my = 8;
     ctx.save();
@@ -858,19 +728,6 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(mx + 0.5, my + 0.5, MINIMAP_W - 1, mh - 1);
-    if (now < superRadarUntil) {
-      monsters.forEach((m) => {
-        const px = mx + (m.x / WORLD_W) * MINIMAP_W;
-        const py = my + (m.y / WORLD_H) * mh;
-        ctx.beginPath();
-        ctx.arc(px, py, 2.4, 0, Math.PI * 2);
-        ctx.fillStyle = '#ff4d6d';
-        ctx.shadowColor = '#ff4d6d';
-        ctx.shadowBlur = 4;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      });
-    }
     players.forEach((pl) => {
       const px = mx + (pl.x / WORLD_W) * MINIMAP_W;
       const py = my + (pl.y / WORLD_H) * mh;
@@ -912,6 +769,20 @@
     }
   }
 
+  // The scanner points at the nearest button that hasn't been pressed yet --
+  // once a button's done, it drops out of consideration entirely so the
+  // scanner never wastes a reading on somewhere you've already been.
+  function nearestUnpressedButton(x, y) {
+    let best = null, bestD = Infinity;
+    LEVEL.levers.forEach((b, i) => {
+      if (buttonsPressed[i]) return;
+      const c = tileCenter(b.x, b.y);
+      const d = Math.hypot(x - c.x, y - c.y);
+      if (d < bestD) { bestD = d; best = c; }
+    });
+    return best;
+  }
+
   function applyItemEffect(item, x, y, now) {
     if (item === 'radar') {
       radarUntil = now + RADAR_DURATION_MS;
@@ -921,7 +792,6 @@
       monsters.forEach((m) => {
         m.luredState = 'lured';
         m.lureTarget = { x, y };
-        m.luredSince = now;
         m.path = []; m.pathIndex = 0;
       });
       spawnFloatingText(x, y, 'MEAT');
@@ -934,14 +804,6 @@
       scannerUntil = now + SCANNER_DURATION_MS;
       spawnFloatingText(x, y, 'SCANNER');
       playItemChime(660);
-    } else if (item === 'super-radar') {
-      superRadarUntil = now + SUPER_RADAR_DURATION_MS;
-      spawnFloatingText(x, y, 'SUPER-RADAR');
-      playItemChime(1400);
-    } else if (item === 'smoke') {
-      smokeBombs.push({ x, y, armAt: now + SMOKE_FUSE_MS, exploded: false, endsAt: 0 });
-      spawnFloatingText(x, y, 'SMOKE BOMB');
-      playItemChime(500);
     }
   }
 
@@ -953,112 +815,43 @@
         if (c.x === t.x && c.y === t.y) {
           c.opened = true;
           c.openedAt = now;
-          const center = tileCenter(c.x, c.y);
-          if (c.isMimic) {
-            spawnMimicCrateCreature(center.x, center.y, now);
-          } else {
-            applyItemEffect(c.item, center.x, center.y, now);
-          }
+          applyItemEffect(c.item, tileCenter(c.x, c.y).x, tileCenter(c.x, c.y).y, now);
         }
       });
     });
     crates.forEach((c) => {
       if (c.opened && now - c.openedAt >= CRATE_RESPAWN_MS) {
         c.opened = false;
-        const roll = rollCrateContents();
-        c.item = roll.item;
-        c.isMimic = roll.isMimic;
+        c.item = CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)];
       }
     });
-  }
-
-  // ---- mimic crates: a jump-scare chaser instead of an item ----
-  function spawnMimicCrateCreature(x, y, now) {
-    mimicSpawns.push({
-      x, y, seed: Math.random() * 100, lookDir: { x: 1, y: 0 },
-      path: [], pathIndex: 0, nextRepathAt: 0,
-      expiresAt: now + MIMIC_TIMEOUT_MS,
-    });
-    playRevealScreech();
-  }
-
-  function updateMimicSpawns(now, dt) {
-    mimicSpawns = mimicSpawns.filter((ms) => now < ms.expiresAt);
-    mimicSpawns.forEach((ms) => {
-      let target = null, bestD = Infinity;
-      players.forEach((p) => {
-        if (p.caught || isInSafeZone(p) || isInSmoke(p, now)) return;
-        const d = Math.hypot(p.x - ms.x, p.y - ms.y);
-        if (d < bestD) { bestD = d; target = p; }
-      });
-      if (!target) return;
-
-      if (now >= ms.nextRepathAt) {
-        ms.nextRepathAt = now + REPATH_MS;
-        const startTile = worldToTile(ms.x, ms.y);
-        const goalTile = worldToTile(target.x, target.y);
-        const graph = buildMonsterGraph();
-        const path = bfsPath(graph, startTile, goalTile);
-        ms.path = path && path.length > 1 ? path.slice(1) : [];
-        ms.pathIndex = 0;
-      }
-      if (ms.path && ms.pathIndex < ms.path.length) {
-        const step = MIMIC_CHASE_SPEED * dt;
-        const tgt = tileTargetWithOffset(ms.path[ms.pathIndex]);
-        const dx = tgt.x - ms.x, dy = tgt.y - ms.y;
-        const d = Math.hypot(dx, dy);
-        if (d > 0.001) ms.lookDir = { x: dx / d, y: dy / d };
-        if (d < step) {
-          ms.x = tgt.x; ms.y = tgt.y;
-          ms.pathIndex++;
-        } else {
-          ms.x += (dx / d) * step;
-          ms.y += (dy / d) * step;
-        }
-      }
-
-      if (!target.caught && now >= target.invulnerableUntil &&
-          Math.hypot(target.x - ms.x, target.y - ms.y) < CATCH_RADIUS) {
-        triggerCaught(target, now);
-        ms.expiresAt = now;
-      }
-    });
-  }
-
-  function updateSmokeBombs(now) {
-    smokeBombs.forEach((b) => {
-      if (!b.exploded && now >= b.armAt) {
-        b.exploded = true;
-        b.endsAt = now + SMOKE_DURATION_MS;
-        playSmokePoof();
-      }
-    });
-    smokeBombs = smokeBombs.filter((b) => !b.exploded || now < b.endsAt);
   }
 
   function updateTriggers() {
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
       const ch = tileChar(t.x, t.y);
-      if (ch === 'L' && !leverPulled) {
-        leverPulled = true;
-        doorUnlocked = true;
-        const c = tileCenter(t.x, t.y);
-        spawnFloatingText(c.x, c.y, 'POWER ON');
-        playDoorUnlockChime();
+      if (ch === 'B') {
+        const idx = LEVEL.levers.findIndex((b) => b.x === t.x && b.y === t.y);
+        if (idx >= 0 && !buttonsPressed[idx]) {
+          buttonsPressed[idx] = true;
+          playButtonChime();
+          if (buttonsPressed.every(Boolean)) {
+            doorUnlocked = true;
+            playDoorUnlockChime();
+          }
+        }
       }
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
         playWinJingle();
-        if (window.GoofyStory) window.GoofyStory.completeLevel(4);
-        setTimeout(() => { window.location.href = 'level5.html'; }, 650);
       }
     });
   }
 
   // ---- monster AI ----
   function monsterCanOccupy(ch) {
-    if (ch === '#' || ch === 'S') return false;
+    if (ch === '#' || ch === 'S' || ch === 'V' || ch === 'Z') return false;
     if (ch === 'D') return doorUnlocked;
     return true;
   }
@@ -1127,10 +920,9 @@
 
   function updateDetection(m, now) {
     for (const p of players) {
-      if (p.caught || isInSafeZone(p) || isInSmoke(p, now)) continue;
+      if (p.caught || isHidden(p)) continue;
       const d = Math.hypot(p.x - m.x, p.y - m.y);
-      if (d <= DETECT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
-        if (m.state !== 'alert') playRevealScreech();
+      if (d <= FLASHLIGHT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
         m.state = 'alert';
         m.alertUntil = now + ALERT_GRACE_MS;
         m.alertTargetTile = worldToTile(p.x, p.y);
@@ -1186,15 +978,6 @@
     }
 
     if (m.luredState === 'lured') {
-      if (now - m.luredSince > LURE_TIMEOUT_MS) {
-        // Something kept it from ever reaching the meat (an unreachable
-        // drop spot, a path that never quite resolves) -- rather than
-        // stay stuck disguise-less forever, give up on the lure like it
-        // would if it had actually finished eating.
-        m.luredState = 'none';
-        m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
-        return;
-      }
       if (now >= m.nextRepathAt) {
         m.nextRepathAt = now + REPATH_MS;
         const startTile = worldToTile(m.x, m.y);
@@ -1247,8 +1030,7 @@
     }
 
     if (m.path && m.pathIndex < m.path.length) {
-      const speed = m.state === 'alert' ? CHARGE_SPEED : PATROL_SPEED;
-      const step = speed * dt;
+      const step = (m.state === 'alert' ? MONSTER_SPEED : PATROL_SPEED) * dt;
       const target = tileTargetWithOffset(m.path[m.pathIndex]);
       const dx = target.x - m.x, dy = target.y - m.y;
       const d = Math.hypot(dx, dy);
@@ -1263,12 +1045,6 @@
         m.x += (dx / d) * step;
         m.y += (dy / d) * step;
       }
-      // Written as dt * (speed/PLAYER_SPEED) rather than step/dt -- step
-      // already has a dt factor baked in, and dividing back out by dt blows
-      // up to NaN on any frame where dt lands on exactly 0 (two rAF
-      // callbacks can share a timestamp), which then poisons every trig
-      // call downstream and throws inside the darkness-mask gradient.
-      if (!isRevealed(m)) m.walkPhase += dt * WALK_CYCLE_SPEED * (speed / PLAYER_SPEED);
     }
   }
 
@@ -1279,7 +1055,7 @@
       if (m.state !== 'alert') return;
       players.forEach((p) => {
         if (p.caught) return;
-        if (isInSafeZone(p) || isInSmoke(p, now)) return;
+        if (isHidden(p)) return;
         if (now < p.invulnerableUntil) return;
         if (Math.hypot(p.x - m.x, p.y - m.y) < CATCH_RADIUS) triggerCaught(p, now);
       });
@@ -1378,75 +1154,37 @@
     });
   }
 
-  // ---- fires (always burning) ----
-  function drawFires(g, now) {
-    fires.forEach((f) => {
-      const c = tileCenter(f.x, f.y);
-      g.save();
-      g.translate(c.x, c.y);
-      const flicker = 0.85 + Math.sin(now * 0.02 + f.seed) * 0.15;
-      const glow = g.createRadialGradient(0, 0, 2, 0, 0, 30 * flicker);
-      glow.addColorStop(0, 'rgba(255,170,60,0.55)');
-      glow.addColorStop(1, 'rgba(255,120,30,0)');
-      g.fillStyle = glow;
-      g.beginPath();
-      g.arc(0, 0, 30 * flicker, 0, Math.PI * 2);
-      g.fill();
-
-      // a small charred log bed under the flames
-      g.beginPath();
-      g.ellipse(0, 6, 8, 3, 0, 0, Math.PI * 2);
-      g.fillStyle = '#1c1410';
-      g.fill();
-      g.fillStyle = 'rgba(255,120,30,0.5)';
-      g.beginPath(); g.ellipse(-3, 6, 2, 1, 0, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.ellipse(3, 6.5, 1.6, 0.8, 0, 0, Math.PI * 2); g.fill();
-
-      for (let i = 0; i < 3; i++) {
-        const wobble = Math.sin(now * 0.014 + f.seed + i * 2) * 3;
-        const h = (9 + i * 3) * flicker;
-        g.beginPath();
-        g.moveTo(-4 + i * 2, 6);
-        g.quadraticCurveTo(2 + wobble, -h * 0.5, 0 + wobble * 0.5, -h);
-        g.quadraticCurveTo(-2 + wobble, -h * 0.5, 4 - i * 2, 6);
-        g.closePath();
-        g.fillStyle = i === 0 ? '#ffdf8a' : i === 1 ? '#ff9c3d' : '#e0541f';
-        g.fill();
-      }
-
-      // a couple of embers drifting up out of the flame, looping in place
-      for (let i = 0; i < 3; i++) {
-        const seed = f.seed * 3 + i * 613;
-        const cycle = 1400 + (i % 3) * 300;
-        const phase = ((now + seed) % cycle) / cycle;
-        const ex = Math.sin(seed + phase * 5) * 6;
-        const ey = -phase * 22 - 4;
-        g.beginPath();
-        g.arc(ex, ey, 1.4 - phase, 0, Math.PI * 2);
-        g.fillStyle = `rgba(255,180,90,${(1 - phase) * 0.8})`;
-        g.fill();
-      }
-
-      g.restore();
-    });
-  }
-
-  function fireLightPunches() {
-    return fires.map((f) => tileCenter(f.x, f.y));
-  }
-
   // ---- rendering ----
-  const doorBounds = (() => {
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  // The exit room here has two separate doors (one lattice connection from
+  // above, one from the side) rather than level 1's single one, so this
+  // groups 'D' tiles into their own connected clusters and draws a frame
+  // per cluster instead of one bounding box spanning both.
+  const doorGroups = (() => {
+    const seen = new Set();
+    const key = (x, y) => `${x},${y}`;
+    const groups = [];
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
-        if (LEVEL.grid[y][x] === 'D') {
-          x0 = Math.min(x0, x); y0 = Math.min(y0, y);
-          x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+        if (LEVEL.grid[y][x] !== 'D' || seen.has(key(x, y))) continue;
+        const stack = [{ x, y }];
+        seen.add(key(x, y));
+        const group = [];
+        while (stack.length) {
+          const cur = stack.pop();
+          group.push(cur);
+          [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+            const nx = cur.x + dx, ny = cur.y + dy;
+            if (LEVEL.grid[ny] && LEVEL.grid[ny][nx] === 'D' && !seen.has(key(nx, ny))) {
+              seen.add(key(nx, ny));
+              stack.push({ x: nx, y: ny });
+            }
+          });
         }
+        const xs = group.map((g) => g.x), ys = group.map((g) => g.y);
+        groups.push({ x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) });
       }
     }
-    return { x0, y0, x1, y1 };
+    return groups;
   })();
 
   function drawTiles(g, camX, camY, now) {
@@ -1461,259 +1199,230 @@
         let color;
         switch (ch) {
           case '#': color = '#262629'; break;
+          case 'Z': color = '#2e2e34'; break;
           case 'S': color = floorShade(x, y); break;
-          case 'G': color = overgrowthShade(x, y); break;
-          case 'T': color = dirtShade(x, y); break;
+          case 'V': color = '#2a3038'; break;
           case 'E': color = '#3a301f'; break;
-          case 'L': color = floorShade(x, y); break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
         g.fillStyle = color;
         g.fillRect(px, py, TILE, TILE);
 
-        if (ch === '#') {
+        if (ch === '#' || ch === 'Z') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
         }
-        if (ch === 'G') {
-          g.strokeStyle = 'rgba(20,50,10,0.5)';
-          g.lineWidth = 1.5;
-          const seed = (x * 7 + y * 13) % 11;
-          for (let i = 0; i < 2; i++) {
-            const bx = px + 6 + ((seed + i * 5) % 20);
+        if (ch === '.' || ch === 'S' || (ch === 'D' && doorUnlocked)) {
+          // Cobblestone mortar lines -- a plain flat fill read as generic
+          // facility floor elsewhere; a visible per-tile seam is what makes
+          // it read as laid stone instead.
+          g.strokeStyle = 'rgba(0,0,0,0.22)';
+          g.lineWidth = 1;
+          g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+
+          // A jagged crack on roughly two in five tiles -- fixed per tile
+          // (hashed from its coordinates, not re-rolled every frame) so the
+          // floor doesn't shimmer as the camera pans past it.
+          const h = Math.imul(x, 2654435761) ^ Math.imul(y, 40503);
+          const u = (h ^ (h >>> 15)) >>> 0;
+          if (u % 5 < 2) {
+            const rand = (seed) => {
+              const v = Math.imul(u + seed, 2246822519);
+              return ((v ^ (v >>> 13)) >>> 0) / 4294967295;
+            };
+            const startX = px + 4 + rand(1) * (TILE - 8);
+            const startY = py + 4 + rand(2) * (TILE - 8);
+            const segs = 2 + Math.floor(rand(3) * 2);
+            g.strokeStyle = 'rgba(0,0,0,0.4)';
+            g.lineWidth = 1;
             g.beginPath();
-            g.moveTo(bx, py + TILE);
-            g.quadraticCurveTo(bx + 3, py + TILE - 10, bx - 2, py + TILE - 18);
+            g.moveTo(startX, startY);
+            let cx = startX, cy = startY;
+            for (let s = 0; s < segs; s++) {
+              cx += (rand(4 + s) - 0.5) * TILE * 0.6;
+              cy += (rand(8 + s) - 0.5) * TILE * 0.6;
+              g.lineTo(cx, cy);
+            }
             g.stroke();
           }
         }
-        if (ch === 'T') {
-          g.fillStyle = 'rgba(0,0,0,0.15)';
-          const pebbles = 3;
-          for (let i = 0; i < pebbles; i++) {
-            const seed = (x * 7 + y * 13 + i * 31) % 17;
-            g.beginPath();
-            g.arc(px + 6 + (seed % 5) * 5, py + 6 + ((seed * 3) % 5) * 5, 1.5, 0, Math.PI * 2);
-            g.fill();
+        if (ch === 'V') {
+          g.strokeStyle = 'rgba(180,200,220,0.35)';
+          g.lineWidth = 2;
+          for (let i = 1; i < 4; i++) {
+            const gy = py + (TILE / 4) * i;
+            g.beginPath(); g.moveTo(px + 4, gy); g.lineTo(px + TILE - 4, gy); g.stroke();
           }
         }
       }
     }
 
-    drawFires(g, now);
+    doorGroups.forEach((db) => {
+      const dx0 = db.x0 * TILE, dy0 = db.y0 * TILE;
+      const dw = (db.x1 - db.x0 + 1) * TILE;
+      const dh = (db.y1 - db.y0 + 1) * TILE;
+      if (!doorUnlocked) {
+        g.strokeStyle = '#0d1114';
+        g.lineWidth = 4;
+        g.strokeRect(dx0 + 3, dy0 + 3, dw - 6, dh - 6);
+        g.strokeStyle = 'rgba(255,190,60,0.5)';
+        g.lineWidth = 3;
+        g.strokeRect(dx0 + 9, dy0 + 9, dw - 18, dh - 18);
+        g.beginPath();
+        g.moveTo(dx0 + dw / 2, dy0 + 4);
+        g.lineTo(dx0 + dw / 2, dy0 + dh - 4);
+        g.stroke();
+      } else {
+        g.strokeStyle = 'rgba(255,255,255,0.18)';
+        g.lineWidth = 3;
+        g.strokeRect(dx0 + 2, dy0 + 2, dw - 4, dh - 4);
+      }
+    });
 
-    const dx0 = doorBounds.x0 * TILE, dy0 = doorBounds.y0 * TILE;
-    const dw = (doorBounds.x1 - doorBounds.x0 + 1) * TILE;
-    const dh = (doorBounds.y1 - doorBounds.y0 + 1) * TILE;
-    if (!doorUnlocked) {
-      g.strokeStyle = '#0d1114';
+    // Each lever trails a green wire straight to the door it's wired to --
+    // not a realistic routed circuit, just enough to read as "this switch
+    // controls that exit" at a glance.
+    LEVEL.levers.forEach((b, i) => {
+      const c = tileCenter(b.x, b.y);
+      const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
+      const pressed = buttonsPressed[i];
+
+      g.strokeStyle = pressed ? 'rgba(80,255,140,0.85)' : 'rgba(60,140,90,0.45)';
+      g.lineWidth = 2;
+      g.setLineDash([6, 4]);
+      g.beginPath();
+      g.moveTo(c.x, c.y);
+      g.lineTo(ex.x, ex.y);
+      g.stroke();
+      g.setLineDash([]);
+
+      g.fillStyle = '#3a3a40';
+      g.fillRect(c.x - 6, c.y - 4, 12, 10);
+      g.save();
+      g.translate(c.x, c.y);
+      g.rotate(pressed ? -0.9 : 0.5);
+      const leverColor = pressed ? '#3ddc84' : '#e0546b';
+      g.strokeStyle = leverColor;
       g.lineWidth = 4;
-      g.strokeRect(dx0 + 3, dy0 + 3, dw - 6, dh - 6);
-      g.strokeStyle = 'rgba(255,190,60,0.5)';
-      g.lineWidth = 3;
-      g.strokeRect(dx0 + 9, dy0 + 9, dw - 18, dh - 18);
+      g.lineCap = 'round';
       g.beginPath();
-      g.moveTo(dx0 + dw / 2, dy0 + 4);
-      g.lineTo(dx0 + dw / 2, dy0 + dh - 4);
+      g.moveTo(0, 2);
+      g.lineTo(0, -16);
       g.stroke();
-    } else {
-      g.strokeStyle = 'rgba(255,255,255,0.18)';
-      g.lineWidth = 3;
-      g.strokeRect(dx0 + 2, dy0 + 2, dw - 4, dh - 4);
-    }
-
-    drawElectricalClutter(g);
-    drawLever(g);
-    drawTrain(g, now);
-    drawSafeZone(g);
-    drawCorpses(g);
-    drawBloodSplatters(g);
-    drawCrates(g, now);
-    drawSmokeBombs(g, now);
-    drawMeatLure(g);
-    drawFloatingTexts(g);
-  }
-
-  // A cluster of exposed wiring around the electrical room's lever -- purely
-  // decorative, but it sells the "electrical room" a lot harder than one
-  // lonely switchbox would.
-  function drawElectricalClutter(g) {
-    const c = tileCenter(LEVEL.lever.x, LEVEL.lever.y);
-    g.save();
-    g.translate(c.x, c.y);
-    const wireColors = ['#c9403a', '#3ddc84', '#ffd27a', '#5ec9e8', '#b073e0'];
-    const targets = [
-      [-46, -34], [42, -30], [-40, 34], [46, 30], [0, -50], [-56, 8], [54, -6], [0, 48],
-    ];
-    targets.forEach(([tx, ty], i) => {
-      g.strokeStyle = wireColors[i % wireColors.length];
-      g.lineWidth = 1.6;
       g.beginPath();
-      g.moveTo(0, 0);
-      const midx = tx * 0.5 + (i % 2 === 0 ? 9 : -9);
-      const midy = ty * 0.5 + (i % 2 === 0 ? -7 : 7);
-      g.quadraticCurveTo(midx, midy, tx, ty);
-      g.stroke();
-    });
-    g.fillStyle = '#26292e';
-    g.strokeStyle = '#111214';
-    g.lineWidth = 1;
-    [[-46, -34], [42, -30], [-40, 34], [46, 30]].forEach(([bx, by]) => {
-      g.fillRect(bx - 4, by - 4, 8, 8);
-      g.strokeRect(bx - 4, by - 4, 8, 8);
-    });
-    g.restore();
-  }
-
-  function drawLever(g) {
-    const c = tileCenter(LEVEL.lever.x, LEVEL.lever.y);
-    g.save();
-    g.translate(c.x, c.y);
-    g.fillStyle = '#33363c';
-    g.fillRect(-12, -10, 24, 20);
-    g.strokeStyle = '#181a1e';
-    g.lineWidth = 2;
-    g.strokeRect(-12, -10, 24, 20);
-    g.strokeStyle = leverPulled ? '#3ddc84' : '#c9403a';
-    g.lineWidth = 3;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(0, 6);
-    if (leverPulled) {
-      g.lineTo(8, -8);
-      g.shadowColor = '#3ddc84';
+      g.arc(0, -16, 3.5, 0, Math.PI * 2);
+      g.fillStyle = leverColor;
+      g.shadowColor = leverColor;
       g.shadowBlur = 8;
-    } else {
-      g.lineTo(-8, -8);
-    }
-    g.stroke();
-    g.shadowBlur = 0;
-    g.fillStyle = '#1c1e22';
-    g.beginPath();
-    g.arc(0, 6, 3, 0, Math.PI * 2);
-    g.fill();
-    g.restore();
-  }
+      g.fill();
+      g.shadowBlur = 0;
+      g.restore();
+    });
 
-  // A proper subway car: rounded steel-blue body, a route roundel, banded
-  // windows, bogies with paired wheels, a headlight, and an electric
-  // pantograph spark instead of steam once it's powered up.
-  function drawTrain(g, now) {
     const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
     g.beginPath();
     g.arc(ex.x, ex.y, doorUnlocked ? 12 : 6, 0, Math.PI * 2);
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
 
-    const tx = ex.x - 34, ty = ex.y;
+    drawStatues(g);
+    drawTorches(g, now);
+    drawSafeZone(g);
+    drawCorpses(g);
+    drawBloodSplatters(g);
+    drawCrates(g);
+    drawMeatLure(g);
+    drawFloatingTexts(g);
+  }
 
-    function rr(x, y, w, h, r) {
-      g.beginPath();
-      if (g.roundRect) g.roundRect(x, y, w, h, r);
-      else g.rect(x, y, w, h);
-    }
-
-    g.save();
-    g.translate(tx, ty);
-
-    // bogies (wheel trucks)
-    g.fillStyle = '#111214';
-    [-22, 22].forEach((bx) => {
-      rr(bx - 13, 13, 26, 6, 2); g.fill();
-      [bx - 8, bx + 8].forEach((wx) => {
-        g.beginPath(); g.arc(wx, 20, 4.2, 0, Math.PI * 2); g.fill();
-      });
-    });
-
-    // main body, subway steel-blue with rounded ends
-    rr(-40, -20, 80, 34, 10);
-    g.fillStyle = '#4a5568';
-    g.fill();
-    g.strokeStyle = '#1c2026';
-    g.lineWidth = 2;
-    g.stroke();
-
-    // roof band for depth
-    rr(-40, -20, 80, 8, 10);
-    g.fillStyle = '#3a4250';
-    g.fill();
-
-    // accent stripe
-    g.fillStyle = doorUnlocked ? '#3ddc84' : '#ff8a3d';
-    g.fillRect(-38, -1, 76, 5);
-
-    // route roundel
-    g.beginPath();
-    g.arc(-30, 7, 6, 0, Math.PI * 2);
-    g.fillStyle = '#1c2026';
-    g.fill();
-    g.fillStyle = doorUnlocked ? '#3ddc84' : '#ff8a3d';
-    g.font = 'bold 8px monospace';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText('4', -30, 8);
-
-    // windows
-    const winColor = doorUnlocked ? 'rgba(255,222,150,0.95)' : 'rgba(28,32,44,0.9)';
-    for (let i = 0; i < 5; i++) {
-      const wx = -14 + i * 14;
-      rr(wx, -14, 10, 9, 2);
-      g.fillStyle = winColor;
-      g.fill();
-      if (doorUnlocked) {
-        g.strokeStyle = 'rgba(255,255,255,0.4)';
-        g.lineWidth = 0.6;
-        g.stroke();
-      }
-    }
-
-    // sliding door seams
-    g.strokeStyle = 'rgba(0,0,0,0.35)';
-    g.lineWidth = 1.5;
-    [-4, 4].forEach((dx) => {
-      g.beginPath();
-      g.moveTo(dx, -12);
-      g.lineTo(dx, 12);
-      g.stroke();
-    });
-
-    // headlight
-    g.beginPath();
-    g.arc(-40, 4, 3, 0, Math.PI * 2);
-    g.fillStyle = doorUnlocked ? '#fff4c2' : '#5a4a30';
-    if (doorUnlocked) { g.shadowColor = '#fff4c2'; g.shadowBlur = 10; }
-    g.fill();
-    g.shadowBlur = 0;
-
-    g.restore();
-
-    if (doorUnlocked) {
-      // an electric flicker off the pantograph instead of steam -- this is
-      // a subway car, not a coal engine.
-      const flick = Math.sin(now * 0.03) > 0.7;
-      if (flick) {
+  // A stone bust on a plinth, standing wherever the grid has a 'Z' --
+  // purely decorative (its collision is handled by isWallForPlayer/
+  // monsterCanOccupy treating 'Z' as solid), one per room's crossing.
+  function drawStatues(g) {
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (LEVEL.grid[y][x] !== 'Z') continue;
+        const c = tileCenter(x, y);
         g.save();
-        g.strokeStyle = 'rgba(180,220,255,0.9)';
-        g.lineWidth = 1.5;
-        g.shadowColor = '#a8d8ff';
-        g.shadowBlur = 8;
+        g.translate(c.x, c.y);
+
+        g.fillStyle = '#26262c';
+        g.fillRect(-13, 9, 26, 6);
+        g.fillStyle = '#3a3a42';
+        g.fillRect(-10, 2, 20, 8);
+
+        const bodyGrad = g.createLinearGradient(-9, -14, 9, 10);
+        bodyGrad.addColorStop(0, '#57575f');
+        bodyGrad.addColorStop(1, '#38383f');
+        g.fillStyle = bodyGrad;
         g.beginPath();
-        g.moveTo(tx, ty - 20);
-        g.lineTo(tx + (Math.random() - 0.5) * 6, ty - 30);
-        g.lineTo(tx, ty - 36);
+        g.moveTo(-9, 2);
+        g.quadraticCurveTo(-10, -8, -5, -12);
+        g.lineTo(5, -12);
+        g.quadraticCurveTo(10, -8, 9, 2);
+        g.closePath();
+        g.fill();
+
+        g.fillStyle = bodyGrad;
+        g.beginPath();
+        g.arc(0, -17, 6.5, 0, Math.PI * 2);
+        g.fill();
+
+        g.fillStyle = 'rgba(0,0,0,0.35)';
+        g.beginPath();
+        g.arc(-2.4, -18, 1.1, 0, Math.PI * 2);
+        g.arc(2.4, -18, 1.1, 0, Math.PI * 2);
+        g.fill();
+
+        g.strokeStyle = 'rgba(0,0,0,0.3)';
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(0, -23);
+        g.lineTo(0, -9);
         g.stroke();
-        g.shadowBlur = 0;
+
         g.restore();
       }
-      const glow = g.createRadialGradient(tx - 40, ty + 4, 2, tx - 40, ty + 4, 40);
-      glow.addColorStop(0, 'rgba(255,244,194,0.25)');
-      glow.addColorStop(1, 'rgba(255,244,194,0)');
+    }
+  }
+
+  // Small wall sconces -- a light source that isn't tied to the players'
+  // own flashlights, so the dungeon reads as lived-in instead of totally
+  // dark outside their reach.
+  function drawTorches(g, now) {
+    (LEVEL.torchSpawns || []).forEach((tspawn, i) => {
+      const c = tileCenter(tspawn.x, tspawn.y);
+      const flicker = 0.8 + Math.sin(now * 0.012 + i * 3.1) * 0.2;
+      g.save();
+      g.translate(c.x, c.y);
+
+      g.fillStyle = '#2a1c10';
+      g.fillRect(-3, -4, 6, 8);
+
+      const glow = g.createRadialGradient(0, -10, 1, 0, -10, 16 * flicker);
+      glow.addColorStop(0, 'rgba(255,170,60,0.5)');
+      glow.addColorStop(1, 'rgba(255,120,30,0)');
       g.fillStyle = glow;
       g.beginPath();
-      g.arc(tx - 40, ty + 4, 40, 0, Math.PI * 2);
+      g.arc(0, -10, 16 * flicker, 0, Math.PI * 2);
       g.fill();
-    }
+
+      const h = 11 * flicker;
+      g.beginPath();
+      g.moveTo(-3, -4);
+      g.quadraticCurveTo(3, -4 - h * 0.6, 0, -4 - h);
+      g.quadraticCurveTo(-3, -4 - h * 0.6, 3, -4);
+      g.closePath();
+      g.fillStyle = '#ff9c3d';
+      g.fill();
+      g.beginPath();
+      g.arc(0, -4 - h * 0.55, 2.4, 0, Math.PI * 2);
+      g.fillStyle = '#ffe38a';
+      g.fill();
+
+      g.restore();
+    });
   }
 
   function drawTable(g, cx, cy) {
@@ -1768,18 +1477,11 @@
     });
   }
 
-  function drawCrates(g, now) {
+  function drawCrates(g) {
     crates.forEach((c) => {
       const center = tileCenter(c.x, c.y);
       g.save();
-      let ox = 0, oy = 0;
-      if (!c.opened && c.isMimic) {
-        // the only tell: a barely-there jitter, easy to miss unless you're
-        // really looking for it.
-        ox = Math.sin(now * 0.05 + c.x * 3.1) * 0.5;
-        oy = Math.cos(now * 0.047 + c.y * 2.7) * 0.5;
-      }
-      g.translate(center.x + ox, center.y + oy);
+      g.translate(center.x, center.y);
       if (c.opened) {
         g.fillStyle = '#4a3826';
         g.fillRect(-9, -6, 18, 12);
@@ -1798,41 +1500,6 @@
         g.stroke();
       }
       g.restore();
-    });
-  }
-
-  function drawSmokeBombs(g, now) {
-    smokeBombs.forEach((b) => {
-      if (!b.exploded) {
-        g.save();
-        g.translate(b.x, b.y);
-        const blink = Math.sin(now * 0.02) > 0;
-        g.fillStyle = '#2a2a2a';
-        g.fillRect(-5, -7, 10, 14);
-        g.strokeStyle = '#111';
-        g.lineWidth = 1;
-        g.strokeRect(-5, -7, 10, 14);
-        g.fillStyle = blink ? '#ff4444' : '#661111';
-        g.beginPath();
-        g.arc(0, -8, 2, 0, Math.PI * 2);
-        g.fill();
-        g.restore();
-      } else if (now < b.endsAt) {
-        const elapsed = SMOKE_DURATION_MS - (b.endsAt - now);
-        const t = elapsed / SMOKE_DURATION_MS;
-        const radius = SMOKE_RADIUS * Math.min(1, t * 3);
-        const fade = 1 - Math.max(0, (t - 0.7) / 0.3);
-        g.save();
-        g.translate(b.x, b.y);
-        const cloud = g.createRadialGradient(0, 0, 4, 0, 0, radius);
-        cloud.addColorStop(0, `rgba(205,205,210,${0.55 * fade})`);
-        cloud.addColorStop(1, 'rgba(205,205,210,0)');
-        g.fillStyle = cloud;
-        g.beginPath();
-        g.arc(0, 0, radius, 0, Math.PI * 2);
-        g.fill();
-        g.restore();
-      }
     });
   }
 
@@ -1865,157 +1532,24 @@
     });
   }
 
-  // A single limb: a thick rounded stroke from (hipX,hipY) to (tipX,tipY)
-  // with a small cap circle (boot/glove) at the moving end.
-  function drawLimb(g, hipX, hipY, tipX, tipY, width, color, capColor, capR) {
-    g.strokeStyle = color;
-    g.lineWidth = width;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(hipX, hipY);
-    g.lineTo(tipX, tipY);
-    g.stroke();
-    g.beginPath();
-    g.arc(tipX, tipY, capR, 0, Math.PI * 2);
-    g.fillStyle = capColor;
-    g.fill();
-  }
-
-  // The disguise: the exact same hazmat-suit silhouette the players use, in
-  // a sickly, slightly-off color -- close enough to pass at a glance from
-  // across a dark room, which is the point. walkPhase drives the same
-  // limb-swing walk cycle the players use, so it reads as a person walking
-  // in whichever direction it's currently facing.
-  function drawHazmatFigure(g, color, walkPhase) {
-    const R = PLAYER_RADIUS;
-    walkPhase = walkPhase || 0;
-    const swing = Math.sin(walkPhase) * R * 0.62;
-    const bob = Math.abs(Math.cos(walkPhase)) * R * 0.05;
-    const suitDark = shade(color, -0.45);
-    const bootColor = '#2b2b28';
-
-    drawLimb(g, 0, -R * 0.3, swing, -R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
-    drawLimb(g, 0, R * 0.3, -swing, R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
-
-    g.strokeStyle = '#54544c';
-    g.lineWidth = 2.5;
-    g.beginPath();
-    g.moveTo(-R * 1.3, -3);
-    g.quadraticCurveTo(-R * 1.1, -R * 0.9, -R * 0.55, -R * 0.55);
-    g.stroke();
-    const tankGrad = g.createLinearGradient(-R * 1.5, -4.5, -R * 1.5, 4.5);
-    tankGrad.addColorStop(0, shade('#54544c', 0.25));
-    tankGrad.addColorStop(1, shade('#54544c', -0.25));
-    g.fillStyle = tankGrad;
-    g.fillRect(-R * 1.5, -4.5, 7, 9);
-
-    g.save();
-    g.translate(0, -bob);
-    const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.1);
-    bodyGrad.addColorStop(0, shade(color, 0.25));
-    bodyGrad.addColorStop(0.6, color);
-    bodyGrad.addColorStop(1, shade(color, -0.35));
-    g.beginPath();
-    g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
-    g.fillStyle = bodyGrad;
-    g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.4)';
-    g.lineWidth = 1.5;
-    g.stroke();
-
-    g.save();
-    g.beginPath();
-    g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
-    g.clip();
-    g.fillStyle = 'rgba(20,20,15,0.85)';
-    g.fillRect(-R * 1.1, -R * 0.24, R * 2.2, R * 0.17);
-    g.fillStyle = 'rgba(255,200,40,0.9)';
-    g.fillRect(-R * 1.1, -R * 0.08, R * 2.2, R * 0.09);
-    g.restore();
-    g.restore();
-
-    drawLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, color, '#e8d94a', R * 0.22);
-    drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, color, '#e8d94a', R * 0.22);
-
-    g.save();
-    g.translate(R * 0.55, -bob);
-    const headR = R * 0.5;
-
-    g.beginPath();
-    g.arc(0, 0, headR * 1.05, 0, Math.PI * 2);
-    g.strokeStyle = '#1c1c18';
-    g.lineWidth = 2.5;
-    g.stroke();
-
-    const helmetGrad = g.createRadialGradient(-headR * 0.3, -headR * 0.35, 1, 0, 0, headR * 1.05);
-    helmetGrad.addColorStop(0, '#ffffff');
-    helmetGrad.addColorStop(0.35, 'rgba(224,226,216,0.95)');
-    helmetGrad.addColorStop(1, 'rgba(150,155,146,0.92)');
-    g.beginPath();
-    g.arc(0, 0, headR, 0, Math.PI * 2);
-    g.fillStyle = helmetGrad;
-    g.fill();
-    g.strokeStyle = '#1c1c18';
-    g.lineWidth = 1.5;
-    g.stroke();
-
-    const visorGrad = g.createLinearGradient(0, -headR * 0.3, 0, headR * 0.3);
-    visorGrad.addColorStop(0, '#1c2a33');
-    visorGrad.addColorStop(1, '#03060a');
-    g.beginPath();
-    g.ellipse(headR * 0.32, 0, headR * 0.34, headR * 0.62, 0, 0, Math.PI * 2);
-    g.fillStyle = visorGrad;
-    g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.5)';
-    g.lineWidth = 1;
-    g.stroke();
-    g.beginPath();
-    g.moveTo(headR * 0.18, -headR * 0.4);
-    g.lineTo(headR * 0.42, -headR * 0.15);
-    g.strokeStyle = 'rgba(255,255,255,0.4)';
-    g.lineWidth = headR * 0.12;
-    g.lineCap = 'round';
-    g.stroke();
-
-    g.restore();
-  }
-
-  function drawGroundShadow(g, r) {
-    g.beginPath();
-    g.ellipse(0, r * 1.05, r * 0.85, r * 0.26, 0, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(0,0,0,0.35)';
-    g.fill();
-  }
-
   function drawMonster(g, t, m) {
     g.save();
     g.translate(m.x, m.y);
 
-    if (!isRevealed(m)) {
-      drawGroundShadow(g, PLAYER_RADIUS);
-      g.rotate(Math.atan2(m.lookDir.y, m.lookDir.x));
-      drawHazmatFigure(g, '#7c8a72', m.walkPhase);
-      g.restore();
-      return;
-    }
-    g.restore();
-
-    g.save();
-    g.translate(m.x, m.y);
-
     m.tentacleTargets.forEach((tt, i) => {
-      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * m.radius * 0.4;
+      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * m.radius * 0.35;
       const tx = tt.x - m.x, ty = tt.y - m.y;
       const dist = Math.hypot(tx, ty) || 1;
       const perpX = -ty / dist, perpY = tx / dist;
       const midX = tx / 2 + perpX * wobble;
       const midY = ty / 2 + perpY * wobble;
-      drawTaperedTentacle(g, tx, ty, midX, midY, m.radius * 0.22, '#3a1f4a');
+      drawTaperedTentacle(g, tx, ty, midX, midY, m.radius * 0.22, '#6a1826');
     });
 
-    drawBlobBody(g, m.radius, '#2a1533', '#5a2a6e', m.seed, t, { veinColor: 'rgba(160,63,214,0.3)' });
+    drawBlobBody(g, m.radius, '#4a0f1c', '#7a1f2f', m.seed, t);
 
-    drawMonsterTeeth(g, m);
+    drawMonsterEye(g, m);
+    drawKnightGear(g, m.radius, t, m.seed);
 
     if (t < m.frozenUntil) {
       const points = 12;
@@ -2037,76 +1571,342 @@
     g.restore();
   }
 
-  // No eye this time -- a dark, gaping maw ringed with teeth, facing the
-  // direction it's about to lunge.
-  function drawMonsterTeeth(g, m) {
-    const mouthR = m.radius * 0.7;
-    const angle = Math.atan2(m.lookDir.y, m.lookDir.x);
+  // The same Crawler blob, but armored and armed -- a few riveted plates
+  // over the body, a banded helm-ring around the eye (not over it -- the
+  // eye is still the actual gameplay tell), and a sword held out to one
+  // side. Drawn on top of the eye so the armor reads as worn OVER the
+  // creature rather than the creature being redesigned from scratch.
+  function drawKnightGear(g, radius, t, seed) {
+    g.save();
+    g.rotate(Math.sin(t * 0.0015 + seed) * 0.1);
+
+    const plate = '#7d828c';
+    const plateShade = '#4a4d54';
+    [-0.55, 0, 0.55].forEach((a) => {
+      const px = Math.cos(a) * radius * 0.55, py = Math.sin(a) * radius * 0.55;
+      g.save();
+      g.translate(px, py);
+      g.rotate(a);
+      const grad = g.createLinearGradient(-radius * 0.3, 0, radius * 0.3, 0);
+      grad.addColorStop(0, plateShade);
+      grad.addColorStop(0.5, plate);
+      grad.addColorStop(1, plateShade);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.ellipse(0, 0, radius * 0.32, radius * 0.22, 0, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = 'rgba(15,15,18,0.6)';
+      g.lineWidth = 1;
+      g.stroke();
+      g.restore();
+    });
+
+    g.beginPath();
+    g.arc(0, -radius * 0.05, radius * 1.05, -0.85 - Math.PI / 2, 0.85 - Math.PI / 2);
+    g.strokeStyle = plate;
+    g.lineWidth = radius * 0.2;
+    g.lineCap = 'round';
+    g.stroke();
+    g.restore();
 
     g.save();
-    g.rotate(angle);
-
-    const mouthGrad = g.createRadialGradient(mouthR * 0.25, 0, 1, mouthR * 0.25, 0, mouthR * 0.9);
-    mouthGrad.addColorStop(0, '#180810');
-    mouthGrad.addColorStop(1, '#000000');
+    g.rotate(0.7);
+    const reach = radius * 0.85;
+    g.strokeStyle = '#4a3216';
+    g.lineWidth = radius * 0.16;
+    g.lineCap = 'round';
     g.beginPath();
-    g.ellipse(mouthR * 0.25, 0, mouthR * 0.85, mouthR * 0.62, 0, 0, Math.PI * 2);
-    g.fillStyle = mouthGrad;
-    g.fill();
-
+    g.moveTo(reach * 0.55, 0);
+    g.lineTo(reach, 0);
+    g.stroke();
+    g.strokeStyle = '#8a6a2a';
+    g.lineWidth = radius * 0.14;
     g.beginPath();
-    g.ellipse(mouthR * 0.55, 0, mouthR * 0.25, mouthR * 0.16, 0, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(120,20,30,0.5)';
-    g.fill();
-
-    const teeth = 9;
-    for (let i = 0; i < teeth; i++) {
-      const a = (i / (teeth - 1)) * Math.PI * 2 - Math.PI;
-      const rx = mouthR * 0.85, ry = mouthR * 0.62;
-      const bx = mouthR * 0.25 + Math.cos(a) * rx;
-      const by = Math.sin(a) * ry;
-      const inX = mouthR * 0.25 + Math.cos(a) * rx * 0.45;
-      const inY = Math.sin(a) * ry * 0.45;
-      const tw = 2.6;
-      const nx = -Math.sin(a) * tw, ny = Math.cos(a) * tw;
-      const toothGrad = g.createLinearGradient(bx, by, inX, inY);
-      toothGrad.addColorStop(0, '#ffffff');
-      toothGrad.addColorStop(1, '#c9c0b0');
-      g.beginPath();
-      g.moveTo(bx + nx, by + ny);
-      g.lineTo(bx - nx, by - ny);
-      g.lineTo(inX, inY);
-      g.closePath();
-      g.fillStyle = toothGrad;
-      g.fill();
-    }
-
+    g.moveTo(reach, -radius * 0.3);
+    g.lineTo(reach, radius * 0.3);
+    g.stroke();
+    g.strokeStyle = '#c9ccd4';
+    g.lineWidth = radius * 0.1;
     g.beginPath();
-    g.ellipse(mouthR * 0.25, 0, mouthR * 0.85, mouthR * 0.62, 0, 0, Math.PI * 2);
-    g.strokeStyle = 'rgba(0,0,0,0.6)';
-    g.lineWidth = 1.5;
+    g.moveTo(reach, 0);
+    g.lineTo(reach + radius * 2, 0);
     g.stroke();
     g.restore();
   }
 
-  // The jump-scare that pops out of a mimic crate: a small purple tentacle
-  // thing with the same toothy maw as the real mimic's revealed form.
-  function drawMimicSpawn(g, t, ms) {
+  // A fleshy, lit blob body: an irregular two-octave silhouette, an offset
+  // gradient for volume, one soft specular highlight and a couple of veins,
+  // all clipped to the silhouette. Kept deliberately light on draw calls --
+  // this runs per monster, per frame.
+  function drawBlobBody(g, radius, fillColor, shadowColor, seed, t, opts) {
+    opts = opts || {};
+    const points = 14;
+    const path = [];
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const r = radius
+        + Math.sin(t * 0.006 + i * 1.7 + seed) * radius * 0.1
+        + Math.sin(t * 0.0021 + i * 3.3 + seed * 1.7) * radius * 0.04;
+      path.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    const trace = () => {
+      g.beginPath();
+      path.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+      g.closePath();
+    };
+
+    trace();
+    const base = g.createRadialGradient(-radius * 0.25, -radius * 0.3, radius * 0.1, 0, 0, radius * 1.05);
+    base.addColorStop(0, opts.core || shade(fillColor, 0.22));
+    base.addColorStop(0.55, fillColor);
+    base.addColorStop(1, opts.rim || shade(fillColor, -0.35));
+    g.fillStyle = base;
+    g.shadowColor = shadowColor;
+    g.shadowBlur = Math.min(radius * 0.4, 18);
+    g.fill();
+    g.shadowBlur = 0;
+
     g.save();
-    g.translate(ms.x, ms.y);
-    const radius = 11;
-    drawBlobBody(g, radius, '#3a1550', '#a03fd6', ms.seed, t, { veinColor: 'rgba(160,63,214,0.35)' });
-    drawMonsterTeeth(g, { radius, lookDir: ms.lookDir });
+    trace();
+    g.clip();
+
+    g.beginPath();
+    g.ellipse(-radius * 0.32, -radius * 0.38, radius * 0.5, radius * 0.32, -0.5, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.14)';
+    g.fill();
+
+    g.strokeStyle = opts.veinColor || 'rgba(0,0,0,0.2)';
+    g.lineWidth = 1.3;
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + seed;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * radius * 0.15, Math.sin(a) * radius * 0.15);
+      g.lineTo(Math.cos(a) * radius * 0.88, Math.sin(a) * radius * 0.88);
+      g.stroke();
+    }
+
     g.restore();
   }
 
+  function drawMonsterEye(g, m) {
+    const lookDir = m.lookDir;
+    const ex = m.radius * 0.62, ey = ex * 0.8;
+
+    g.save();
+    g.beginPath();
+    g.ellipse(0, 0, ex, ey, 0, 0, Math.PI * 2);
+    g.clip();
+
+    const sclera = g.createRadialGradient(-ex * 0.2, -ey * 0.25, 1, 0, 0, ex * 1.15);
+    sclera.addColorStop(0, '#faf1e4');
+    sclera.addColorStop(0.55, '#dcc4b2');
+    sclera.addColorStop(1, '#6b5142');
+    g.fillStyle = sclera;
+    g.fillRect(-ex, -ey, ex * 2, ey * 2);
+
+    g.strokeStyle = 'rgba(170,25,25,0.38)';
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.15 + m.seed;
+      g.lineWidth = 0.5 + ((i * 13) % 3) * 0.35;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * ex, Math.sin(a) * ey);
+      g.quadraticCurveTo(Math.cos(a + 0.1) * ex * 0.5, Math.sin(a - 0.1) * ey * 0.5, Math.cos(a) * ex * 0.08, Math.sin(a) * ey * 0.08);
+      g.stroke();
+    }
+
+    const ix = lookDir.x * ex * 0.32, iy = lookDir.y * ey * 0.32;
+    const irisR = ex * 0.48;
+    const iris = g.createRadialGradient(ix - irisR * 0.22, iy - irisR * 0.22, 1, ix, iy, irisR);
+    iris.addColorStop(0, '#e8903f');
+    iris.addColorStop(0.45, '#c96a2e');
+    iris.addColorStop(0.8, '#7a2f10');
+    iris.addColorStop(1, '#200a05');
+    g.beginPath();
+    g.arc(ix, iy, irisR, 0, Math.PI * 2);
+    g.fillStyle = iris;
+    g.fill();
+
+    g.save();
+    g.beginPath();
+    g.arc(ix, iy, irisR, 0, Math.PI * 2);
+    g.clip();
+    g.strokeStyle = 'rgba(0,0,0,0.25)';
+    g.lineWidth = 0.6;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + m.seed * 0.3;
+      g.beginPath();
+      g.moveTo(ix + Math.cos(a) * irisR * 0.35, iy + Math.sin(a) * irisR * 0.35);
+      g.lineTo(ix + Math.cos(a) * irisR, iy + Math.sin(a) * irisR);
+      g.stroke();
+    }
+    g.restore();
+
+    g.beginPath();
+    g.arc(ix, iy, irisR * 0.42, 0, Math.PI * 2);
+    g.fillStyle = '#050202';
+    g.fill();
+
+    g.beginPath();
+    g.arc(ix - irisR * 0.32, iy - irisR * 0.32, irisR * 0.22, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.3)';
+    g.fill();
+    g.beginPath();
+    g.arc(ix - irisR * 0.28, iy - irisR * 0.3, irisR * 0.11, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.9)';
+    g.fill();
+
+    g.beginPath();
+    g.ellipse(0, -ey * 0.32, ex * 0.98, ey * 0.6, 0, Math.PI, Math.PI * 2);
+    g.fillStyle = 'rgba(0,0,0,0.3)';
+    g.fill();
+
+    g.restore();
+
+    g.beginPath();
+    g.ellipse(0, 0, ex, ey, 0, 0, Math.PI * 2);
+    g.strokeStyle = 'rgba(15,4,4,0.7)';
+    g.lineWidth = 1.5;
+    g.stroke();
+  }
+
+  // A single limb: a thick rounded stroke from (hipX,hipY) to (tipX,tipY)
+  // with a small cap circle (boot/glove) at the moving end.
+  function drawLimb(g, hipX, hipY, tipX, tipY, width, color, capColor, capR) {
+    g.strokeStyle = color;
+    g.lineWidth = width;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(hipX, hipY);
+    g.lineTo(tipX, tipY);
+    g.stroke();
+    g.beginPath();
+    g.arc(tipX, tipY, capR, 0, Math.PI * 2);
+    g.fillStyle = capColor;
+    g.fill();
+  }
+
   function drawPlayers(g) {
+    const R = PLAYER_RADIUS;
     players.forEach((p) => {
       g.save();
       g.translate(p.x, p.y);
-      drawGroundShadow(g, PLAYER_RADIUS);
+
+      // ground shadow, drawn before rotation so it never tilts with the player
+      g.beginPath();
+      g.ellipse(0, R * 1.05, R * 0.85, R * 0.26, 0, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(0,0,0,0.35)';
+      g.fill();
+
       g.rotate(Math.atan2(p.facing.y, p.facing.x));
-      drawHazmatFigure(g, p.color, p.walkPhase);
+
+      // Legs swing fore/aft opposite each other; arms swing opposite their
+      // same-side leg (contralateral, like a real walking gait). Frozen in
+      // place while standing still rather than easing to neutral -- reads
+      // as a mid-step pause, which is fine at this scale.
+      const swing = Math.sin(p.walkPhase) * R * 0.62;
+      const bob = Math.abs(Math.cos(p.walkPhase)) * R * 0.05;
+      const suitDark = shade(p.color, -0.45);
+      const bootColor = '#2b2b28';
+
+      // legs -- drawn first so the torso overlaps their hip ends
+      drawLimb(g, 0, -R * 0.3, swing, -R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
+      drawLimb(g, 0, R * 0.3, -swing, R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
+
+      // oxygen tank + hose up to the collar
+      g.strokeStyle = '#54544c';
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.moveTo(-R * 1.3, -3);
+      g.quadraticCurveTo(-R * 1.1, -R * 0.9, -R * 0.55, -R * 0.55);
+      g.stroke();
+      const tankGrad = g.createLinearGradient(-R * 1.5, -4.5, -R * 1.5, 4.5);
+      tankGrad.addColorStop(0, shade('#54544c', 0.25));
+      tankGrad.addColorStop(1, shade('#54544c', -0.25));
+      g.fillStyle = tankGrad;
+      g.fillRect(-R * 1.5, -4.5, 7, 9);
+
+      // torso, lit from the upper-left, bobbing slightly with the stride
+      g.save();
+      g.translate(0, -bob);
+      const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.1);
+      bodyGrad.addColorStop(0, shade(p.color, 0.25));
+      bodyGrad.addColorStop(0.6, p.color);
+      bodyGrad.addColorStop(1, shade(p.color, -0.35));
+      g.beginPath();
+      g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
+      g.fillStyle = bodyGrad;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.4)';
+      g.lineWidth = 1.5;
+      g.stroke();
+
+      // hazard chevron stripe across the chest
+      g.save();
+      g.beginPath();
+      g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
+      g.clip();
+      g.fillStyle = 'rgba(20,20,15,0.85)';
+      g.fillRect(-R * 1.1, -R * 0.24, R * 2.2, R * 0.17);
+      g.fillStyle = 'rgba(255,200,40,0.9)';
+      g.fillRect(-R * 1.1, -R * 0.08, R * 2.2, R * 0.09);
+      g.restore();
+      g.restore();
+
+      // arms -- on top of the torso, swinging opposite their same-side leg
+      drawLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
+      drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
+
+      // head group -- smaller than the torso and pushed out toward the
+      // front, so the silhouette reads as a body with a head on it rather
+      // than one circle sitting concentrically inside another (which, at
+      // this scale, just looked like an eyeball: white sclera, dark iris,
+      // catchlight).
+      g.save();
+      g.translate(R * 0.55, -bob);
+      const headR = R * 0.5;
+
+      // sealed collar ring
+      g.beginPath();
+      g.arc(0, 0, headR * 1.05, 0, Math.PI * 2);
+      g.strokeStyle = '#1c1c18';
+      g.lineWidth = 2.5;
+      g.stroke();
+
+      // glassy helmet dome
+      const helmetGrad = g.createRadialGradient(-headR * 0.3, -headR * 0.35, 1, 0, 0, headR * 1.05);
+      helmetGrad.addColorStop(0, '#ffffff');
+      helmetGrad.addColorStop(0.35, 'rgba(224,226,216,0.95)');
+      helmetGrad.addColorStop(1, 'rgba(150,155,146,0.92)');
+      g.beginPath();
+      g.arc(0, 0, headR, 0, Math.PI * 2);
+      g.fillStyle = helmetGrad;
+      g.fill();
+      g.strokeStyle = '#1c1c18';
+      g.lineWidth = 1.5;
+      g.stroke();
+
+      // a narrow faceplate slit, not a big round visor -- a flat band
+      // across the front of the helmet reads as a mask, not a pupil.
+      const visorGrad = g.createLinearGradient(0, -headR * 0.3, 0, headR * 0.3);
+      visorGrad.addColorStop(0, '#1c2a33');
+      visorGrad.addColorStop(1, '#03060a');
+      g.beginPath();
+      g.ellipse(headR * 0.32, 0, headR * 0.34, headR * 0.62, 0, 0, Math.PI * 2);
+      g.fillStyle = visorGrad;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 1;
+      g.stroke();
+      g.beginPath();
+      g.moveTo(headR * 0.18, -headR * 0.4);
+      g.lineTo(headR * 0.42, -headR * 0.15);
+      g.strokeStyle = 'rgba(255,255,255,0.4)';
+      g.lineWidth = headR * 0.12;
+      g.lineCap = 'round';
+      g.stroke();
+
+      g.restore();
+
       g.restore();
     });
   }
@@ -2147,9 +1947,13 @@
       punchLight(maskCtx, s.x, s.y, 230, 0.85);
     });
 
-    fireLightPunches().forEach((fc) => {
-      const s = worldToScreen(fc.x, fc.y);
-      punchLight(maskCtx, s.x, s.y, 130, 0.75);
+    // Wall torches light their own small pool regardless of the flashlight --
+    // a dungeon with sconces that didn't actually light anything would be a
+    // strange dungeon.
+    (LEVEL.torchSpawns || []).forEach((tspawn) => {
+      const c = tileCenter(tspawn.x, tspawn.y);
+      const s = worldToScreen(c.x, c.y);
+      punchLight(maskCtx, s.x, s.y, 70, 0.7);
     });
   }
 
@@ -2170,7 +1974,6 @@
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY, now);
     monsters.forEach((m) => drawMonster(ctx, now, m));
-    mimicSpawns.forEach((ms) => drawMimicSpawn(ctx, now, ms));
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
@@ -2182,7 +1985,7 @@
     drawProximityWarning(vx, Math.hypot(p.x - nearest.x, p.y - nearest.y), now);
     drawRadar(vx, p, now, nearest);
     drawScanner(vx, p, now);
-    const minimapH = drawMinimap(vx, now);
+    const minimapH = drawMinimap(vx);
     drawStaminaBar(vx, p, minimapH);
 
     if (p.caught) drawCutsceneOverlay(vx, p, now);
@@ -2216,20 +2019,9 @@
     ctx.restore();
   }
 
-  const PROXIMITY_WARNING_RADIUS = 400;
-
-  function drawProximityWarning(vx, dist, now) {
-    if (dist > PROXIMITY_WARNING_RADIUS) return;
-    const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
-    const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
-    const alpha = closeness * 0.6 * pulse;
-    ctx.fillStyle = `rgba(200,20,20,${alpha})`;
-    ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
-  }
-
   function drawScanner(vx, p, now) {
     if (now > scannerUntil) return;
-    const target = scannerTarget();
+    const target = nearestUnpressedButton(p.x, p.y);
     if (!target) return;
     const cx = vx + VIEW_W - 34, cy = VIEW_H - 34;
     ctx.save();
@@ -2255,8 +2047,19 @@
     ctx.restore();
   }
 
+  const PROXIMITY_WARNING_RADIUS = 400;
+
+  function drawProximityWarning(vx, dist, now) {
+    if (dist > PROXIMITY_WARNING_RADIUS) return;
+    const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+    const alpha = closeness * 0.6 * pulse;
+    ctx.fillStyle = `rgba(200,20,20,${alpha})`;
+    ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+  }
+
   // A short "gotcha" cutscene rendered only in the caught player's own half:
-  // the screen darkens and shakes while a jagged pair of jaws close in from
+  // the screen reddens and shakes while a jagged pair of jaws close in from
   // the top and bottom edges, meeting in the middle right as the bite lands.
   function drawJaw(g, vx, direction, progress, color) {
     const teeth = 8;
@@ -2294,14 +2097,14 @@
     const jawProgress = clamp(t / 0.75, 0, 1);
 
     ctx.save();
-    ctx.fillStyle = `rgba(35,10,40,${0.25 + t * 0.35})`;
+    ctx.fillStyle = `rgba(50,0,0,${0.25 + t * 0.35})`;
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
 
     const shake = (1 - t) * 5;
     ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
 
-    drawJaw(ctx, vx, 1, jawProgress, '#2a1533');
-    drawJaw(ctx, vx, -1, jawProgress, '#1e0f26');
+    drawJaw(ctx, vx, 1, jawProgress, '#3a0d16');
+    drawJaw(ctx, vx, -1, jawProgress, '#2a0810');
 
     if (t > 0.6) {
       const flash = clamp((t - 0.6) / 0.15, 0, 1) * (1 - clamp((t - 0.85) / 0.15, 0, 1));
@@ -2323,15 +2126,16 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'ALL ABOARD &mdash; warping to Level 5&hellip;';
+      messageEl.innerHTML = 'YOU MADE IT OUT &mdash; press Enter to replay, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
     } else {
       messageEl.style.display = 'none';
     }
   }
 
   function updateHud() {
-    hudPowerEl.textContent = `Power: ${leverPulled ? 'on' : 'off'}`;
-    hudPowerEl.classList.toggle('done', leverPulled);
+    const pressedCount = buttonsPressed.filter(Boolean).length;
+    hudButtonsEl.textContent = `Levers: ${pressedCount} / ${LEVEL.levers.length}`;
+    hudButtonsEl.classList.toggle('done', pressedCount === LEVEL.levers.length);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
 
@@ -2341,7 +2145,7 @@
         bestMs = elapsedMs;
         localStorage.setItem(BEST_TIME_KEY, String(bestMs));
       }
-      if (window.GoofyStory) window.GoofyStory.completeLevel(4);
+      if (window.GoofyStory) window.GoofyStory.completeLevel(6);
     }
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
@@ -2359,8 +2163,6 @@
       updateInputMovement(now, dt);
       updateTriggers();
       updateCrates(now);
-      updateSmokeBombs(now);
-      updateMimicSpawns(now, dt);
       monsters.forEach((m) => updateMonster(m, now, dt));
       updateCatch(now);
       updateCutscenes(now);
@@ -2385,10 +2187,9 @@
     updateOverlay();
     updateHud();
     } catch (err) {
-      // A single bad frame (e.g. a stray NaN slipping into a light-punch
-      // position) should never freeze the whole game -- log it and keep
-      // the loop running instead of letting the exception cancel the next
-      // requestAnimationFrame.
+      // A single bad frame should never freeze the whole game -- log it
+      // and keep the loop running instead of letting the exception cancel
+      // the next requestAnimationFrame.
       console.error('goofy-horror: frame skipped after an error', err);
     }
     requestAnimationFrame(loop);

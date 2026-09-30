@@ -20,6 +20,8 @@
   <span>&middot;</span>
   <a href="level5.html" class="active">Level 5</a>
   <span>&middot;</span>
+  <a href="level6.html">Level 6</a>
+  <span>&middot;</span>
   <a href="monsterpedia.html">Monsterpedia</a>
 </nav>
 
@@ -30,7 +32,7 @@
 
 <div class="wrap">
   <div id="hud">
-    <span id="hud-boss">Boss: 100%</span>
+    <span id="hud-boss">Boss: 25/25 HP</span>
     <span id="hud-door">Door: locked</span>
     <span id="hud-timer">Time: 0:00.0</span>
     <span id="hud-best">Best: --:--</span>
@@ -57,9 +59,9 @@
     then it strobes color for 2 seconds before whipping all its tentacles
     out twice &mdash; they can't punch through a wall, so a vent (or any
     wall) blocks them outright. Up to three of your own bombs sit on the
-    map at once, always visible on the minimap; landing one on the boss only
-    really costs it 1/50 of its health <em>unless</em> it's mid-stun (every
-    10th attack, for 10 seconds), when the same hit takes 1/10. A crate with
+    map at once, always visible on the minimap; the boss has 25 HP, and
+    landing one only really costs it 1 point <em>unless</em> it's mid-stun
+    (every 10th attack, for 10 seconds), when the same hit takes 5. A crate with
     meat in it stays that way &mdash; eat it once and it also refills your
     sprint bar, then go back and eat it again any time you're running low.
     Getting caught doesn't respawn you on its own &mdash; you're down until
@@ -67,6 +69,7 @@
   </p>
 </div>
 
+<script src="js/story.js"></script>
 <script src="levels/level5/level.js"></script>
 <script src="js/game5.js"></script>
 </body>

@@ -14,7 +14,29 @@ npx serve .
 [`index.html`](index.html) is the main menu, linking out to each level and
 to the [Monsterpedia](monsterpedia.html) — a field guide rendering every
 creature live on canvas, the same drawing code the levels themselves use,
-with a short write-up of how each one hunts.
+with a short write-up of how each one hunts. The menu's own background is
+a small procedural facility with a handful of simplified creatures
+wandering it live on canvas, instead of a flat color.
+
+## Story mode & saves
+
+The six levels are a linear story now, not six independent picks. Chapter
+1 is always open; beating a chapter unlocks the next one and marks it
+complete, saved in one `localStorage` record (`goofy-horror-story`,
+managed by [`js/story.js`](js/story.js) — the one script every page
+loads) rather than five/six separate flags. A locked chapter's card on
+the menu is dimmed and un-clickable, its "Level N" link in the nav bar
+at the top of every page is struck through, and even a direct URL to a
+locked level's own page refuses to start (each `js/game{N}.js` checks
+`GoofyStory.isUnlocked(n)` before doing anything else) — the nav bar and
+menu card are conveniences, not the actual gate. "Continue" on the menu
+always sends you to the first chapter you haven't beaten yet (or replays
+the finale once the whole story's done); "Reset progress" clears the
+save after confirming (best times, tracked separately per level, aren't
+touched by it). Finishing a level's own exit no longer waits for you to
+press Enter, either — levels 1 through 4 warp you straight to the next
+one a beat after you step on it, and Level 5's ending (see below) warps
+you into Level 6 the same way.
 
 ## Controls
 
@@ -23,9 +45,11 @@ moves with `W` `A` `S` `D`; Player 2 (green) moves with the arrow keys.
 Each half of the screen is that player's own camera into the same map. A
 **Music** button in the HUD mutes/unmutes the ambient drone and safe-room
 tune (sound effects like chimes and the catch sting keep playing either
-way).
+way). A **Fullscreen** button next to it (added by the same shared
+`js/story.js` every page loads, not duplicated per level) expands just the
+game canvas to fill the screen.
 
-All five levels flash your screen red, pulsing faster the closer a
+All six levels flash your screen red, pulsing faster the closer a
 creature gets, regardless of whether it's noticed you yet — your only
 warning to freeze or clear out before it does. Getting caught plays a
 2-second "gotcha" close-up of the creature closing in on you, then
@@ -207,15 +231,15 @@ instead of attacking: a ring of dazed stars over its head and a distinct
 sound cue mark the window, and it's the one moment its own contact won't
 catch you either.
 
-That stun window is the entire strategy. A bomb landed on the boss
-while it's stunned takes a real **1/10** off its health; landed at any
-other point in the cycle, the same hit only does **1/50** — walking up
-mid-charge to land a "free" hit is technically possible but not
-remotely worth it next to just waiting the ten seconds out. Up to
+That stun window is the entire strategy. The boss has a flat **25 HP** —
+a bomb landed on it while it's stunned takes a real **5 points** off;
+landed at any other point in the cycle, the same hit only does **1** —
+walking up mid-charge to land a "free" hit is technically possible but
+not remotely worth it next to just waiting the ten seconds out. Up to
 **three** of your own bombs sit on the map at once (not one), and
 they're always pinged on the minimap, so the fight is about survival
-and timing, not a blind scavenger hunt. Ten stunned hits and the fire
-goes out for good.
+and timing, not a blind scavenger hunt. Empty its HP and the fire goes
+out for good.
 
 Crates still drop the same items as elsewhere, but a **meat** crate is
 now worth remembering the location of: eating it refills your sprint
@@ -231,6 +255,31 @@ wipe: a retry screen, Enter to start the fight over from scratch, boss
 health and attack count included. A procedural boss theme (bassline,
 kick/hat pulse, and an answering lead phrase) plays throughout and
 speeds up as its health drops, same as before.
+
+Winning doesn't lead to a normal exit door: the instant its last HP
+lands, the floor itself gives way — a shaking, darkening few seconds
+with its own low rumble — and warps both players straight into Level 6
+once it settles, no walking to an exit required.
+
+## Level 6 — The Undercroft
+
+Where Level 5's floor dropped you: a compact dungeon built on Level 1's
+own engine rather than a new one from scratch — dark cobblestone
+(cracked and noticeably darker than any other level's floor), wall
+torches actually lighting their own small pool of the dark, and a stone
+statue standing over every room's crossing (solid — it blocks movement
+same as a wall, not just decoration). Three levers, each trailing a
+green wire toward the door, need to be thrown before it opens, same
+shape as Level 1's button puzzle just reskinned.
+
+The threat is the same blind, wall-crawling Crawler from Level 1 —
+still invisible until your own flashlight lands fully on one — but
+there are **three** of them here instead of two, plated in armor and
+each gripping a sword, and noticeably slower (**1.2x** your speed
+instead of the original 2.5x): individually much less dangerous, but
+three at once in a smaller space more than makes up for the drop in
+speed. This is the last chapter — clearing it marks the whole story
+complete rather than unlocking anything further.
 
 This is still a first pass at the level structure — enemy count, puzzle
 variety, and win/lose feedback are all open for iteration.
