@@ -10,6 +10,7 @@
   const mimicCtx = ctxFor('monster-canvas-mimic');
   const lurkerCtx = ctxFor('monster-canvas-lurker');
   const bossCtx = ctxFor('monster-canvas-boss');
+  const knightCtx = ctxFor('monster-canvas-knight');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -583,11 +584,87 @@
     g.restore();
   }
 
-  // This page redraws six fully-detailed monster portraits at once, so it
+  // The Level 6 Knight: the same Crawler blob, but in riveted plate armor
+  // with a banded helm-ring over the eye (not covering it -- the eye is
+  // still the actual gameplay tell) and a sword held out to one side.
+  // Kept pixel-for-pixel identical to game6.js's own drawKnightGear so this
+  // page is a genuine preview, not a redrawn approximation.
+  function drawKnightGear(g, radius, t, seed) {
+    g.save();
+    g.rotate(Math.sin(t * 0.0015 + seed) * 0.1);
+
+    const plate = '#7d828c';
+    const plateShade = '#4a4d54';
+    [-0.55, 0, 0.55].forEach((a) => {
+      const px = Math.cos(a) * radius * 0.55, py = Math.sin(a) * radius * 0.55;
+      g.save();
+      g.translate(px, py);
+      g.rotate(a);
+      const grad = g.createLinearGradient(-radius * 0.3, 0, radius * 0.3, 0);
+      grad.addColorStop(0, plateShade);
+      grad.addColorStop(0.5, plate);
+      grad.addColorStop(1, plateShade);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.ellipse(0, 0, radius * 0.32, radius * 0.22, 0, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = 'rgba(15,15,18,0.6)';
+      g.lineWidth = 1;
+      g.stroke();
+      g.restore();
+    });
+
+    g.beginPath();
+    g.arc(0, -radius * 0.05, radius * 1.05, -0.85 - Math.PI / 2, 0.85 - Math.PI / 2);
+    g.strokeStyle = plate;
+    g.lineWidth = radius * 0.2;
+    g.lineCap = 'round';
+    g.stroke();
+    g.restore();
+
+    g.save();
+    g.rotate(0.7);
+    const reach = radius * 0.85;
+    g.strokeStyle = '#4a3216';
+    g.lineWidth = radius * 0.16;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(reach * 0.55, 0);
+    g.lineTo(reach, 0);
+    g.stroke();
+    g.strokeStyle = '#8a6a2a';
+    g.lineWidth = radius * 0.14;
+    g.beginPath();
+    g.moveTo(reach, -radius * 0.3);
+    g.lineTo(reach, radius * 0.3);
+    g.stroke();
+    g.strokeStyle = '#c9ccd4';
+    g.lineWidth = radius * 0.1;
+    g.beginPath();
+    g.moveTo(reach, 0);
+    g.lineTo(reach + radius * 2, 0);
+    g.stroke();
+    g.restore();
+  }
+
+  function drawKnight(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 53;
+    drawTentacles(g, 24, '#6a1826', t, seed);
+    drawBlobBody(g, 24, '#4a0f1c', '#7a1f2f', seed, t);
+    const angle = t * 0.0006;
+    drawEye(g, 24, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    drawKnightGear(g, 24, t, seed);
+    g.restore();
+  }
+
+  // This page redraws seven fully-detailed monster portraits at once, so it
   // caps itself around 30fps instead of riding requestAnimationFrame's full
   // 60 -- plenty smooth for a reference gallery nobody is dodging, and it
   // halves the cost of a page that (unlike any single level) never has
-  // fewer than six creatures on screen simultaneously.
+  // fewer than seven creatures on screen simultaneously.
   let lastDraw = 0;
   function loop(t) {
     if (t - lastDraw >= 33) {
@@ -598,6 +675,7 @@
       if (mimicCtx) drawMimic(mimicCtx, PORTRAIT, PORTRAIT, t);
       if (lurkerCtx) drawLurker(lurkerCtx, PORTRAIT, PORTRAIT, t);
       if (bossCtx) drawBoss(bossCtx, PORTRAIT, PORTRAIT, t);
+      if (knightCtx) drawKnight(knightCtx, PORTRAIT, PORTRAIT, t);
     }
     requestAnimationFrame(loop);
   }

@@ -27,7 +27,7 @@
   // took longer than usual (e.g. a big tile grid redraw).
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  const MONSTER_SPEED = PLAYER_SPEED * 1.2; // armored and slower, but there are three of them
+  const MONSTER_SPEED = PLAYER_SPEED * 1.2; // armored and slower, but there are five of them
   const PATROL_SPEED = PLAYER_SPEED * 0.5;
   const LURE_SPEED = PLAYER_SPEED * 0.6;
   const CATCH_RADIUS = 20;
@@ -549,11 +549,10 @@
     };
   }
 
-  const monsters = [
-    makeMonster(0),
-    makeMonster(Math.floor(LEVEL.patrolPoints.length / 3)),
-    makeMonster(Math.floor((2 * LEVEL.patrolPoints.length) / 3)),
-  ];
+  const MONSTER_COUNT = 5;
+  const monsters = Array.from({ length: MONSTER_COUNT }, (_, i) =>
+    makeMonster(Math.floor((i * LEVEL.patrolPoints.length) / MONSTER_COUNT))
+  );
 
   let crates = [];
   let radarUntil = 0;
