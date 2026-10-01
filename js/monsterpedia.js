@@ -13,6 +13,7 @@
   const knightCtx = ctxFor('monster-canvas-knight');
   const wingedCtx = ctxFor('monster-canvas-winged');
   const vaultGuardCtx = ctxFor('monster-canvas-vaultguard');
+  const wraithCtx = ctxFor('monster-canvas-wraith');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -717,6 +718,69 @@
     g.restore();
   }
 
+  // Player-sized, tinted solid black or white, swinging a chained ball
+  // around itself -- pixel-for-pixel the same draw code as game8.js's own
+  // drawWraith, just with an explicit radius/seed/tint instead of reading
+  // them off a live monster object.
+  function drawWraith(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 41, radius = 22, tint = '#e8e8e8', flailAngle = 1.1;
+
+    const n = 4;
+    const tentColor = shade(tint, -0.3);
+    for (let i = 0; i < n; i++) {
+      const baseAngle = (i / n) * Math.PI * 2 + seed;
+      const len = radius * 1.6;
+      const wobble = Math.sin(t * 0.006 + i * 2.3 + seed) * radius * 0.3;
+      const tx = Math.cos(baseAngle) * len, ty = Math.sin(baseAngle) * len;
+      const perp = baseAngle + Math.PI / 2;
+      const midX = tx / 2 + Math.cos(perp) * wobble, midY = ty / 2 + Math.sin(perp) * wobble;
+      drawTaperedTentacle(g, tx, ty, midX, midY, radius * 0.22, tentColor);
+    }
+
+    drawBlobBody(g, radius, tint, '#ffffff', seed, t, { veinColor: 'rgba(0,0,0,0.15)' });
+    const angle0 = t * 0.0006;
+    drawEye(g, radius, seed, { x: Math.cos(angle0), y: Math.sin(angle0) * 0.5 });
+
+    const angle = t * 0.0025 + flailAngle;
+    const chainLen = radius * 2.4;
+    const bx = Math.cos(angle) * chainLen, by = Math.sin(angle) * chainLen;
+    g.strokeStyle = '#6a6a6a';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(0, 0);
+    const links = 5;
+    for (let i = 1; i <= links; i++) {
+      const lt = i / links;
+      const wob = Math.sin(t * 0.01 + i) * 1.2;
+      const perp = angle + Math.PI / 2;
+      g.lineTo(bx * lt + Math.cos(perp) * wob, by * lt + Math.sin(perp) * wob);
+    }
+    g.stroke();
+
+    const ballR = radius * 0.45;
+    const ballGrad = g.createRadialGradient(bx - ballR * 0.3, by - ballR * 0.3, 1, bx, by, ballR);
+    ballGrad.addColorStop(0, '#9a9a9a');
+    ballGrad.addColorStop(1, '#3a3a3a');
+    g.beginPath();
+    g.arc(bx, by, ballR, 0, Math.PI * 2);
+    g.fillStyle = ballGrad;
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.lineWidth = 1;
+    g.stroke();
+    g.fillStyle = '#1c1c1c';
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      g.beginPath();
+      g.arc(bx + Math.cos(a) * ballR * 0.7, by + Math.sin(a) * ballR * 0.7, ballR * 0.2, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+  }
+
   // The Level 7 creature: grey, mouth instead of an eye, tentacles 2.5x the
   // normal base width, and a pair of angular stone wings -- kept pixel-for-
   // pixel identical to game7.js's own drawStoneWings/drawMonster so this
@@ -770,11 +834,11 @@
     g.restore();
   }
 
-  // This page redraws nine fully-detailed monster portraits at once, so it
+  // This page redraws ten fully-detailed monster portraits at once, so it
   // caps itself around 30fps instead of riding requestAnimationFrame's full
   // 60 -- plenty smooth for a reference gallery nobody is dodging, and it
   // halves the cost of a page that (unlike any single level) never has
-  // fewer than nine creatures on screen simultaneously.
+  // fewer than ten creatures on screen simultaneously.
   let lastDraw = 0;
   function loop(t) {
     if (t - lastDraw >= 33) {
@@ -788,6 +852,7 @@
       if (knightCtx) drawKnight(knightCtx, PORTRAIT, PORTRAIT, t);
       if (wingedCtx) drawWinged(wingedCtx, PORTRAIT, PORTRAIT, t);
       if (vaultGuardCtx) drawVaultGuardian(vaultGuardCtx, PORTRAIT, PORTRAIT, t);
+      if (wraithCtx) drawWraith(wraithCtx, PORTRAIT, PORTRAIT, t);
     }
     requestAnimationFrame(loop);
   }

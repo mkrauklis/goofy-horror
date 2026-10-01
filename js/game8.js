@@ -556,11 +556,18 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
-  function makeMonster(patrolStartIndex) {
+  // 'guardian' is the big armored Vault Guardian; 'wraith' is the small
+  // chain-and-ball creature below -- same patrol/alert/catch machinery,
+  // just a different size, speed, sight range and look.
+  function makeMonster(patrolStartIndex, kind) {
     return {
+      kind: kind || 'guardian',
       x: 0,
       y: 0,
-      radius: 64, // 4x Level 1's Crawler
+      radius: kind === 'wraith' ? PLAYER_RADIUS : 64, // 4x Level 1's Crawler
+      speed: kind === 'wraith' ? PLAYER_SPEED * 1.1 : MONSTER_SPEED,
+      tint: Math.random() < 0.5 ? '#f0f0f0' : '#151515',
+      flailAngle: Math.random() * Math.PI * 2,
       seed: Math.random() * 100,
       path: [],
       pathIndex: 0,
@@ -579,9 +586,15 @@
   }
 
   const MONSTER_COUNT = 1;
-  const monsters = Array.from({ length: MONSTER_COUNT }, (_, i) =>
-    makeMonster(Math.floor((i * LEVEL.patrolPoints.length) / MONSTER_COUNT))
-  );
+  const WRAITH_COUNT = 3;
+  const monsters = [
+    ...Array.from({ length: MONSTER_COUNT }, (_, i) =>
+      makeMonster(Math.floor((i * LEVEL.patrolPoints.length) / MONSTER_COUNT), 'guardian')
+    ),
+    ...Array.from({ length: WRAITH_COUNT }, (_, i) =>
+      makeMonster(Math.floor((i * LEVEL.patrolPoints.length) / WRAITH_COUNT), 'wraith')
+    ),
+  ];
 
   let crates = [];
   let radarUntil = 0;
@@ -1119,10 +1132,14 @@
   }
 
   function updateDetection(m, now) {
+    // Only the Vault Guardian sees twice as far -- the chain wraiths use
+    // the normal flashlight-radius detection every other level's creature
+    // does.
+    const sightRadius = m.kind === 'guardian' ? MONSTER_SIGHT_RADIUS : FLASHLIGHT_RADIUS;
     for (const p of players) {
       if (p.caught || isHidden(p) || isInSmoke(p, now)) continue;
       const d = Math.hypot(p.x - m.x, p.y - m.y);
-      if (d <= MONSTER_SIGHT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+      if (d <= sightRadius && hasLineOfSight(m.x, m.y, p.x, p.y)) {
         m.state = 'alert';
         m.alertUntil = now + ALERT_GRACE_MS;
         m.alertTargetTile = worldToTile(p.x, p.y);
@@ -1230,7 +1247,7 @@
     }
 
     if (m.path && m.pathIndex < m.path.length) {
-      const step = (m.state === 'alert' ? MONSTER_SPEED : PATROL_SPEED) * dt;
+      const step = (m.state === 'alert' ? m.speed : PATROL_SPEED) * dt;
       const target = tileTargetWithOffset(m.path[m.pathIndex]);
       const dx = target.x - m.x, dy = target.y - m.y;
       const d = Math.hypot(dx, dy);
@@ -1774,16 +1791,18 @@
     g.save();
     g.translate(m.x, m.y);
 
-    // Freely radiating and reaching a full ~2x its own radius, same as the
-    // Ashen One's (Level 5 boss) -- not the short wall-adjacency tentacles
-    // the other wall-crawlers use, which would read as stubby on something
-    // this size.
-    drawLongTentacles(g, m.radius, t, m.seed);
-
-    drawBlobBody(g, m.radius, '#2f6a3a', '#1a4020', m.seed, t, { veinColor: 'rgba(0,0,0,0.25)' });
-
-    drawMonsterEye(g, m);
-    drawArmorPlates(g, m.radius, t, m.seed);
+    if (m.kind === 'wraith') {
+      drawWraith(g, t, m);
+    } else {
+      // Freely radiating and reaching a full ~2x its own radius, same as
+      // the Ashen One's (Level 5 boss) -- not the short wall-adjacency
+      // tentacles the other wall-crawlers use, which would read as stubby
+      // on something this size.
+      drawLongTentacles(g, m.radius, t, m.seed);
+      drawBlobBody(g, m.radius, '#2f6a3a', '#1a4020', m.seed, t, { veinColor: 'rgba(0,0,0,0.25)' });
+      drawMonsterEye(g, m);
+      drawArmorPlates(g, m.radius, t, m.seed);
+    }
 
     if (t < m.frozenUntil) {
       const points = 12;
@@ -1803,6 +1822,66 @@
     }
 
     g.restore();
+  }
+
+  // Player-sized, tinted solid black or white per instance (m.tint, picked
+  // once at creation), swinging a chained ball around itself as it moves --
+  // the chain/ball are metal-grey regardless of tint, same as the Knight's
+  // sword stays its own color regardless of the creature wearing it.
+  function drawWraith(g, t, m) {
+    const n = 4;
+    const tentColor = shade(m.tint, m.tint === '#151515' ? 0.3 : -0.3);
+    for (let i = 0; i < n; i++) {
+      const baseAngle = (i / n) * Math.PI * 2 + m.seed;
+      const len = m.radius * 1.6;
+      const wobble = Math.sin(t * 0.006 + i * 2.3 + m.seed) * m.radius * 0.3;
+      const tx = Math.cos(baseAngle) * len, ty = Math.sin(baseAngle) * len;
+      const perp = baseAngle + Math.PI / 2;
+      const midX = tx / 2 + Math.cos(perp) * wobble, midY = ty / 2 + Math.sin(perp) * wobble;
+      drawTaperedTentacle(g, tx, ty, midX, midY, m.radius * 0.22, tentColor);
+    }
+
+    const dark = m.tint === '#151515';
+    drawBlobBody(g, m.radius, m.tint, dark ? '#000000' : '#ffffff', m.seed, t, {
+      veinColor: dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',
+    });
+    drawMonsterEye(g, m);
+
+    // The chain-and-ball flail, lazily orbiting the body as it moves.
+    const angle = t * 0.0025 + m.flailAngle;
+    const chainLen = m.radius * 2.4;
+    const bx = Math.cos(angle) * chainLen, by = Math.sin(angle) * chainLen;
+    g.strokeStyle = '#6a6a6a';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(0, 0);
+    const links = 5;
+    for (let i = 1; i <= links; i++) {
+      const lt = i / links;
+      const wob = Math.sin(t * 0.01 + i) * 1.2;
+      const perp = angle + Math.PI / 2;
+      g.lineTo(bx * lt + Math.cos(perp) * wob, by * lt + Math.sin(perp) * wob);
+    }
+    g.stroke();
+
+    const ballR = m.radius * 0.45;
+    const ballGrad = g.createRadialGradient(bx - ballR * 0.3, by - ballR * 0.3, 1, bx, by, ballR);
+    ballGrad.addColorStop(0, '#9a9a9a');
+    ballGrad.addColorStop(1, '#3a3a3a');
+    g.beginPath();
+    g.arc(bx, by, ballR, 0, Math.PI * 2);
+    g.fillStyle = ballGrad;
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.lineWidth = 1;
+    g.stroke();
+    g.fillStyle = '#1c1c1c';
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      g.beginPath();
+      g.arc(bx + Math.cos(a) * ballR * 0.7, by + Math.sin(a) * ballR * 0.7, ballR * 0.2, 0, Math.PI * 2);
+      g.fill();
+    }
   }
 
   // Ported from the Ashen One's own idle tentacle sway (game5.js /
