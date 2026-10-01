@@ -163,9 +163,13 @@
   const MINIMAP_W = 90;
 
   // ---- procedural audio (no asset files) ----
+  // Music on/off is kept per-browser in localStorage, the same way best
+  // times are, so it survives a death + retry, the "back to the menu" link,
+  // and a plain reload -- not just reset to Off every fresh page load.
+  const MUSIC_KEY = 'goofy-horror-level5-music';
   let audioCtx = null;
   let musicMasterGain = null; // both the ambient drone and the boss theme route through this
-  let musicEnabled = false;
+  let musicEnabled = localStorage.getItem(MUSIC_KEY) === '1';
   let ambientGain = null;
   let ambientSubOsc = null;
   let ambientMidGain = null;
@@ -598,6 +602,7 @@
 
   function setMusicEnabled(on) {
     musicEnabled = on;
+    localStorage.setItem(MUSIC_KEY, on ? '1' : '0');
     ensureAudio();
     if (audioCtx && musicMasterGain) {
       musicMasterGain.gain.setTargetAtTime(on ? 1 : 0, audioCtx.currentTime, 0.15);
@@ -608,9 +613,12 @@
   function updateSoundHint() {
     if (soundHintEl) soundHintEl.style.display = musicEnabled ? '' : 'none';
   }
+  updateSoundHint();
 
   const musicToggleEl = document.getElementById('music-toggle');
   if (musicToggleEl) {
+    musicToggleEl.textContent = musicEnabled ? '♪ Music: On' : '♪ Music: Off';
+    musicToggleEl.classList.toggle('muted', !musicEnabled);
     musicToggleEl.addEventListener('click', () => {
       setMusicEnabled(!musicEnabled);
       musicToggleEl.textContent = musicEnabled ? '♪ Music: On' : '♪ Music: Off';
