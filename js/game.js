@@ -792,7 +792,9 @@
       }
       const life = clamp((b.endsAt - now) / SMOKE_DURATION_MS, 0, 1);
       const elapsed = SMOKE_DURATION_MS - (b.endsAt - now);
-      const radius = SMOKE_RADIUS * Math.min(1, elapsed / 800);
+      // Floored at 0 -- arc() throws on a negative radius, which elapsed can
+      // briefly go to if now ever lands ahead of where endsAt expects it.
+      const radius = SMOKE_RADIUS * Math.min(1, Math.max(0, elapsed) / 800);
       g.beginPath();
       g.arc(b.x, b.y, radius, 0, Math.PI * 2);
       g.fillStyle = `rgba(210,210,220,${0.32 * life})`;

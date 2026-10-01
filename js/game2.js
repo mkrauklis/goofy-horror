@@ -694,7 +694,7 @@
   // ---- player movement & collision ----
   function isWallForPlayer(tx, ty) {
     const ch = tileChar(tx, ty);
-    if (ch === '#') return true;
+    if (ch === '#' || ch === 'C') return true;
     if (ch === 'D') return !doorUnlocked;
     return false;
   }
@@ -791,7 +791,7 @@
   }
 
   function minimapColorFor(ch) {
-    if (ch === '#') return '#8f8f9a';
+    if (ch === '#' || ch === 'C') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
     if (ch === 'S') return '#3ddc84';
     return '#3c3c46';
@@ -971,7 +971,9 @@
       }
       const life = clamp((b.endsAt - now) / SMOKE_DURATION_MS, 0, 1);
       const elapsed = SMOKE_DURATION_MS - (b.endsAt - now);
-      const radius = SMOKE_RADIUS * Math.min(1, elapsed / 800);
+      // Floored at 0 -- arc() throws on a negative radius, which elapsed can
+      // briefly go to if now ever lands ahead of where endsAt expects it.
+      const radius = SMOKE_RADIUS * Math.min(1, Math.max(0, elapsed) / 800);
       g.beginPath();
       g.arc(b.x, b.y, radius, 0, Math.PI * 2);
       g.fillStyle = `rgba(210,210,220,${0.32 * life})`;
@@ -1054,7 +1056,7 @@
 
   // ---- monster AI ----
   function monsterCanOccupy(ch) {
-    if (ch === '#' || ch === 'S') return false;
+    if (ch === '#' || ch === 'S' || ch === 'C') return false;
     if (ch === 'D') return doorUnlocked;
     return true;
   }
@@ -1338,6 +1340,40 @@
     g.restore();
   }
 
+  // Big 2x2 crates (LEVEL.bigCrateSpawns, each giving its top-left tile) are
+  // solid set dressing in the level's bigger rooms -- unlike the normal
+  // single-tile crates they can't be opened at all, just walked around.
+  function drawBigCrates(g) {
+    (LEVEL.bigCrateSpawns || []).forEach((c) => {
+      const px = c.x * TILE, py = c.y * TILE;
+      const w = TILE * 2, h = TILE * 2;
+      const grad = g.createLinearGradient(px, py, px + w, py + h);
+      grad.addColorStop(0, '#5a4228');
+      grad.addColorStop(1, '#3a2a18');
+      g.fillStyle = grad;
+      g.fillRect(px + 2, py + 2, w - 4, h - 4);
+
+      g.strokeStyle = '#1c130a';
+      g.lineWidth = 2;
+      g.strokeRect(px + 2, py + 2, w - 4, h - 4);
+      g.beginPath();
+      g.moveTo(px + 2, py + 2); g.lineTo(px + w - 2, py + h - 2);
+      g.moveTo(px + w - 2, py + 2); g.lineTo(px + 2, py + h - 2);
+      g.stroke();
+
+      g.strokeStyle = 'rgba(255,200,120,0.25)';
+      g.lineWidth = 1;
+      g.strokeRect(px + 6, py + 6, w - 12, h - 12);
+
+      g.fillStyle = '#1c130a';
+      [[px + 5, py + 5], [px + w - 5, py + 5], [px + 5, py + h - 5], [px + w - 5, py + h - 5]].forEach(([bx, by]) => {
+        g.beginPath();
+        g.arc(bx, by, 2, 0, Math.PI * 2);
+        g.fill();
+      });
+    });
+  }
+
   function drawTiles(g, camX, camY) {
     const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
     const maxTX = Math.min(COLS - 1, Math.ceil((camX + VIEW_W / 2) / TILE) + 1);
@@ -1350,6 +1386,7 @@
         let color;
         switch (ch) {
           case '#': color = '#262629'; break;
+          case 'C': color = '#2a1f14'; break;
           case 'S': color = floorShade(x, y); break;
           case 'E': color = '#3a301f'; break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
@@ -1365,6 +1402,7 @@
       }
     }
 
+    drawBigCrates(g);
     drawWire(g);
 
     const dx0 = doorBounds.x0 * TILE, dy0 = doorBounds.y0 * TILE;

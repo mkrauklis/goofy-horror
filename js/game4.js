@@ -1877,8 +1877,11 @@
         g.restore();
       } else if (now < b.endsAt) {
         const elapsed = SMOKE_DURATION_MS - (b.endsAt - now);
-        const t = elapsed / SMOKE_DURATION_MS;
-        const radius = SMOKE_RADIUS * Math.min(1, t * 3);
+        const t = clamp(elapsed / SMOKE_DURATION_MS, 0, 1);
+        // The inner radius below is fixed at 4 -- createRadialGradient throws
+        // if the outer radius is smaller than that, so the floor here isn't
+        // just "non-negative," it has to clear the inner radius too.
+        const radius = Math.max(4, SMOKE_RADIUS * Math.min(1, t * 3));
         const fade = 1 - Math.max(0, (t - 0.7) / 0.3);
         g.save();
         g.translate(b.x, b.y);
