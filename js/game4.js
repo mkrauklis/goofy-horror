@@ -42,7 +42,11 @@
   const SMOKE_FUSE_MS = 3000;
   const SMOKE_DURATION_MS = 10000;
   const SMOKE_RADIUS = 70;
-  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke'];
+  const DECOY_SPEED = PLAYER_SPEED * 0.8;
+  const DECOY_CATCH_RADIUS = 24;
+  const NVG_DURATION_MS = 10000;
+  const NVG_RANGE_MULT = 2;
+  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke', 'decoy', 'nightvision'];
   const MIMIC_CRATE_CHANCE = 0.12;
   const MIMIC_CHASE_SPEED = PLAYER_SPEED * 2.2;
   const MIMIC_TIMEOUT_MS = 8000;
@@ -658,6 +662,8 @@
   let radarUntil = 0;
   let scannerUntil = 0;
   let superRadarUntil = 0;
+  let decoy = null; // { x, y, angle, turnAt }
+  let nvgUntil = 0;
   let floatingTexts = [];
 
   function respawnPlayer(p) {
@@ -714,6 +720,8 @@
     radarUntil = 0;
     scannerUntil = 0;
     superRadarUntil = 0;
+    decoy = null;
+    nvgUntil = 0;
     floatingTexts = [];
     resetExploration();
     runStartTime = performance.now();
@@ -942,7 +950,57 @@
       smokeBombs.push({ x, y, armAt: now + SMOKE_FUSE_MS, exploded: false, endsAt: 0 });
       spawnFloatingText(x, y, 'SMOKE BOMB');
       playItemChime(500);
+    } else if (item === 'decoy') {
+      decoy = { x, y, angle: Math.random() * Math.PI * 2, turnAt: 0 };
+      spawnFloatingText(x, y, 'DECOY');
+      playItemChime(340);
+    } else if (item === 'nightvision') {
+      nvgUntil = now + NVG_DURATION_MS;
+      spawnFloatingText(x, y, 'NIGHT VISION');
+      playItemChime(1000);
     }
+  }
+
+  function updateDecoy(now, dt) {
+    if (!decoy) return;
+    if (now > decoy.turnAt) {
+      decoy.angle += (Math.random() - 0.5) * 2.2;
+      decoy.turnAt = now + 500 + Math.random() * 900;
+    }
+    const step = DECOY_SPEED * dt;
+    const dx = Math.cos(decoy.angle) * step, dy = Math.sin(decoy.angle) * step;
+    if (canStandAt(decoy.x + dx, decoy.y)) decoy.x += dx; else decoy.angle = Math.PI - decoy.angle;
+    if (canStandAt(decoy.x, decoy.y + dy)) decoy.y += dy; else decoy.angle = -decoy.angle;
+
+    monsters.forEach((m) => {
+      m.luredState = 'lured';
+      m.lureTarget = { x: decoy.x, y: decoy.y };
+    });
+
+    if (monsters.some((m) => Math.hypot(m.x - decoy.x, m.y - decoy.y) < DECOY_CATCH_RADIUS)) {
+      spawnFloatingText(decoy.x, decoy.y, 'CAUGHT!');
+      decoy = null;
+      monsters.forEach((m) => { m.luredState = 'none'; m.path = []; m.pathIndex = 0; m.nextRepathAt = 0; });
+    }
+  }
+
+  function drawDecoy(g, now) {
+    if (!decoy) return;
+    const pulse = 0.6 + 0.4 * Math.sin(now / 130);
+    g.save();
+    g.translate(decoy.x, decoy.y);
+    g.beginPath();
+    g.arc(0, 0, 10 + pulse * 2, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,220,80,0.35)';
+    g.fill();
+    g.beginPath();
+    g.arc(0, 0, 6, 0, Math.PI * 2);
+    g.fillStyle = '#ffd84d';
+    g.shadowColor = '#ffd84d';
+    g.shadowBlur = 8;
+    g.fill();
+    g.shadowBlur = 0;
+    g.restore();
   }
 
   function updateCrates(now) {
@@ -2125,8 +2183,9 @@
     g.restore();
   }
 
-  function buildDarknessMask(camX, camY) {
+  function buildDarknessMask(camX, camY, now) {
     const worldToScreen = (wx, wy) => ({ x: wx - camX + VIEW_W / 2, y: wy - camY + VIEW_H / 2 });
+    const nvgMult = now < nvgUntil ? NVG_RANGE_MULT : 1;
 
     maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
     maskCtx.globalCompositeOperation = 'source-over';
@@ -2143,8 +2202,8 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 90, 1);
-      punchLight(maskCtx, s.x, s.y, 230, 0.85);
+      punchLight(maskCtx, s.x, s.y, 90 * nvgMult, 1);
+      punchLight(maskCtx, s.x, s.y, 230 * nvgMult, 0.85);
     });
 
     fireLightPunches().forEach((fc) => {
@@ -2169,14 +2228,20 @@
     ctx.save();
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY, now);
+    drawDecoy(ctx, now);
     monsters.forEach((m) => drawMonster(ctx, now, m));
     mimicSpawns.forEach((ms) => drawMimicSpawn(ctx, now, ms));
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
 
-    buildDarknessMask(camX, camY);
+    buildDarknessMask(camX, camY, now);
     ctx.drawImage(maskCanvas, vx, 0);
+
+    if (now < nvgUntil) {
+      ctx.fillStyle = 'rgba(40,255,120,0.16)';
+      ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+    }
 
     const nearest = nearestMonster(p.x, p.y);
     drawProximityWarning(vx, Math.hypot(p.x - nearest.x, p.y - nearest.y), now);
@@ -2360,6 +2425,7 @@
       updateTriggers();
       updateCrates(now);
       updateSmokeBombs(now);
+      updateDecoy(now, dt);
       updateMimicSpawns(now, dt);
       monsters.forEach((m) => updateMonster(m, now, dt));
       updateCatch(now);

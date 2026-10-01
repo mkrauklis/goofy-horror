@@ -116,7 +116,12 @@
   const CRATE_RESPAWN_MS = 60000;
   const MEAT_REFILL_COOLDOWN_MS = 1500; // how often a revisited meat crate can be re-eaten
   const CATCH_CUTSCENE_MS = 2000;
-  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner'];
+  const SMOKE_FUSE_MS = 3000;
+  const SMOKE_DURATION_MS = 10000;
+  const SMOKE_RADIUS = 70;
+  const NVG_DURATION_MS = 10000;
+  const NVG_RANGE_MULT = 2;
+  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'smoke', 'nightvision'];
 
   // ---- sprint / stamina ----
   const DOUBLE_TAP_MS = 300;
@@ -863,6 +868,8 @@
   let fires = [];
   let radarUntil = 0;
   let scannerUntil = 0;
+  let smokeBombs = [];
+  let nvgUntil = 0;
   let floatingTexts = [];
 
   function respawnPlayer(p) {
@@ -912,6 +919,8 @@
     }));
     radarUntil = 0;
     scannerUntil = 0;
+    smokeBombs = [];
+    nvgUntil = 0;
     floatingTexts = [];
     resetExploration();
     runStartTime = performance.now();
@@ -928,11 +937,13 @@
     return false;
   }
 
-  // Standing in a vent takes you out of play entirely -- every attack's hit
-  // test and the boss's own contact-catch all check this before landing.
-  function isHidden(p) {
+  // Standing in a vent (or in a smoke bomb's cloud) takes you out of play
+  // entirely -- every attack's hit test and the boss's own contact-catch
+  // all check this before landing.
+  function isHidden(p, now) {
     const t = worldToTile(p.x, p.y);
-    return tileChar(t.x, t.y) === 'V';
+    if (tileChar(t.x, t.y) === 'V') return true;
+    return smokeBombs.some((b) => b.exploded && now < b.endsAt && Math.hypot(p.x - b.x, p.y - b.y) < SMOKE_RADIUS);
   }
 
   function canStandAt(x, y) {
@@ -1201,7 +1212,48 @@
       scannerUntil = now + SCANNER_DURATION_MS;
       spawnFloatingText(x, y, 'SCANNER');
       playItemChime(660);
+    } else if (item === 'smoke') {
+      smokeBombs.push({ x, y, armAt: now + SMOKE_FUSE_MS, exploded: false, endsAt: 0 });
+      spawnFloatingText(x, y, 'SMOKE BOMB');
+      playItemChime(500);
+    } else if (item === 'nightvision') {
+      nvgUntil = now + NVG_DURATION_MS;
+      spawnFloatingText(x, y, 'NIGHT VISION');
+      playItemChime(1000);
     }
+  }
+
+  function updateSmokeBombs(now) {
+    smokeBombs.forEach((b) => {
+      if (b.exploded || now < b.armAt) return;
+      b.exploded = true;
+      b.endsAt = now + SMOKE_DURATION_MS;
+      playItemChime(180);
+    });
+    smokeBombs = smokeBombs.filter((b) => !b.exploded || now < b.endsAt);
+  }
+
+  function drawSmokeBombs(g, now) {
+    smokeBombs.forEach((b) => {
+      if (!b.exploded) {
+        const t = clamp(1 - (b.armAt - now) / SMOKE_FUSE_MS, 0, 1);
+        g.beginPath();
+        g.arc(b.x, b.y, 5 + t * 4, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(200,200,200,0.6)';
+        g.fill();
+        return;
+      }
+      const life = clamp((b.endsAt - now) / SMOKE_DURATION_MS, 0, 1);
+      const elapsed = SMOKE_DURATION_MS - (b.endsAt - now);
+      const radius = SMOKE_RADIUS * Math.min(1, elapsed / 800);
+      g.beginPath();
+      g.arc(b.x, b.y, radius, 0, Math.PI * 2);
+      g.fillStyle = `rgba(210,210,220,${0.32 * life})`;
+      g.fill();
+      g.strokeStyle = `rgba(255,255,255,${0.25 * life})`;
+      g.lineWidth = 2;
+      g.stroke();
+    });
   }
 
   function updateCrates(now) {
@@ -1489,7 +1541,7 @@
       if (now >= tg.firesAt) {
         onFire(tg);
         players.forEach((p) => {
-          if (p.caught || now < p.invulnerableUntil || isHidden(p)) return;
+          if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
           if (Math.hypot(p.x - tg.x, p.y - tg.y) < radius) triggerCaught(p, now);
         });
         arr.splice(i, 1);
@@ -1553,7 +1605,7 @@
       b.exploded = true;
       playBombBlast();
       players.forEach((p) => {
-        if (p.caught || now < p.invulnerableUntil || isHidden(p)) return;
+        if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
         if (Math.hypot(p.x - b.x, p.y - b.y) < BOMBTHROW_RADIUS) triggerCaught(p, now);
       });
     });
@@ -1591,7 +1643,7 @@
       const dirX = Math.cos(angle), dirY = Math.sin(angle);
       const reach = reaches[i];
       players.forEach((p) => {
-        if (p.caught || now < p.invulnerableUntil || isHidden(p)) return;
+        if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
         const relX = p.x - boss.x, relY = p.y - boss.y;
         const along = relX * dirX + relY * dirY;
         if (along < 0 || along > reach) return;
@@ -1706,7 +1758,7 @@
     players.forEach((p) => {
       if (p.caught) return;
       if (now < p.invulnerableUntil) return;
-      if (isHidden(p)) return;
+      if (isHidden(p, now)) return;
       if (Math.hypot(p.x - boss.x, p.y - boss.y) < BOSS_CATCH_RADIUS) triggerCaught(p, now);
     });
   }
@@ -2599,8 +2651,9 @@
     g.restore();
   }
 
-  function buildDarknessMask(camX, camY) {
+  function buildDarknessMask(camX, camY, now) {
     const worldToScreen = (wx, wy) => ({ x: (wx - camX) * ZOOM + VIEW_W / 2, y: (wy - camY) * ZOOM + VIEW_H / 2 });
+    const nvgMult = now < nvgUntil ? NVG_RANGE_MULT : 1;
 
     maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
     maskCtx.globalCompositeOperation = 'source-over';
@@ -2609,8 +2662,8 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 90 * ZOOM, 1);
-      punchLight(maskCtx, s.x, s.y, 230 * ZOOM, 0.85);
+      punchLight(maskCtx, s.x, s.y, 90 * ZOOM * nvgMult, 1);
+      punchLight(maskCtx, s.x, s.y, 230 * ZOOM * nvgMult, 0.85);
     });
 
     fireLightPunches().forEach((fc) => {
@@ -2644,6 +2697,7 @@
     ctx.translate(-camX, -camY);
     drawTiles(ctx, camX, camY, now);
     drawFires(ctx, now);
+    drawSmokeBombs(ctx, now);
     drawAttackTelegraphs(ctx, now);
     drawBossBombHazards(ctx, now);
     drawBoss(ctx, now);
@@ -2652,8 +2706,13 @@
     drawFloatingTexts(ctx);
     ctx.restore();
 
-    buildDarknessMask(camX, camY);
+    buildDarknessMask(camX, camY, now);
     ctx.drawImage(maskCanvas, vx, 0);
+
+    if (now < nvgUntil) {
+      ctx.fillStyle = 'rgba(40,255,120,0.16)';
+      ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+    }
 
     drawBossHealthBar(vx, now);
     drawProximityWarning(vx, Math.hypot(p.x - boss.x, p.y - boss.y), now);
@@ -2856,6 +2915,7 @@
       updateInputMovement(now, dt);
       updateTriggers();
       updateCrates(now);
+      updateSmokeBombs(now);
       updateBombs(now);
       updateBoss(now, dt);
       updateBossBombHazards(now);
