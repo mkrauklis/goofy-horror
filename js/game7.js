@@ -31,6 +31,7 @@
   const PATROL_SPEED = PLAYER_SPEED * 0.6;
   const LURE_SPEED = PLAYER_SPEED * 0.6;
   const MINECART_SPEED = TILE * 4.5;
+  const LOOP_CART_SPEED = PLAYER_SPEED * 1.2;
   const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
   const ALERT_GRACE_MS = 2500;
@@ -521,6 +522,7 @@
   let doorUnlocked = false;
   let minecartState = 'idle'; // 'idle' | 'running' | 'arrived'
   let minecartT = 0; // 0..1 progress from LEVEL.rail.from to LEVEL.rail.to
+  let loopCartDist = 0; // world-space distance along the second, looping track
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
 
@@ -580,7 +582,7 @@
     };
   }
 
-  const MONSTER_COUNT = 2;
+  const MONSTER_COUNT = 4;
   const monsters = Array.from({ length: MONSTER_COUNT }, (_, i) =>
     makeMonster(Math.floor((i * LEVEL.patrolPoints.length) / MONSTER_COUNT))
   );
@@ -626,6 +628,7 @@
     doorUnlocked = false;
     minecartState = 'idle';
     minecartT = 0;
+    loopCartDist = 0;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
       x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
@@ -1049,6 +1052,94 @@
     g.lineWidth = 1.5;
     g.strokeRect(-14, -8, 28, 16);
     g.strokeStyle = '#3a2a16';
+    g.lineWidth = 1;
+    [-7, 0, 7].forEach((bx) => {
+      g.beginPath();
+      g.moveTo(bx, -8);
+      g.lineTo(bx, 8);
+      g.stroke();
+    });
+    g.restore();
+  }
+
+  // A second, independent track: a closed rectangle in its own room,
+  // running a silver cart on a permanent loop -- not tied to the lever at
+  // all, always moving, purely set dressing.
+  const loopX0 = tileCenter(LEVEL.loopRail.x0, 0).x;
+  const loopY0 = tileCenter(0, LEVEL.loopRail.y0).y;
+  const loopX1 = tileCenter(LEVEL.loopRail.x1, 0).x;
+  const loopY1 = tileCenter(0, LEVEL.loopRail.y1).y;
+  const loopW = loopX1 - loopX0, loopH = loopY1 - loopY0;
+  const loopPerimeter = 2 * (loopW + loopH);
+
+  // Walks clockwise from the top-left corner: top edge, right edge, bottom
+  // edge, left edge. Returns the world position and the facing angle for
+  // that edge, given a distance already wrapped into [0, loopPerimeter).
+  function pointOnLoop(dist) {
+    if (dist < loopW) return { x: loopX0 + dist, y: loopY0, angle: 0 };
+    dist -= loopW;
+    if (dist < loopH) return { x: loopX1, y: loopY0 + dist, angle: Math.PI / 2 };
+    dist -= loopH;
+    if (dist < loopW) return { x: loopX1 - dist, y: loopY1, angle: Math.PI };
+    dist -= loopW;
+    return { x: loopX0, y: loopY1 - dist, angle: -Math.PI / 2 };
+  }
+
+  function updateLoopCart(now, dt) {
+    loopCartDist = (loopCartDist + LOOP_CART_SPEED * dt) % loopPerimeter;
+  }
+
+  function drawLoopCart(g) {
+    // Ties and rails all the way around, same convention as the straight
+    // track's.
+    const ties = Math.ceil(loopPerimeter / (TILE * 0.5));
+    for (let i = 0; i <= ties; i++) {
+      const p = pointOnLoop((i / ties) * loopPerimeter);
+      g.save();
+      g.translate(p.x, p.y);
+      g.rotate(p.angle);
+      g.fillStyle = '#4a3216';
+      g.fillRect(-3, -9, 6, 18);
+      g.restore();
+    }
+    [-6, 6].forEach((offset) => {
+      g.strokeStyle = '#8a8d93';
+      g.lineWidth = 2;
+      g.beginPath();
+      const steps = 64;
+      for (let i = 0; i <= steps; i++) {
+        const p = pointOnLoop((i / steps) * loopPerimeter);
+        const nx = p.x + Math.cos(p.angle + Math.PI / 2) * offset;
+        const ny = p.y + Math.sin(p.angle + Math.PI / 2) * offset;
+        if (i === 0) g.moveTo(nx, ny); else g.lineTo(nx, ny);
+      }
+      g.closePath();
+      g.stroke();
+    });
+
+    const p = pointOnLoop(loopCartDist);
+    g.save();
+    g.translate(p.x, p.y);
+    g.rotate(p.angle);
+    const wobble = Math.sin(performance.now() * 0.03) * 1.2;
+    g.translate(0, wobble);
+    [-9, 9].forEach((wx) => {
+      [-7, 7].forEach((wy) => {
+        g.beginPath();
+        g.arc(wx, wy, 3.5, 0, Math.PI * 2);
+        g.fillStyle = '#2a2a2e';
+        g.fill();
+      });
+    });
+    const bodyGrad = g.createLinearGradient(0, -8, 0, 8);
+    bodyGrad.addColorStop(0, '#c9ccd4');
+    bodyGrad.addColorStop(1, '#8a8d93');
+    g.fillStyle = bodyGrad;
+    g.fillRect(-14, -8, 28, 16);
+    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.lineWidth = 1.5;
+    g.strokeRect(-14, -8, 28, 16);
+    g.strokeStyle = '#5a5d63';
     g.lineWidth = 1;
     [-7, 0, 7].forEach((bx) => {
       g.beginPath();
@@ -2296,6 +2387,7 @@
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY, now);
     drawMinecart(ctx);
+    drawLoopCart(ctx);
     drawSmokeBombs(ctx, now);
     drawDecoy(ctx, now);
     monsters.forEach((m) => drawMonster(ctx, now, m));
@@ -2496,6 +2588,7 @@
       updateSmokeBombs(now);
       updateDecoy(now, dt);
       updateMinecart(now, dt);
+      updateLoopCart(now, dt);
       monsters.forEach((m) => updateMonster(m, now, dt));
       updateShotgunDefense(now);
       updateCatch(now);
