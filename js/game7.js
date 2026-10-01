@@ -49,7 +49,9 @@
   const DECOY_CATCH_RADIUS = 24;
   const NVG_DURATION_MS = 10000;
   const NVG_RANGE_MULT = 2;
-  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke', 'decoy', 'nightvision'];
+  const SHOTGUN_STUN_MS = 3000;
+  const SHOTGUN_RANGE = 70;
+  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke', 'decoy', 'nightvision', 'shotgun-ammo'];
 
   // ---- sprint / stamina ----
   const DOUBLE_TAP_MS = 300;
@@ -331,6 +333,26 @@
     osc.stop(start + 0.25);
   }
 
+  // A sharp crack (fast-decaying high sawtooth) layered over a short low
+  // punch (same shape as playChompThud) -- reads as one blast, not a
+  // melodic cue like the item chimes.
+  function playShotgunBlast() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const crack = audioCtx.createOscillator();
+    const crackGain = audioCtx.createGain();
+    crack.type = 'sawtooth';
+    crack.frequency.setValueAtTime(1800, start);
+    crack.frequency.exponentialRampToValueAtTime(200, start + 0.08);
+    crackGain.gain.setValueAtTime(0.3, start);
+    crackGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.1);
+    crack.connect(crackGain);
+    crackGain.connect(audioCtx.destination);
+    crack.start(start);
+    crack.stop(start + 0.12);
+    playChompThud(0.02);
+  }
+
   function playWinJingle() {
     [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
   }
@@ -527,6 +549,7 @@
       caught: false, caughtAt: 0,
       stamina: STAMINA_MAX, moveState: 'normal', exhaustedUntil: 0, sprintActive: false,
       walkPhase: 0,
+      hasShotgunAmmo: false,
     };
   }
 
@@ -586,6 +609,7 @@
       p.moveState = 'normal';
       p.exhaustedUntil = 0;
       p.sprintActive = false;
+      p.hasShotgunAmmo = false;
     });
 
     const spawns = LEVEL.monsterSpawns;
@@ -821,7 +845,7 @@
     return best;
   }
 
-  function applyItemEffect(item, x, y, now) {
+  function applyItemEffect(item, x, y, now, p) {
     if (item === 'radar') {
       radarUntil = now + RADAR_DURATION_MS;
       spawnFloatingText(x, y, 'RADAR');
@@ -858,6 +882,17 @@
       nvgUntil = now + NVG_DURATION_MS;
       spawnFloatingText(x, y, 'NIGHT VISION');
       playItemChime(1000);
+    } else if (item === 'shotgun-ammo') {
+      // Capped at 1 -- a second shell found while already carrying one is
+      // just wasted (the crate still opens; there's nothing else to do
+      // with it), rather than stockpiling for several stuns in a row.
+      if (!p.hasShotgunAmmo) {
+        p.hasShotgunAmmo = true;
+        spawnFloatingText(x, y, 'SHOTGUN LOADED');
+        playItemChime(760);
+      } else {
+        spawnFloatingText(x, y, 'ALREADY LOADED');
+      }
     }
   }
 
@@ -1032,7 +1067,7 @@
         if (c.x === t.x && c.y === t.y) {
           c.opened = true;
           c.openedAt = now;
-          applyItemEffect(c.item, tileCenter(c.x, c.y).x, tileCenter(c.x, c.y).y, now);
+          applyItemEffect(c.item, tileCenter(c.x, c.y).x, tileCenter(c.x, c.y).y, now, p);
         }
       });
     });
@@ -1261,6 +1296,26 @@
         m.y += (dy / d) * step;
       }
     }
+  }
+
+  // A last-ditch defense, not a weapon you aim and fire: carrying a shell
+  // and getting close to something actively hunting you sets it off
+  // automatically. Checked ahead of updateCatch so a stun this same frame
+  // can still save a player who'd otherwise be caught on it.
+  function updateShotgunDefense(now) {
+    players.forEach((p) => {
+      if (p.caught) return;
+      monsters.forEach((m) => {
+        if (!p.hasShotgunAmmo) return;
+        if (now < m.frozenUntil || m.state !== 'alert') return;
+        if (Math.hypot(p.x - m.x, p.y - m.y) < SHOTGUN_RANGE) {
+          m.frozenUntil = now + SHOTGUN_STUN_MS;
+          p.hasShotgunAmmo = false;
+          spawnFloatingText(m.x, m.y, 'STUNNED!');
+          playShotgunBlast();
+        }
+      });
+    });
   }
 
   function updateCatch(now) {
@@ -2055,6 +2110,42 @@
       g.fillStyle = tankGrad;
       g.fillRect(-R * 1.5, -4.5, 7, 9);
 
+      // The shotgun slung across the back, strap and all -- always worn,
+      // whether or not a shell is actually loaded (that's shown separately
+      // below). Diagonal across the same back corner as the oxygen tank,
+      // behind the torso that gets drawn over its mounting point next.
+      g.save();
+      g.rotate(-0.55);
+      g.strokeStyle = '#2b2118';
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.moveTo(-R * 0.3, -R * 0.1);
+      g.lineTo(R * 0.9, -R * 0.1);
+      g.stroke();
+      g.strokeStyle = '#5a4428';
+      g.lineWidth = R * 0.22;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(-R * 0.3, -R * 0.1);
+      g.lineTo(R * 0.15, -R * 0.1);
+      g.stroke();
+      g.strokeStyle = '#3a3d42';
+      g.lineWidth = R * 0.15;
+      g.beginPath();
+      g.moveTo(R * 0.1, -R * 0.1);
+      g.lineTo(R * 0.95, -R * 0.1);
+      g.stroke();
+      if (p.hasShotgunAmmo) {
+        g.beginPath();
+        g.arc(R * 0.95, -R * 0.1, R * 0.12, 0, Math.PI * 2);
+        g.fillStyle = '#ff6a2a';
+        g.shadowColor = '#ff6a2a';
+        g.shadowBlur = 6;
+        g.fill();
+        g.shadowBlur = 0;
+      }
+      g.restore();
+
       // torso, lit from the upper-left, bobbing slightly with the stride
       g.save();
       g.translate(0, -bob);
@@ -2406,6 +2497,7 @@
       updateDecoy(now, dt);
       updateMinecart(now, dt);
       monsters.forEach((m) => updateMonster(m, now, dt));
+      updateShotgunDefense(now);
       updateCatch(now);
       updateCutscenes(now);
       updateExploration();
