@@ -12,6 +12,7 @@
   const bossCtx = ctxFor('monster-canvas-boss');
   const knightCtx = ctxFor('monster-canvas-knight');
   const wingedCtx = ctxFor('monster-canvas-winged');
+  const vaultGuardCtx = ctxFor('monster-canvas-vaultguard');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -661,6 +662,58 @@
     g.restore();
   }
 
+  // Armor plates and helm-ring only, no sword -- the Vault Guardian is
+  // armored, not armed. Ported from drawKnightGear minus its weapon half.
+  function drawArmorPlates(g, radius, t, seed) {
+    g.save();
+    g.rotate(Math.sin(t * 0.0015 + seed) * 0.1);
+
+    const plate = '#7d828c';
+    const plateShade = '#4a4d54';
+    [-0.55, 0, 0.55].forEach((a) => {
+      const px = Math.cos(a) * radius * 0.55, py = Math.sin(a) * radius * 0.55;
+      g.save();
+      g.translate(px, py);
+      g.rotate(a);
+      const grad = g.createLinearGradient(-radius * 0.3, 0, radius * 0.3, 0);
+      grad.addColorStop(0, plateShade);
+      grad.addColorStop(0.5, plate);
+      grad.addColorStop(1, plateShade);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.ellipse(0, 0, radius * 0.32, radius * 0.22, 0, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = 'rgba(15,15,18,0.6)';
+      g.lineWidth = 1;
+      g.stroke();
+      g.restore();
+    });
+
+    g.beginPath();
+    g.arc(0, -radius * 0.05, radius * 1.05, -0.85 - Math.PI / 2, 0.85 - Math.PI / 2);
+    g.strokeStyle = plate;
+    g.lineWidth = radius * 0.2;
+    g.lineCap = 'round';
+    g.stroke();
+    g.restore();
+  }
+
+  // Pale green, 4x Level 1's Crawler, armored -- drawn at a bigger radius
+  // than the other portraits so the scale difference reads even in a
+  // uniform 160px frame.
+  function drawVaultGuardian(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 67, radius = 34;
+    drawTentacles(g, radius, '#1a4a26', t, seed);
+    drawBlobBody(g, radius, '#2f6a3a', '#1a4020', seed, t, { veinColor: 'rgba(0,0,0,0.25)' });
+    const angle = t * 0.0006;
+    drawEye(g, radius, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    drawArmorPlates(g, radius, t, seed);
+    g.restore();
+  }
+
   // The Level 7 creature: grey, mouth instead of an eye, tentacles 2.5x the
   // normal base width, and a pair of angular stone wings -- kept pixel-for-
   // pixel identical to game7.js's own drawStoneWings/drawMonster so this
@@ -714,11 +767,11 @@
     g.restore();
   }
 
-  // This page redraws eight fully-detailed monster portraits at once, so it
+  // This page redraws nine fully-detailed monster portraits at once, so it
   // caps itself around 30fps instead of riding requestAnimationFrame's full
   // 60 -- plenty smooth for a reference gallery nobody is dodging, and it
   // halves the cost of a page that (unlike any single level) never has
-  // fewer than eight creatures on screen simultaneously.
+  // fewer than nine creatures on screen simultaneously.
   let lastDraw = 0;
   function loop(t) {
     if (t - lastDraw >= 33) {
@@ -731,6 +784,7 @@
       if (bossCtx) drawBoss(bossCtx, PORTRAIT, PORTRAIT, t);
       if (knightCtx) drawKnight(knightCtx, PORTRAIT, PORTRAIT, t);
       if (wingedCtx) drawWinged(wingedCtx, PORTRAIT, PORTRAIT, t);
+      if (vaultGuardCtx) drawVaultGuardian(vaultGuardCtx, PORTRAIT, PORTRAIT, t);
     }
     requestAnimationFrame(loop);
   }
