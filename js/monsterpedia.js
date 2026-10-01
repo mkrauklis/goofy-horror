@@ -528,8 +528,9 @@
   // The Level 5 boss: a Crawler burnt black and set on fire, blown up far
   // past what fits a 160px portrait at true scale -- radius is picked to
   // read as "the biggest thing in this book," not a literal 8x Crawler.
-  function drawBossTentacles(g, radius, t, seed) {
+  function drawBossTentacles(g, radius, t, seed, colors) {
     const n = 5;
+    const cols = colors || ['#2a0c06', '#6a1826'];
     for (let i = 0; i < n; i++) {
       const baseAngle = (i / n) * Math.PI * 2 + seed;
       const len = radius + radius * 1.05;
@@ -537,7 +538,7 @@
       const tx = Math.cos(baseAngle) * len, ty = Math.sin(baseAngle) * len;
       const perp = baseAngle + Math.PI / 2;
       const midX = tx / 2 + Math.cos(perp) * wobble, midY = ty / 2 + Math.sin(perp) * wobble;
-      const color = i % 3 === 0 ? '#2a0c06' : '#6a1826';
+      const color = i % 3 === 0 ? cols[0] : cols[1];
       drawTaperedTentacle(g, tx, ty, midX, midY, radius * 0.14, color);
     }
   }
@@ -706,7 +707,9 @@
     g.save();
     g.translate(w / 2, h / 2);
     const seed = 67, radius = 34;
-    drawTentacles(g, radius, '#1a4a26', t, seed);
+    // Same reach as drawBossTentacles above (radius*2.05) -- as long as
+    // the Ashen One's, not the short wall-adjacency kind.
+    drawBossTentacles(g, radius, t, seed, ['#0f2a16', '#1a4a26']);
     drawBlobBody(g, radius, '#2f6a3a', '#1a4020', seed, t, { veinColor: 'rgba(0,0,0,0.25)' });
     const angle = t * 0.0006;
     drawEye(g, radius, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });

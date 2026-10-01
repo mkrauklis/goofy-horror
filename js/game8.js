@@ -1774,18 +1774,11 @@
     g.save();
     g.translate(m.x, m.y);
 
-    // Same tentacle width as Level 1's Crawler, just scaled up with the
-    // whole creature (radius is already 4x) rather than independently
-    // thickened the way Level 7's are.
-    m.tentacleTargets.forEach((tt, i) => {
-      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * m.radius * 0.35;
-      const tx = tt.x - m.x, ty = tt.y - m.y;
-      const dist = Math.hypot(tx, ty) || 1;
-      const perpX = -ty / dist, perpY = tx / dist;
-      const midX = tx / 2 + perpX * wobble;
-      const midY = ty / 2 + perpY * wobble;
-      drawTaperedTentacle(g, tx, ty, midX, midY, m.radius * 0.22, '#1a4a26');
-    });
+    // Freely radiating and reaching a full ~2x its own radius, same as the
+    // Ashen One's (Level 5 boss) -- not the short wall-adjacency tentacles
+    // the other wall-crawlers use, which would read as stubby on something
+    // this size.
+    drawLongTentacles(g, m.radius, t, m.seed);
 
     drawBlobBody(g, m.radius, '#2f6a3a', '#1a4020', m.seed, t, { veinColor: 'rgba(0,0,0,0.25)' });
 
@@ -1810,6 +1803,22 @@
     }
 
     g.restore();
+  }
+
+  // Ported from the Ashen One's own idle tentacle sway (game5.js /
+  // monsterpedia.js's drawBossTentacles) -- reach is radius*2.05 regardless
+  // of what's actually nearby, same formula, same proportions.
+  function drawLongTentacles(g, radius, t, seed) {
+    const n = 5;
+    for (let i = 0; i < n; i++) {
+      const baseAngle = (i / n) * Math.PI * 2 + seed;
+      const len = radius + radius * 1.05;
+      const wobble = Math.sin(t * 0.0017 + i * 1.6 + seed) * radius * 0.32;
+      const tx = Math.cos(baseAngle) * len, ty = Math.sin(baseAngle) * len;
+      const perp = baseAngle + Math.PI / 2;
+      const midX = tx / 2 + Math.cos(perp) * wobble, midY = ty / 2 + Math.sin(perp) * wobble;
+      drawTaperedTentacle(g, tx, ty, midX, midY, radius * 0.14, '#1a4a26');
+    }
   }
 
   function drawMonsterEye(g, m) {
