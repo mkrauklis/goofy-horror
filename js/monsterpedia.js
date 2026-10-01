@@ -11,6 +11,7 @@
   const lurkerCtx = ctxFor('monster-canvas-lurker');
   const bossCtx = ctxFor('monster-canvas-boss');
   const knightCtx = ctxFor('monster-canvas-knight');
+  const wingedCtx = ctxFor('monster-canvas-winged');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -660,11 +661,64 @@
     g.restore();
   }
 
-  // This page redraws seven fully-detailed monster portraits at once, so it
+  // The Level 7 creature: grey, mouth instead of an eye, tentacles 2.5x the
+  // normal base width, and a pair of angular stone wings -- kept pixel-for-
+  // pixel identical to game7.js's own drawStoneWings/drawMonster so this
+  // page is a genuine preview, not a redrawn approximation.
+  function drawStoneWings(g, radius, t, seed) {
+    const sway = Math.sin(t * 0.0009 + seed) * 0.05;
+    [-1, 1].forEach((side) => {
+      g.save();
+      g.rotate(side * (0.5 + sway));
+      const span = radius * 1.9, reach = radius * 1.1;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.lineTo(side * reach * 0.4, -span * 0.35);
+      g.lineTo(side * reach * 0.85, -span * 0.62);
+      g.lineTo(side * reach, -span * 0.3);
+      g.lineTo(side * reach * 0.6, 0);
+      g.lineTo(side * reach * 0.8, span * 0.22);
+      g.lineTo(side * reach * 0.3, span * 0.1);
+      g.closePath();
+      const grad = g.createLinearGradient(0, -span * 0.6, 0, span * 0.2);
+      grad.addColorStop(0, '#8a8d93');
+      grad.addColorStop(0.5, '#5d6066');
+      grad.addColorStop(1, '#35373c');
+      g.fillStyle = grad;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 1.5;
+      g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,0.08)';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.lineTo(side * reach * 0.85, -span * 0.62);
+      g.moveTo(side * reach * 0.4, -span * 0.35);
+      g.lineTo(side * reach * 0.6, 0);
+      g.stroke();
+      g.restore();
+    });
+  }
+
+  function drawWinged(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 91, radius = 24;
+    drawStoneWings(g, radius, t, seed);
+    drawTentacles(g, radius, '#45484e', t, seed, radius * 0.55);
+    drawBlobBody(g, radius, '#55585f', '#7a7e86', seed, t, { veinColor: 'rgba(0,0,0,0.3)' });
+    const angle = t * 0.0006;
+    drawMonsterTeeth(g, radius, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    g.restore();
+  }
+
+  // This page redraws eight fully-detailed monster portraits at once, so it
   // caps itself around 30fps instead of riding requestAnimationFrame's full
   // 60 -- plenty smooth for a reference gallery nobody is dodging, and it
   // halves the cost of a page that (unlike any single level) never has
-  // fewer than seven creatures on screen simultaneously.
+  // fewer than eight creatures on screen simultaneously.
   let lastDraw = 0;
   function loop(t) {
     if (t - lastDraw >= 33) {
@@ -676,6 +730,7 @@
       if (lurkerCtx) drawLurker(lurkerCtx, PORTRAIT, PORTRAIT, t);
       if (bossCtx) drawBoss(bossCtx, PORTRAIT, PORTRAIT, t);
       if (knightCtx) drawKnight(knightCtx, PORTRAIT, PORTRAIT, t);
+      if (wingedCtx) drawWinged(wingedCtx, PORTRAIT, PORTRAIT, t);
     }
     requestAnimationFrame(loop);
   }

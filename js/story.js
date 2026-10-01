@@ -6,7 +6,7 @@
 // which chapters are unlocked/finished, not how fast you did it.
 (function () {
   const KEY = 'goofy-horror-story';
-  const TOTAL_LEVELS = 6;
+  const TOTAL_LEVELS = 7;
 
   function load() {
     try {
