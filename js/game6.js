@@ -28,7 +28,7 @@
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
   const MONSTER_SPEED = PLAYER_SPEED * 1.2; // armored and slower, but there are five of them
-  const PATROL_SPEED = PLAYER_SPEED * 0.5;
+  const PATROL_SPEED = PLAYER_SPEED * 0.6;
   const LURE_SPEED = PLAYER_SPEED * 0.6;
   const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
