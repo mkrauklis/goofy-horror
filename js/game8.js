@@ -2283,10 +2283,16 @@
     maskCtx.fillRect(s0.x, s0.y, (sz.x1 - sz.x0 + 1) * TILE, (sz.y1 - sz.y0 + 1) * TILE);
     maskCtx.restore();
 
+    // Normal flashlight while any torch is still lit; once the last one's
+    // out (the exact moment the vault door unlocks), the player's own
+    // light shrinks to 1/4 its usual reach -- the vault gets darker right
+    // as you're free to walk through it.
+    const lightsOn = !doorUnlocked;
+    const flashlightMult = lightsOn ? 1 : 0.25;
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 90 * nvgMult, 1);
-      punchLight(maskCtx, s.x, s.y, 230 * nvgMult, 0.85);
+      punchLight(maskCtx, s.x, s.y, 90 * nvgMult * flashlightMult, 1);
+      punchLight(maskCtx, s.x, s.y, 230 * nvgMult * flashlightMult, 0.85);
     });
 
     // Wall torches light their own small pool regardless of the flashlight --
