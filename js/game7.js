@@ -27,9 +27,17 @@
   // took longer than usual (e.g. a big tile grid redraw).
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  const MONSTER_SPEED = PLAYER_SPEED * 2; // a real threat once it locks on -- outruns you outright
-  const PATROL_SPEED = PLAYER_SPEED * 0.6;
-  const LURE_SPEED = PLAYER_SPEED * 0.6;
+  // The monster doesn't move at all while the torches are lit -- it just
+  // stands there, wherever it is -- and crosses the whole room in a blink
+  // the instant they go dark. Lights cycle on a fixed clock, not tied to
+  // player action: 4s lit, 2s dark, forever.
+  const LIGHTS_ON_MS = 4000;
+  const LIGHTS_OFF_MS = 2000;
+  const LIGHT_CYCLE_MS = LIGHTS_ON_MS + LIGHTS_OFF_MS;
+  const LIGHTS_OFF_SPEED = PLAYER_SPEED * 10;
+  function lightsAreOn(now) {
+    return (now % LIGHT_CYCLE_MS) < LIGHTS_ON_MS;
+  }
   const MINECART_SPEED = TILE * 4.5;
   const LOOP_CART_SPEED = PLAYER_SPEED * 1.2;
   const CATCH_RADIUS = 20;
@@ -1330,17 +1338,19 @@
         updateTentacleTargets(m, startTile);
       }
       if (m.path && m.pathIndex < m.path.length) {
-        const step = LURE_SPEED * dt;
-        const target = tileTargetWithOffset(m.path[m.pathIndex]);
-        const dx = target.x - m.x, dy = target.y - m.y;
-        const d = Math.hypot(dx, dy);
-        if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
-        if (d < step) {
-          m.x = target.x; m.y = target.y;
-          m.pathIndex++;
-        } else {
-          m.x += (dx / d) * step;
-          m.y += (dy / d) * step;
+        if (!lightsAreOn(now)) {
+          const step = LIGHTS_OFF_SPEED * dt;
+          const target = tileTargetWithOffset(m.path[m.pathIndex]);
+          const dx = target.x - m.x, dy = target.y - m.y;
+          const d = Math.hypot(dx, dy);
+          if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
+          if (d < step) {
+            m.x = target.x; m.y = target.y;
+            m.pathIndex++;
+          } else {
+            m.x += (dx / d) * step;
+            m.y += (dy / d) * step;
+          }
         }
       } else {
         m.luredState = 'eating';
@@ -1370,8 +1380,8 @@
       updateTentacleTargets(m, startTile);
     }
 
-    if (m.path && m.pathIndex < m.path.length) {
-      const step = (m.state === 'alert' ? MONSTER_SPEED : PATROL_SPEED) * dt;
+    if (m.path && m.pathIndex < m.path.length && !lightsAreOn(now)) {
+      const step = LIGHTS_OFF_SPEED * dt;
       const target = tileTargetWithOffset(m.path[m.pathIndex]);
       const dx = target.x - m.x, dy = target.y - m.y;
       const d = Math.hypot(dx, dy);
@@ -1816,15 +1826,29 @@
   // own flashlights, so the dungeon reads as lived-in instead of totally
   // dark outside their reach.
   function drawTorches(g, now) {
+    const lit = lightsAreOn(now);
     (LEVEL.torchSpawns || []).forEach((tspawn, i) => {
       const c = tileCenter(tspawn.x, tspawn.y);
-      const flicker = 0.8 + Math.sin(now * 0.012 + i * 3.1) * 0.2;
       g.save();
       g.translate(c.x, c.y);
 
       g.fillStyle = '#2a1c10';
       g.fillRect(-3, -4, 6, 8);
 
+      if (!lit) {
+        // Dark: no flame, just a thin curl of smoke -- same convention as
+        // Level 8's snuffed blue torches.
+        g.strokeStyle = 'rgba(160,160,170,0.35)';
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.moveTo(0, -4);
+        g.quadraticCurveTo(5, -11 - Math.sin(now * 0.002 + i) * 2, 1, -19);
+        g.stroke();
+        g.restore();
+        return;
+      }
+
+      const flicker = 0.8 + Math.sin(now * 0.012 + i * 3.1) * 0.2;
       const glow = g.createRadialGradient(0, -10, 1, 0, -10, 16 * flicker);
       glow.addColorStop(0, 'rgba(255,170,60,0.5)');
       glow.addColorStop(1, 'rgba(255,120,30,0)');
@@ -2362,12 +2386,15 @@
 
     // Wall torches light their own small pool regardless of the flashlight --
     // a dungeon with sconces that didn't actually light anything would be a
-    // strange dungeon.
-    (LEVEL.torchSpawns || []).forEach((tspawn) => {
-      const c = tileCenter(tspawn.x, tspawn.y);
-      const s = worldToScreen(c.x, c.y);
-      punchLight(maskCtx, s.x, s.y, 70, 0.7);
-    });
+    // strange dungeon. Except here: every 4 seconds they all go dark for 2,
+    // and light nothing at all while out.
+    if (lightsAreOn(now)) {
+      (LEVEL.torchSpawns || []).forEach((tspawn) => {
+        const c = tileCenter(tspawn.x, tspawn.y);
+        const s = worldToScreen(c.x, c.y);
+        punchLight(maskCtx, s.x, s.y, 70, 0.7);
+      });
+    }
   }
 
   function renderViewport(index, now) {
