@@ -736,7 +736,7 @@
   function isHidden(p) {
     const t = worldToTile(p.x, p.y);
     const ch = tileChar(t.x, t.y);
-    return ch === 'S' || ch === 'V';
+    return ch === 'S' || ch === 'V' || ch === 'H';
   }
 
   function isInSafeZone(p) {
@@ -1200,7 +1200,7 @@
 
   // ---- monster AI ----
   function monsterCanOccupy(ch) {
-    if (ch === '#' || ch === 'S' || ch === 'V' || ch === 'Z') return false;
+    if (ch === '#' || ch === 'S' || ch === 'V' || ch === 'Z' || ch === 'H') return false;
     if (ch === 'D') return doorUnlocked;
     return true;
   }
@@ -1763,6 +1763,7 @@
 
     drawStatues(g);
     drawTorches(g, now);
+    drawHideCrates(g);
     drawSafeZone(g);
     drawCorpses(g);
     drawBloodSplatters(g);
@@ -1871,6 +1872,41 @@
       g.fill();
 
       g.restore();
+    });
+  }
+
+  // A 2x2 crate you can duck inside -- unlike Level 2/8's solid, sealed big
+  // crates, these are open on one side (a visibly darker gap, not full
+  // planking) and never block movement; standing on one just makes
+  // isHidden() true, same as a vent or the safe zone.
+  function drawHideCrates(g) {
+    (LEVEL.hideCrateSpawns || []).forEach((c) => {
+      const px = c.x * TILE, py = c.y * TILE;
+      const w = TILE * 2, h = TILE * 2;
+      const grad = g.createLinearGradient(px, py, px + w, py + h);
+      grad.addColorStop(0, '#5a4228');
+      grad.addColorStop(1, '#3a2a18');
+      g.fillStyle = grad;
+      g.fillRect(px + 2, py + 2, w - 4, h - 4);
+
+      g.strokeStyle = '#1c130a';
+      g.lineWidth = 2;
+      g.strokeRect(px + 2, py + 2, w - 4, h - 4);
+
+      // The open gap: a darker inset panel standing in for missing planks,
+      // instead of the full X-cross bracing the solid crates have.
+      g.fillStyle = 'rgba(10,6,2,0.6)';
+      g.fillRect(px + w * 0.22, py + h * 0.22, w * 0.56, h * 0.56);
+      g.strokeStyle = 'rgba(255,200,120,0.2)';
+      g.lineWidth = 1;
+      g.strokeRect(px + w * 0.22, py + h * 0.22, w * 0.56, h * 0.56);
+
+      g.fillStyle = '#1c130a';
+      [[px + 5, py + 5], [px + w - 5, py + 5], [px + 5, py + h - 5], [px + w - 5, py + h - 5]].forEach(([bx, by]) => {
+        g.beginPath();
+        g.arc(bx, by, 2, 0, Math.PI * 2);
+        g.fill();
+      });
     });
   }
 
@@ -2185,6 +2221,40 @@
     g.fill();
   }
 
+  // A shotgun actually held out in front, gripped where the hands are,
+  // rather than slung on the back -- stock near the body, barrel reaching
+  // past the head, with a lit shell glowing at the muzzle once loaded.
+  // Sways very slightly with the walk cycle instead of standing dead rigid.
+  function drawHeldShotgun(g, R, p) {
+    g.save();
+    const grip = Math.sin(p.walkPhase) * R * 0.05;
+    g.translate(R * 0.15, R * 0.25 + grip);
+    g.rotate(-0.12);
+    g.strokeStyle = '#5a4428';
+    g.lineWidth = R * 0.22;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(-R * 0.35, 0);
+    g.lineTo(R * 0.25, 0);
+    g.stroke();
+    g.strokeStyle = '#3a3d42';
+    g.lineWidth = R * 0.15;
+    g.beginPath();
+    g.moveTo(R * 0.15, 0);
+    g.lineTo(R * 1.55, 0);
+    g.stroke();
+    if (p.hasShotgunAmmo) {
+      g.beginPath();
+      g.arc(R * 1.55, 0, R * 0.12, 0, Math.PI * 2);
+      g.fillStyle = '#ff6a2a';
+      g.shadowColor = '#ff6a2a';
+      g.shadowBlur = 6;
+      g.fill();
+      g.shadowBlur = 0;
+    }
+    g.restore();
+  }
+
   function drawPlayers(g) {
     const R = PLAYER_RADIUS;
     players.forEach((p) => {
@@ -2225,42 +2295,6 @@
       g.fillStyle = tankGrad;
       g.fillRect(-R * 1.5, -4.5, 7, 9);
 
-      // The shotgun slung across the back, strap and all -- always worn,
-      // whether or not a shell is actually loaded (that's shown separately
-      // below). Diagonal across the same back corner as the oxygen tank,
-      // behind the torso that gets drawn over its mounting point next.
-      g.save();
-      g.rotate(-0.55);
-      g.strokeStyle = '#2b2118';
-      g.lineWidth = 1.5;
-      g.beginPath();
-      g.moveTo(-R * 0.3, -R * 0.1);
-      g.lineTo(R * 0.9, -R * 0.1);
-      g.stroke();
-      g.strokeStyle = '#5a4428';
-      g.lineWidth = R * 0.22;
-      g.lineCap = 'round';
-      g.beginPath();
-      g.moveTo(-R * 0.3, -R * 0.1);
-      g.lineTo(R * 0.15, -R * 0.1);
-      g.stroke();
-      g.strokeStyle = '#3a3d42';
-      g.lineWidth = R * 0.15;
-      g.beginPath();
-      g.moveTo(R * 0.1, -R * 0.1);
-      g.lineTo(R * 0.95, -R * 0.1);
-      g.stroke();
-      if (p.hasShotgunAmmo) {
-        g.beginPath();
-        g.arc(R * 0.95, -R * 0.1, R * 0.12, 0, Math.PI * 2);
-        g.fillStyle = '#ff6a2a';
-        g.shadowColor = '#ff6a2a';
-        g.shadowBlur = 6;
-        g.fill();
-        g.shadowBlur = 0;
-      }
-      g.restore();
-
       // torso, lit from the upper-left, bobbing slightly with the stride
       g.save();
       g.translate(0, -bob);
@@ -2291,6 +2325,7 @@
       // arms -- on top of the torso, swinging opposite their same-side leg
       drawLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
       drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
+      drawHeldShotgun(g, R, p);
 
       // head group -- smaller than the torso and pushed out toward the
       // front, so the silhouette reads as a body with a head on it rather
