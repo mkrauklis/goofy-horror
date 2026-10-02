@@ -2392,7 +2392,7 @@
       (LEVEL.torchSpawns || []).forEach((tspawn) => {
         const c = tileCenter(tspawn.x, tspawn.y);
         const s = worldToScreen(c.x, c.y);
-        punchLight(maskCtx, s.x, s.y, 70, 0.7);
+        punchLight(maskCtx, s.x, s.y, 70 / 4, 0.7);
       });
     }
   }
