@@ -43,7 +43,7 @@
   const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
   const ALERT_GRACE_MS = 2500;
-  const FLASHLIGHT_RADIUS = 230;
+  const FLASHLIGHT_RADIUS = 230 / 4;
   const RADAR_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
@@ -2415,8 +2415,8 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 90 * nvgMult, 1);
-      punchLight(maskCtx, s.x, s.y, 230 * nvgMult, 0.85);
+      punchLight(maskCtx, s.x, s.y, (90 / 4) * nvgMult, 1);
+      punchLight(maskCtx, s.x, s.y, FLASHLIGHT_RADIUS * nvgMult, 0.85);
     });
 
     // Wall torches light their own small pool regardless of the flashlight --
@@ -2427,7 +2427,7 @@
       (LEVEL.torchSpawns || []).forEach((tspawn) => {
         const c = tileCenter(tspawn.x, tspawn.y);
         const s = worldToScreen(c.x, c.y);
-        punchLight(maskCtx, s.x, s.y, 70 / 4, 0.7);
+        punchLight(maskCtx, s.x, s.y, 70, 0.7);
       });
     }
   }
