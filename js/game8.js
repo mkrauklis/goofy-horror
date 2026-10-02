@@ -2089,6 +2089,40 @@
     g.fill();
   }
 
+  // A shotgun actually held out in front, gripped where the hands are,
+  // rather than slung on the back -- stock near the body, barrel reaching
+  // past the head, with a lit shell glowing at the muzzle once loaded.
+  // Sways very slightly with the walk cycle instead of standing dead rigid.
+  function drawHeldShotgun(g, R, p) {
+    g.save();
+    const grip = Math.sin(p.walkPhase) * R * 0.05;
+    g.translate(R * 0.15, R * 0.25 + grip);
+    g.rotate(-0.12);
+    g.strokeStyle = '#5a4428';
+    g.lineWidth = R * 0.22;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(-R * 0.35, 0);
+    g.lineTo(R * 0.25, 0);
+    g.stroke();
+    g.strokeStyle = '#3a3d42';
+    g.lineWidth = R * 0.15;
+    g.beginPath();
+    g.moveTo(R * 0.15, 0);
+    g.lineTo(R * 1.55, 0);
+    g.stroke();
+    if (p.hasShotgunAmmo) {
+      g.beginPath();
+      g.arc(R * 1.55, 0, R * 0.12, 0, Math.PI * 2);
+      g.fillStyle = '#ff6a2a';
+      g.shadowColor = '#ff6a2a';
+      g.shadowBlur = 6;
+      g.fill();
+      g.shadowBlur = 0;
+    }
+    g.restore();
+  }
+
   function drawPlayers(g) {
     const R = PLAYER_RADIUS;
     players.forEach((p) => {
@@ -2129,42 +2163,6 @@
       g.fillStyle = tankGrad;
       g.fillRect(-R * 1.5, -4.5, 7, 9);
 
-      // The shotgun slung across the back, strap and all -- always worn,
-      // whether or not a shell is actually loaded (that's shown separately
-      // below). Diagonal across the same back corner as the oxygen tank,
-      // behind the torso that gets drawn over its mounting point next.
-      g.save();
-      g.rotate(-0.55);
-      g.strokeStyle = '#2b2118';
-      g.lineWidth = 1.5;
-      g.beginPath();
-      g.moveTo(-R * 0.3, -R * 0.1);
-      g.lineTo(R * 0.9, -R * 0.1);
-      g.stroke();
-      g.strokeStyle = '#5a4428';
-      g.lineWidth = R * 0.22;
-      g.lineCap = 'round';
-      g.beginPath();
-      g.moveTo(-R * 0.3, -R * 0.1);
-      g.lineTo(R * 0.15, -R * 0.1);
-      g.stroke();
-      g.strokeStyle = '#3a3d42';
-      g.lineWidth = R * 0.15;
-      g.beginPath();
-      g.moveTo(R * 0.1, -R * 0.1);
-      g.lineTo(R * 0.95, -R * 0.1);
-      g.stroke();
-      if (p.hasShotgunAmmo) {
-        g.beginPath();
-        g.arc(R * 0.95, -R * 0.1, R * 0.12, 0, Math.PI * 2);
-        g.fillStyle = '#ff6a2a';
-        g.shadowColor = '#ff6a2a';
-        g.shadowBlur = 6;
-        g.fill();
-        g.shadowBlur = 0;
-      }
-      g.restore();
-
       // torso, lit from the upper-left, bobbing slightly with the stride
       g.save();
       g.translate(0, -bob);
@@ -2195,6 +2193,7 @@
       // arms -- on top of the torso, swinging opposite their same-side leg
       drawLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
       drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
+      drawHeldShotgun(g, R, p);
 
       // head group -- smaller than the torso and pushed out toward the
       // front, so the silhouette reads as a body with a head on it rather
