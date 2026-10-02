@@ -49,7 +49,8 @@
   const NVG_DURATION_MS = 10000;
   const NVG_RANGE_MULT = 2;
   const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke', 'decoy', 'nightvision', 'shotgun-ammo'];
-  const SHOTGUN_STUN_MS = 3000;
+  const SHOTGUN_STUN_MS = 5000;
+  const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
 
   // ---- sprint / stamina ----
@@ -539,7 +540,7 @@
       caught: false, caughtAt: 0,
       stamina: STAMINA_MAX, moveState: 'normal', exhaustedUntil: 0, sprintActive: false,
       walkPhase: 0,
-      hasShotgunAmmo: false,
+      shotgunAmmo: 0,
     };
   }
 
@@ -596,7 +597,7 @@
       p.moveState = 'normal';
       p.exhaustedUntil = 0;
       p.sprintActive = false;
-      p.hasShotgunAmmo = false;
+      p.shotgunAmmo = 0;
     });
 
     const spawns = [LEVEL.monsterSpawn, LEVEL.monsterSpawn2 || LEVEL.monsterSpawn];
@@ -911,15 +912,14 @@
       spawnFloatingText(x, y, 'NIGHT VISION');
       playItemChime(1000);
     } else if (item === 'shotgun-ammo') {
-      // Capped at 1 -- a second shell found while already carrying one is
-      // just wasted (the crate still opens; there's nothing else to do
-      // with it), rather than stockpiling for several stuns in a row.
-      if (!p.hasShotgunAmmo) {
-        p.hasShotgunAmmo = true;
-        spawnFloatingText(x, y, 'SHOTGUN LOADED');
+      // Capped at SHOTGUN_AMMO_MAX -- each shell in stock triggers its own
+      // automatic stun the next time something gets close, one at a time.
+      if (p.shotgunAmmo < SHOTGUN_AMMO_MAX) {
+        p.shotgunAmmo++;
+        spawnFloatingText(x, y, `SHOTGUN LOADED (${p.shotgunAmmo}/${SHOTGUN_AMMO_MAX})`);
         playItemChime(760);
       } else {
-        spawnFloatingText(x, y, 'ALREADY LOADED');
+        spawnFloatingText(x, y, 'AMMO FULL');
       }
     }
   }
@@ -1220,11 +1220,11 @@
     players.forEach((p) => {
       if (p.caught) return;
       monsters.forEach((m) => {
-        if (!p.hasShotgunAmmo) return;
+        if (p.shotgunAmmo <= 0) return;
         if (now < m.frozenUntil || !(m.state === 'alert')) return;
         if (Math.hypot(p.x - m.x, p.y - m.y) < SHOTGUN_RANGE) {
           m.frozenUntil = now + SHOTGUN_STUN_MS;
-          p.hasShotgunAmmo = false;
+          p.shotgunAmmo--;
           spawnFloatingText(m.x, m.y, 'STUNNED!');
           playShotgunBlast();
         }
@@ -1752,7 +1752,7 @@
     g.moveTo(R * 0.15, 0);
     g.lineTo(R * 1.55, 0);
     g.stroke();
-    if (p.hasShotgunAmmo) {
+    if (p.shotgunAmmo > 0) {
       g.beginPath();
       g.arc(R * 1.55, 0, R * 0.12, 0, Math.PI * 2);
       g.fillStyle = '#ff6a2a';
@@ -1967,11 +1967,43 @@
     drawProximityWarning(vx, Math.hypot(p.x - nearest.x, p.y - nearest.y), now);
     drawRadar(vx, p, now, nearest);
     drawScanner(vx, p, now);
+    drawShotgunHud(vx, p);
     const minimapH = drawMinimap(vx, now);
     drawStaminaBar(vx, p, minimapH);
 
     if (p.caught) drawCutsceneOverlay(vx, p, now);
 
+    ctx.restore();
+  }
+
+  // A small HUD badge in the corner once a player's carrying at least one
+  // shotgun shell -- the shell icon plus a live "Nx" count, since ammo now
+  // stacks up to SHOTGUN_AMMO_MAX instead of capping at a single shell.
+  function drawShotgunHud(vx, p) {
+    if (p.shotgunAmmo <= 0) return;
+    const cx = vx + VIEW_W - 34, cy = 64;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(40,20,10,0.75)';
+    ctx.fill();
+    ctx.strokeStyle = '#ff9c3d';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(cx - 6, cy);
+    ctx.fillStyle = '#c9451f';
+    ctx.fillRect(-4, -7, 8, 9);
+    ctx.fillStyle = '#d9b24a';
+    ctx.fillRect(-4, 2, 8, 4);
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-4, -7, 8, 13);
+    ctx.restore();
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffd27a';
+    ctx.fillText(`${p.shotgunAmmo}x`, cx + 3, cy + 4);
     ctx.restore();
   }
 

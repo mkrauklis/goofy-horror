@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 10</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="level1.html">Level 1</a>
+  <span>&middot;</span>
+  <a href="level2.html">Level 2</a>
+  <span>&middot;</span>
+  <a href="level3.html">Level 3</a>
+  <span>&middot;</span>
+  <a href="level4.html">Level 4</a>
+  <span>&middot;</span>
+  <a href="level5.html">Level 5</a>
+  <span>&middot;</span>
+  <a href="level6.html">Level 6</a>
+  <span>&middot;</span>
+  <a href="level7.html">Level 7</a>
+  <span>&middot;</span>
+  <a href="level8.html">Level 8</a>
+  <span>&middot;</span>
+  <a href="level9.html">Level 9</a>
+  <span>&middot;</span>
+  <a href="level10.html" class="active">Level 10</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 10 &mdash; The Last Knight</h1>
+  <p class="objective">Survive the knight's four attacks, wait for it to stun itself every 5th attack, then land a <strong>dynamite</strong> hit &mdash; 50 HP, 3 damage per stunned hit. Halfway down, it turns on you harder.</p>
+</header>
+
+<div class="wrap">
+  <div id="hud">
+    <span id="hud-boss">Boss: 50/50 HP</span>
+    <span id="hud-door">Door: locked</span>
+    <span id="hud-timer">Time: 0:00.0</span>
+    <span id="hud-best">Best: --:--</span>
+    <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+  </div>
+  <div id="game-canvas-holder" class="panel">
+    <canvas id="game-canvas" width="920" height="340"></canvas>
+    <div id="game-message"></div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    A wide stone arena, a little bigger than the Cinder Pit's own, with
+    the whole thing visible on screen at once &mdash; no fog of war, no
+    hunting for a path, just you, your partner, and a knight in dark
+    ruby and iron, giant sword in hand, filling most of it. Small vents
+    are punched into the outer wall here and there &mdash; the knight
+    can't fit into one and can't reach anything standing inside it.
+  </p>
+  <p class="level-description">
+    Four attacks, cycling forever: a straight-line charge at <strong>5x</strong>
+    your speed, sword pointed dead ahead; the blade turning red hot while
+    the knight slowly circles, swinging it in a fast continuous arc; a
+    burst of broken floor tiles shot outward in every direction at once at
+    <strong>3x</strong> speed; and both tentacles extended all the way out,
+    slowly sweeping around at <strong>1x</strong> speed &mdash; ducking
+    behind a wall still stops one cold. Every 5th attack, it's stunned for
+    10 seconds &mdash; find a dynamite stick (they spawn randomly around
+    the arena) and land it then for 3 damage, or 1 any other time.
+  </p>
+  <p class="level-description">
+    Drop it to 25 HP and the rubies in its armor turn blue, start throwing
+    off fire of their own, and it moves <strong>1.5x</strong> faster
+    across every attack above. Finish it off and the door swings open
+    behind it &mdash; a minecart is waiting right there to ride you both
+    out.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level10/level.js"></script>
+<script src="js/game10.js"></script>
+</body>
+</html>

@@ -15,6 +15,7 @@
   const vaultGuardCtx = ctxFor('monster-canvas-vaultguard');
   const wraithCtx = ctxFor('monster-canvas-wraith');
   const digWormCtx = ctxFor('monster-canvas-digworm');
+  const lastKnightCtx = ctxFor('monster-canvas-lastknight');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -941,11 +942,130 @@
     g.restore();
   }
 
-  // This page redraws eleven fully-detailed monster portraits at once, so it
+  // The Level 10 boss: a giant armored knight, dark ruby and iron, with a
+  // sword roughly twice its own body width -- condensed from game10.js's
+  // own drawKnightBody/drawKnightHelm/drawSword into a single static pose
+  // instead of a live attack cycle, since this is a reference gallery, not
+  // the fight itself.
+  function drawLastKnightArmorGem(g, x, y, r) {
+    const grad = g.createRadialGradient(x - r * 0.3, y - r * 0.3, 0.5, x, y, r);
+    grad.addColorStop(0, '#ff3a4a');
+    grad.addColorStop(1, '#8a1620');
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fillStyle = grad;
+    g.shadowColor = '#ff3a4a';
+    g.shadowBlur = 4;
+    g.fill();
+    g.shadowBlur = 0;
+    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.lineWidth = 1;
+    g.stroke();
+  }
+
+  function drawLastKnight(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const r = 44, seed = 53;
+
+    const points = 14;
+    g.beginPath();
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const rr = r + Math.sin(t * 0.003 + i * 1.7 + seed) * (r * 0.03);
+      const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
+      if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+    }
+    g.closePath();
+    const grad = g.createRadialGradient(-r * 0.2, -r * 0.25, r * 0.2, 0, 0, r);
+    grad.addColorStop(0, '#8a8f99');
+    grad.addColorStop(0.5, '#5a5e66');
+    grad.addColorStop(1, '#232529');
+    g.fillStyle = grad;
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.lineWidth = 2;
+    g.stroke();
+
+    const plate = '#7d828c', plateShade = '#454850';
+    [-0.5, 0, 0.5].forEach((f) => {
+      const py = f * r * 0.55;
+      const plateGrad = g.createLinearGradient(-r * 0.75, py, r * 0.75, py);
+      plateGrad.addColorStop(0, plateShade);
+      plateGrad.addColorStop(0.5, plate);
+      plateGrad.addColorStop(1, plateShade);
+      g.fillStyle = plateGrad;
+      g.beginPath();
+      g.ellipse(0, py, r * 0.8, r * 0.17, 0, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = 'rgba(10,10,12,0.6)';
+      g.lineWidth = 1.2;
+      g.stroke();
+      drawLastKnightArmorGem(g, 0, py, r * 0.085);
+    });
+
+    const angle = Math.sin(t * 0.0007) * 0.3;
+    g.save();
+    g.rotate(angle);
+    g.translate(r * 0.55, 0);
+    g.fillStyle = '#4a4d54';
+    g.beginPath();
+    g.ellipse(0, 0, r * 0.3, r * 0.26, 0, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.lineWidth = 1.5;
+    g.stroke();
+    g.fillStyle = '#ff5a4a';
+    g.shadowColor = '#ff5a4a';
+    g.shadowBlur = 8;
+    g.fillRect(r * 0.08, -r * 0.045, r * 0.2, r * 0.09);
+    g.shadowBlur = 0;
+    g.restore();
+
+    const swordAngle = angle + 0.15;
+    g.save();
+    g.rotate(swordAngle);
+    g.strokeStyle = '#3a3d44';
+    g.lineWidth = 9;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(0, 0);
+    g.lineTo(-16, 0);
+    g.stroke();
+    g.strokeStyle = '#8a8f99';
+    g.lineWidth = 7;
+    g.beginPath();
+    g.moveTo(8, -16);
+    g.lineTo(8, 16);
+    g.stroke();
+    const swordGrad = g.createLinearGradient(12, 0, 150, 0);
+    swordGrad.addColorStop(0, '#d8dce2');
+    swordGrad.addColorStop(0.5, '#9fa6b0');
+    swordGrad.addColorStop(1, '#5a5f68');
+    g.beginPath();
+    g.moveTo(10, -8);
+    g.lineTo(138, -3.5);
+    g.lineTo(150, 0);
+    g.lineTo(138, 3.5);
+    g.lineTo(10, 8);
+    g.closePath();
+    g.fillStyle = swordGrad;
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.4)';
+    g.lineWidth = 1;
+    g.stroke();
+    drawLastKnightArmorGem(g, -16, 0, 5);
+    g.restore();
+
+    g.restore();
+  }
+
+  // This page redraws twelve fully-detailed monster portraits at once, so it
   // caps itself around 30fps instead of riding requestAnimationFrame's full
   // 60 -- plenty smooth for a reference gallery nobody is dodging, and it
   // halves the cost of a page that (unlike any single level) never has
-  // fewer than eleven creatures on screen simultaneously.
+  // fewer than twelve creatures on screen simultaneously.
   let lastDraw = 0;
   function loop(t) {
     if (t - lastDraw >= 33) {
@@ -961,6 +1081,7 @@
       if (vaultGuardCtx) drawVaultGuardian(vaultGuardCtx, PORTRAIT, PORTRAIT, t);
       if (wraithCtx) drawWraith(wraithCtx, PORTRAIT, PORTRAIT, t);
       if (digWormCtx) drawDigWorm(digWormCtx, PORTRAIT, PORTRAIT, t);
+      if (lastKnightCtx) drawLastKnight(lastKnightCtx, PORTRAIT, PORTRAIT, t);
     }
     requestAnimationFrame(loop);
   }
