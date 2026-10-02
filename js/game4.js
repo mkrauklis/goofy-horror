@@ -1144,7 +1144,7 @@
         gameState = 'complete';
         playWinJingle();
         if (window.GoofyStory) window.GoofyStory.completeLevel(4);
-        setTimeout(() => { window.location.href = 'level5.html'; }, 650);
+        setTimeout(() => { window.location.href = 'level5.html'; }, 2000);
       }
     });
   }
@@ -2503,6 +2503,7 @@
       }
       if (window.GoofyStory) window.GoofyStory.completeLevel(4);
     }
+
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
   }

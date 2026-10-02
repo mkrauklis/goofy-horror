@@ -526,6 +526,7 @@
   let runStartTime = performance.now();
   let elapsedMs = 0;
   let bestRecorded = false;
+  let completeAt = null; // set the moment gameState first reads 'complete'
 
   function formatTime(ms) {
     const totalSec = Math.max(0, ms / 1000);
@@ -631,6 +632,7 @@
     runStartTime = performance.now();
     elapsedMs = 0;
     bestRecorded = false;
+    completeAt = null;
   }
   resetLevel();
 
@@ -2371,7 +2373,12 @@
         localStorage.setItem(BEST_TIME_KEY, String(bestMs));
       }
       if (window.GoofyStory) window.GoofyStory.completeLevel(6);
+      completeAt = performance.now();
     }
+    if (gameState === 'complete' && completeAt !== null && performance.now() - completeAt >= 2000) {
+      window.location.href = 'level7.html';
+    }
+
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
   }
