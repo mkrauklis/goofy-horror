@@ -14,6 +14,7 @@
   const wingedCtx = ctxFor('monster-canvas-winged');
   const vaultGuardCtx = ctxFor('monster-canvas-vaultguard');
   const wraithCtx = ctxFor('monster-canvas-wraith');
+  const digWormCtx = ctxFor('monster-canvas-digworm');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -834,11 +835,117 @@
     g.restore();
   }
 
-  // This page redraws ten fully-detailed monster portraits at once, so it
+  // The Level 9 creature: a pale, armor-plated cousin of the Level 3
+  // Caterpillar -- thicker, longer (more segments, wider spacing), riveted
+  // metal strapped across every segment via the same drawSegmentArmor used
+  // by game9.js, and a mouth instead of an eye on the head.
+  function drawSegmentArmor(g, r) {
+    const plate = '#7d828c';
+    const plateShade = '#4a4d54';
+    const grad = g.createLinearGradient(-r * 0.8, 0, r * 0.8, 0);
+    grad.addColorStop(0, plateShade);
+    grad.addColorStop(0.5, plate);
+    grad.addColorStop(1, plateShade);
+    g.fillStyle = grad;
+    g.beginPath();
+    g.ellipse(0, -r * 0.1, r * 0.82, r * 0.5, 0, Math.PI, 0);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = 'rgba(15,15,18,0.6)';
+    g.lineWidth = 1;
+    g.stroke();
+    g.fillStyle = 'rgba(20,20,22,0.8)';
+    [-0.5, 0, 0.5].forEach((f) => {
+      g.beginPath();
+      g.arc(f * r * 0.7, -r * 0.35, Math.max(1, r * 0.08), 0, Math.PI * 2);
+      g.fill();
+    });
+  }
+
+  function drawDigWorm(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const segCount = 10, spacing = 14, baseRadius = 19;
+
+    g.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let i = segCount - 1; i >= 0; i--) {
+      const along = i * spacing;
+      const wob = Math.sin(t * 0.002 + i * 0.6) * 6;
+      const r = Math.max(4, baseRadius * (1 - i * 0.03));
+      g.beginPath();
+      g.ellipse(-60 + along, wob + r * 0.5, Math.max(3, r * 0.85), Math.max(2, r * 0.35), 0, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    for (let i = segCount - 1; i >= 0; i--) {
+      const along = i * spacing;
+      const wob = Math.sin(t * 0.002 + i * 0.6) * 6;
+      const x = -60 + along;
+      const y = wob;
+      const r = Math.max(4, baseRadius * (1 - i * 0.03));
+      const base = i % 2 === 0 ? '#d8d0bc' : '#e3dcc8';
+      g.save();
+      g.translate(x, y);
+      const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
+      grad.addColorStop(0, shade(base, 0.2));
+      grad.addColorStop(0.6, base);
+      grad.addColorStop(1, shade(base, -0.25));
+      g.beginPath();
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.fillStyle = grad;
+      g.shadowColor = '#a89a7a';
+      g.shadowBlur = 6;
+      g.fill();
+      g.shadowBlur = 0;
+
+      drawSegmentArmor(g, r);
+
+      g.strokeStyle = 'rgba(40,36,28,0.6)';
+      g.lineWidth = 1.6 * (r / 15);
+      [-1, 1].forEach((side) => {
+        g.beginPath();
+        g.moveTo(0, side * r * 0.7);
+        g.lineTo(-2, side * (r * 0.7 + 4));
+        g.stroke();
+      });
+      g.restore();
+    }
+
+    g.save();
+    const headY = Math.sin(t * 0.002) * 6;
+    g.translate(-60 + segCount * spacing, headY);
+    const points = 12;
+    const headPath = [];
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const r = baseRadius + Math.sin(t * 0.008 + i * 1.7) * 3;
+      headPath.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    g.beginPath();
+    headPath.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+    g.closePath();
+    const headGrad = g.createRadialGradient(-baseRadius * 0.3, -baseRadius * 0.35, 1, 0, 0, baseRadius * 1.05);
+    headGrad.addColorStop(0, shade('#e3dcc8', 0.2));
+    headGrad.addColorStop(0.55, '#e3dcc8');
+    headGrad.addColorStop(1, shade('#e3dcc8', -0.25));
+    g.fillStyle = headGrad;
+    g.shadowColor = '#a89a7a';
+    g.shadowBlur = 12;
+    g.fill();
+    g.shadowBlur = 0;
+    drawSegmentArmor(g, baseRadius);
+    const angle = t * 0.0005;
+    drawMonsterTeeth(g, baseRadius, { x: Math.cos(angle), y: Math.sin(angle) * 0.4 });
+    g.restore();
+    g.restore();
+  }
+
+  // This page redraws eleven fully-detailed monster portraits at once, so it
   // caps itself around 30fps instead of riding requestAnimationFrame's full
   // 60 -- plenty smooth for a reference gallery nobody is dodging, and it
   // halves the cost of a page that (unlike any single level) never has
-  // fewer than ten creatures on screen simultaneously.
+  // fewer than eleven creatures on screen simultaneously.
   let lastDraw = 0;
   function loop(t) {
     if (t - lastDraw >= 33) {
@@ -853,6 +960,7 @@
       if (wingedCtx) drawWinged(wingedCtx, PORTRAIT, PORTRAIT, t);
       if (vaultGuardCtx) drawVaultGuardian(vaultGuardCtx, PORTRAIT, PORTRAIT, t);
       if (wraithCtx) drawWraith(wraithCtx, PORTRAIT, PORTRAIT, t);
+      if (digWormCtx) drawDigWorm(digWormCtx, PORTRAIT, PORTRAIT, t);
     }
     requestAnimationFrame(loop);
   }
