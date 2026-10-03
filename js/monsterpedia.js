@@ -1136,6 +1136,58 @@
     g.restore();
   }
 
+  // A monster stays a mystery -- no portrait, no name, no description --
+  // until the level it's actually in has been beaten. Locking is decided
+  // once at load (reload the page after finishing a level to see it
+  // unlock) rather than polled continuously, same as every other
+  // story-progress read on this site.
+  function applyLockState() {
+    const story = window.GoofyStory;
+    document.querySelectorAll('.monster-entry[data-level]').forEach((article) => {
+      const n = parseInt(article.dataset.level, 10);
+      const unlocked = !story || story.isCompleted(n);
+      if (unlocked) return;
+      article.classList.add('locked');
+      const h2 = article.querySelector('h2');
+      const meta = article.querySelector('.monster-meta');
+      const p = article.querySelector('p');
+      if (h2) h2.textContent = '???';
+      if (meta) meta.textContent = `Level ${n} — locked`;
+      if (p) p.textContent = `Finish Level ${n} to unlock this entry.`;
+    });
+  }
+  applyLockState();
+
+  function isLocked(ctx) {
+    const article = ctx.canvas.closest('.monster-entry');
+    return !!article && article.classList.contains('locked');
+  }
+
+  function drawLockedPlaceholder(g, w, h) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    g.beginPath();
+    g.arc(0, 0, 54, 0, Math.PI * 2);
+    g.fillStyle = '#1c1c22';
+    g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.15)';
+    g.lineWidth = 2;
+    g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.3)';
+    g.font = 'bold 56px monospace';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('?', 0, 4);
+    g.restore();
+  }
+
+  function drawPortraitOrLock(ctx, drawFn, t) {
+    if (!ctx) return;
+    if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
+    drawFn(ctx, PORTRAIT, PORTRAIT, t);
+  }
+
   // This page redraws twelve fully-detailed monster portraits at once, so it
   // caps itself around 30fps instead of riding requestAnimationFrame's full
   // 60 -- plenty smooth for a reference gallery nobody is dodging, and it
@@ -1145,18 +1197,18 @@
   function loop(t) {
     if (t - lastDraw >= 33) {
       lastDraw = t;
-      if (crawlerCtx) drawCrawler(crawlerCtx, PORTRAIT, PORTRAIT, t);
-      if (drifterCtx) drawDrifter(drifterCtx, PORTRAIT, PORTRAIT, t);
-      if (caterpillarCtx) drawCaterpillar(caterpillarCtx, PORTRAIT, PORTRAIT, t);
-      if (mimicCtx) drawMimic(mimicCtx, PORTRAIT, PORTRAIT, t);
-      if (lurkerCtx) drawLurker(lurkerCtx, PORTRAIT, PORTRAIT, t);
-      if (bossCtx) drawBoss(bossCtx, PORTRAIT, PORTRAIT, t);
-      if (knightCtx) drawKnight(knightCtx, PORTRAIT, PORTRAIT, t);
-      if (wingedCtx) drawWinged(wingedCtx, PORTRAIT, PORTRAIT, t);
-      if (vaultGuardCtx) drawVaultGuardian(vaultGuardCtx, PORTRAIT, PORTRAIT, t);
-      if (wraithCtx) drawWraith(wraithCtx, PORTRAIT, PORTRAIT, t);
-      if (digWormCtx) drawDigWorm(digWormCtx, PORTRAIT, PORTRAIT, t);
-      if (lastKnightCtx) drawLastKnight(lastKnightCtx, PORTRAIT, PORTRAIT, t);
+      drawPortraitOrLock(crawlerCtx, drawCrawler, t);
+      drawPortraitOrLock(drifterCtx, drawDrifter, t);
+      drawPortraitOrLock(caterpillarCtx, drawCaterpillar, t);
+      drawPortraitOrLock(mimicCtx, drawMimic, t);
+      drawPortraitOrLock(lurkerCtx, drawLurker, t);
+      drawPortraitOrLock(bossCtx, drawBoss, t);
+      drawPortraitOrLock(knightCtx, drawKnight, t);
+      drawPortraitOrLock(wingedCtx, drawWinged, t);
+      drawPortraitOrLock(vaultGuardCtx, drawVaultGuardian, t);
+      drawPortraitOrLock(wraithCtx, drawWraith, t);
+      drawPortraitOrLock(digWormCtx, drawDigWorm, t);
+      drawPortraitOrLock(lastKnightCtx, drawLastKnight, t);
     }
     requestAnimationFrame(loop);
   }

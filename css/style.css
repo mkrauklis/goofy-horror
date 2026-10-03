@@ -352,6 +352,24 @@ header.hero p {
   clear: both;
 }
 
+/* A monster whose level hasn't been finished yet -- the portrait draws a
+   big "?" instead of the real thing, and its name/description are
+   swapped out in JS (see monsterpedia.js's applyLockState) rather than
+   just dimmed, so nothing about it leaks before you've actually beaten
+   the level it's in. */
+.monster-entry.locked {
+  border-left-color: #4a4a52;
+}
+
+.monster-entry.locked h2 {
+  color: var(--dim);
+}
+
+.monster-entry.locked p {
+  color: var(--dim);
+  font-style: italic;
+}
+
 .music-toggle {
   background: transparent;
   border: 1px solid var(--border);
