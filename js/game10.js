@@ -1881,92 +1881,228 @@
     g.stroke();
   }
 
+  // A mouth instead of an eye -- same convention as Level 7/9's creatures:
+  // a dark wet oval, a row of teeth, oriented to face lookDir.
+  function drawMonsterMouth(g, radius, lookDir) {
+    const mouthR = radius * 0.7;
+    const angle = Math.atan2(lookDir.y, lookDir.x);
+    g.save();
+    g.rotate(angle);
+
+    const mouthGrad = g.createRadialGradient(mouthR * 0.25, 0, 1, mouthR * 0.25, 0, mouthR * 0.9);
+    mouthGrad.addColorStop(0, '#180810');
+    mouthGrad.addColorStop(1, '#000000');
+    g.beginPath();
+    g.ellipse(mouthR * 0.25, 0, mouthR * 0.85, mouthR * 0.62, 0, 0, Math.PI * 2);
+    g.fillStyle = mouthGrad;
+    g.fill();
+
+    g.beginPath();
+    g.ellipse(mouthR * 0.55, 0, mouthR * 0.25, mouthR * 0.16, 0, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(120,20,30,0.5)';
+    g.fill();
+
+    const teeth = 9;
+    for (let i = 0; i < teeth; i++) {
+      const a = (i / (teeth - 1)) * Math.PI * 2 - Math.PI;
+      const rx = mouthR * 0.85, ry = mouthR * 0.62;
+      const bx = mouthR * 0.25 + Math.cos(a) * rx;
+      const by = Math.sin(a) * ry;
+      const inX = mouthR * 0.25 + Math.cos(a) * rx * 0.45;
+      const inY = Math.sin(a) * ry * 0.45;
+      const tw = 2.6;
+      const nx = -Math.sin(a) * tw, ny = Math.cos(a) * tw;
+      const toothGrad = g.createLinearGradient(bx, by, inX, inY);
+      toothGrad.addColorStop(0, '#ffffff');
+      toothGrad.addColorStop(1, '#c9c0b0');
+      g.beginPath();
+      g.moveTo(bx + nx, by + ny);
+      g.lineTo(bx - nx, by - ny);
+      g.lineTo(inX, inY);
+      g.closePath();
+      g.fillStyle = toothGrad;
+      g.fill();
+    }
+
+    g.beginPath();
+    g.ellipse(mouthR * 0.25, 0, mouthR * 0.85, mouthR * 0.62, 0, 0, Math.PI * 2);
+    g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.lineWidth = 1.5;
+    g.stroke();
+    g.restore();
+  }
+
+  // A proper suit of plate rather than the usual blob-with-floating-plates
+  // look every other armored creature in this game uses -- a breastplate
+  // with a tasset skirt and a pair of pauldrons, each carrying its own
+  // ruby/sapphire gem. The body itself doesn't rotate (same convention as
+  // every other monster here, only its eye/mouth tracks lookDir), so this
+  // reads the same from whichever side it's facing.
   function drawKnightBody(g, t) {
     const r = boss.radius;
-    const points = 14;
-    const path = [];
-    for (let i = 0; i <= points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const rr = r + Math.sin(t * 0.003 + i * 1.7 + boss.seed) * (r * 0.03);
-      path.push([Math.cos(a) * rr, Math.sin(a) * rr]);
-    }
-    const trace = () => {
-      g.beginPath();
-      path.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
-      g.closePath();
-    };
+    const ironLight = boss.defeated ? '#4a4640' : '#8a8f99';
+    const ironMid = boss.defeated ? '#302d28' : '#5a5e66';
+    const ironDark = boss.defeated ? '#0d0c0a' : '#232529';
+    const wobble = Math.sin(t * 0.003 + boss.seed) * (r * 0.015);
 
-    trace();
-    const grad = g.createRadialGradient(-r * 0.2, -r * 0.25, r * 0.2, 0, 0, r);
-    if (boss.defeated) {
-      grad.addColorStop(0, '#4a4640');
-      grad.addColorStop(0.5, '#302d28');
-      grad.addColorStop(1, '#0d0c0a');
-    } else {
-      grad.addColorStop(0, '#8a8f99');
-      grad.addColorStop(0.5, '#5a5e66');
-      grad.addColorStop(1, '#232529');
-    }
-    g.fillStyle = grad;
+    g.beginPath();
+    g.ellipse(0, r * 0.92, r * 0.78, r * 0.2, 0, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(0,0,0,0.3)';
     g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.5)';
+
+    // tasset -- three overlapping skirt plates hanging off the waist
+    [-0.4, 0, 0.4].forEach((f) => {
+      g.save();
+      g.translate(f * r * 0.75, r * 0.45 + wobble);
+      g.rotate(f * 0.25);
+      const tg = g.createLinearGradient(-r * 0.16, 0, r * 0.16, 0);
+      tg.addColorStop(0, ironDark);
+      tg.addColorStop(0.5, ironLight);
+      tg.addColorStop(1, ironDark);
+      g.beginPath();
+      g.moveTo(-r * 0.2, -r * 0.08);
+      g.lineTo(r * 0.2, -r * 0.08);
+      g.lineTo(r * 0.14, r * 0.38);
+      g.lineTo(-r * 0.14, r * 0.38);
+      g.closePath();
+      g.fillStyle = tg;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.55)';
+      g.lineWidth = 1.3;
+      g.stroke();
+      g.restore();
+    });
+
+    // breastplate -- wide at the shoulders, tapering to the waist
+    g.beginPath();
+    g.moveTo(-r * 0.6, -r * 0.58 + wobble);
+    g.lineTo(r * 0.6, -r * 0.58 + wobble);
+    g.quadraticCurveTo(r * 0.76, -r * 0.1, r * 0.4, r * 0.48);
+    g.lineTo(-r * 0.4, r * 0.48);
+    g.quadraticCurveTo(-r * 0.76, -r * 0.1, -r * 0.6, -r * 0.58 + wobble);
+    g.closePath();
+    const torsoGrad = g.createLinearGradient(-r * 0.6, -r * 0.5, r * 0.6, r * 0.4);
+    torsoGrad.addColorStop(0, ironMid);
+    torsoGrad.addColorStop(0.5, ironLight);
+    torsoGrad.addColorStop(1, ironDark);
+    g.fillStyle = torsoGrad;
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.55)';
     g.lineWidth = 2;
     g.stroke();
 
+    // center spine seam + a couple of riveted horizontal bands
+    g.strokeStyle = 'rgba(0,0,0,0.3)';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(0, -r * 0.5 + wobble);
+    g.lineTo(0, r * 0.4);
+    g.stroke();
     if (!boss.defeated) {
-      // riveted plate bands with a ruby/sapphire gem set in each
-      const plate = '#7d828c', plateShade = '#454850';
-      [-0.5, 0, 0.5].forEach((f) => {
-        const py = f * r * 0.55;
-        const plateGrad = g.createLinearGradient(-r * 0.75, py, r * 0.75, py);
-        plateGrad.addColorStop(0, plateShade);
-        plateGrad.addColorStop(0.5, plate);
-        plateGrad.addColorStop(1, plateShade);
-        g.fillStyle = plateGrad;
+      [-0.12, 0.22].forEach((f) => {
+        const py = f * r + wobble;
+        const bandGrad = g.createLinearGradient(-r * 0.56, py, r * 0.56, py);
+        bandGrad.addColorStop(0, ironDark);
+        bandGrad.addColorStop(0.5, '#7d828c');
+        bandGrad.addColorStop(1, ironDark);
+        g.fillStyle = bandGrad;
         g.beginPath();
-        g.ellipse(0, py, r * 0.8, r * 0.17, 0, 0, Math.PI * 2);
+        g.ellipse(0, py, r * 0.5, r * 0.06, 0, 0, Math.PI * 2);
         g.fill();
-        g.strokeStyle = 'rgba(10,10,12,0.6)';
-        g.lineWidth = 1.2;
-        g.stroke();
-        drawArmorGem(g, 0, py, r * 0.085, boss.phase2);
       });
     }
 
+    // pauldrons -- round shoulder plates, each with its own gem
+    [-1, 1].forEach((side) => {
+      const px = side * r * 0.66, py = -r * 0.52 + wobble;
+      const pg = g.createRadialGradient(px - side * r * 0.1, py - r * 0.1, 1, px, py, r * 0.3);
+      pg.addColorStop(0, ironLight);
+      pg.addColorStop(1, ironDark);
+      g.beginPath();
+      g.arc(px, py, r * 0.28, 0, Math.PI * 2);
+      g.fillStyle = pg;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.55)';
+      g.lineWidth = 1.5;
+      g.stroke();
+      if (!boss.defeated) drawArmorGem(g, px, py, r * 0.065, boss.phase2);
+    });
+
+    // the main crest gem, set in the chest
+    if (!boss.defeated) drawArmorGem(g, 0, -r * 0.02 + wobble, r * 0.13, boss.phase2);
+
+    // a soft highlight along the upper-left of the breastplate
     g.save();
-    trace();
-    g.clip();
     g.beginPath();
-    g.ellipse(-r * 0.3, -r * 0.35, r * 0.45, r * 0.28, -0.5, 0, Math.PI * 2);
+    g.ellipse(-r * 0.25, -r * 0.3, r * 0.3, r * 0.18, -0.5, 0, Math.PI * 2);
     g.fillStyle = 'rgba(255,255,255,0.1)';
     g.fill();
     g.restore();
   }
 
-  // A simple closed helm with a glowing eye-slit facing lookDir -- same
-  // "an eye through a gap in the helm" convention as Level 6's Knight,
-  // purely decorative here since this fight has no stealth component.
+  // The helm is two riveted plates (a brow and a jaw guard) with a gap
+  // between them -- the mouth shows through that gap, same "visible mouth,
+  // armored everywhere else" convention the user asked for, in place of
+  // the glowing eye-slit a sighted monster would have instead.
   function drawKnightHelm(g) {
     const r = boss.radius;
     const angle = Math.atan2(boss.lookDir.y, boss.lookDir.x);
     g.save();
     g.rotate(angle);
-    g.translate(r * 0.55, 0);
-    g.fillStyle = boss.defeated ? '#302d28' : '#4a4d54';
+    g.translate(r * 0.62, 0);
+    const headR = r * 0.34;
+    const ironLight = boss.defeated ? '#4a4640' : '#9aa0aa';
+    const ironDark = boss.defeated ? '#201e1a' : '#3a3d44';
+    const helmGrad = g.createRadialGradient(-headR * 0.3, -headR * 0.4, 1, 0, 0, headR * 1.3);
+    helmGrad.addColorStop(0, ironLight);
+    helmGrad.addColorStop(1, ironDark);
+
+    if (!boss.defeated) {
+      drawMonsterMouth(g, headR * 1.5, { x: 1, y: 0 });
+    } else {
+      g.strokeStyle = 'rgba(20,10,8,0.85)';
+      g.lineWidth = headR * 0.14;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(-headR * 0.3, 0);
+      g.lineTo(headR * 0.5, 0);
+      g.stroke();
+    }
+
+    // brow guard (above the mouth)
     g.beginPath();
-    g.ellipse(0, 0, r * 0.3, r * 0.26, 0, 0, Math.PI * 2);
+    g.ellipse(-headR * 0.05, -headR * 0.72, headR * 0.98, headR * 0.5, 0, 0, Math.PI * 2);
+    g.fillStyle = helmGrad;
     g.fill();
     g.strokeStyle = 'rgba(0,0,0,0.6)';
-    g.lineWidth = 1.5;
+    g.lineWidth = 1.4;
     g.stroke();
-    if (!boss.defeated) {
-      const glowColor = boss.phase2 ? '#8fd6ff' : '#ff5a4a';
-      g.fillStyle = glowColor;
-      g.shadowColor = glowColor;
-      g.shadowBlur = 8;
-      g.fillRect(r * 0.08, -r * 0.045, r * 0.2, r * 0.09);
-      g.shadowBlur = 0;
-    }
+    // a small crest nub on top of the brow
+    g.fillStyle = ironDark;
+    g.beginPath();
+    g.ellipse(0, -headR * 1.3, headR * 0.16, headR * 0.35, 0, 0, Math.PI * 2);
+    g.fill();
+
+    // jaw guard (below the mouth)
+    g.beginPath();
+    g.ellipse(headR * 0.05, headR * 0.68, headR * 0.92, headR * 0.44, 0, 0, Math.PI * 2);
+    g.fillStyle = helmGrad;
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.lineWidth = 1.4;
+    g.stroke();
+
+    // cheek guards framing the mouth on either side
+    [-1, 1].forEach((side) => {
+      g.beginPath();
+      g.ellipse(side * headR * 0.95, headR * 0.1, headR * 0.3, headR * 0.6, 0, 0, Math.PI * 2);
+      g.fillStyle = helmGrad;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 1.2;
+      g.stroke();
+    });
+
     g.restore();
   }
 

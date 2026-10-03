@@ -967,60 +967,135 @@
     clear(g, w, h);
     g.save();
     g.translate(w / 2, h / 2);
-    const r = 44, seed = 53;
+    const r = 44;
+    const ironLight = '#8a8f99', ironMid = '#5a5e66', ironDark = '#232529';
+    const wobble = Math.sin(t * 0.003 + 53) * (r * 0.015);
 
-    const points = 14;
+    // tasset
+    [-0.4, 0, 0.4].forEach((f) => {
+      g.save();
+      g.translate(f * r * 0.75, r * 0.45 + wobble);
+      g.rotate(f * 0.25);
+      const tg = g.createLinearGradient(-r * 0.16, 0, r * 0.16, 0);
+      tg.addColorStop(0, ironDark);
+      tg.addColorStop(0.5, ironLight);
+      tg.addColorStop(1, ironDark);
+      g.beginPath();
+      g.moveTo(-r * 0.2, -r * 0.08);
+      g.lineTo(r * 0.2, -r * 0.08);
+      g.lineTo(r * 0.14, r * 0.38);
+      g.lineTo(-r * 0.14, r * 0.38);
+      g.closePath();
+      g.fillStyle = tg;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.55)';
+      g.lineWidth = 1.3;
+      g.stroke();
+      g.restore();
+    });
+
+    // breastplate
     g.beginPath();
-    for (let i = 0; i <= points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const rr = r + Math.sin(t * 0.003 + i * 1.7 + seed) * (r * 0.03);
-      const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
-      if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
-    }
+    g.moveTo(-r * 0.6, -r * 0.58 + wobble);
+    g.lineTo(r * 0.6, -r * 0.58 + wobble);
+    g.quadraticCurveTo(r * 0.76, -r * 0.1, r * 0.4, r * 0.48);
+    g.lineTo(-r * 0.4, r * 0.48);
+    g.quadraticCurveTo(-r * 0.76, -r * 0.1, -r * 0.6, -r * 0.58 + wobble);
     g.closePath();
-    const grad = g.createRadialGradient(-r * 0.2, -r * 0.25, r * 0.2, 0, 0, r);
-    grad.addColorStop(0, '#8a8f99');
-    grad.addColorStop(0.5, '#5a5e66');
-    grad.addColorStop(1, '#232529');
-    g.fillStyle = grad;
+    const torsoGrad = g.createLinearGradient(-r * 0.6, -r * 0.5, r * 0.6, r * 0.4);
+    torsoGrad.addColorStop(0, ironMid);
+    torsoGrad.addColorStop(0.5, ironLight);
+    torsoGrad.addColorStop(1, ironDark);
+    g.fillStyle = torsoGrad;
     g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.strokeStyle = 'rgba(0,0,0,0.55)';
     g.lineWidth = 2;
     g.stroke();
 
-    const plate = '#7d828c', plateShade = '#454850';
-    [-0.5, 0, 0.5].forEach((f) => {
-      const py = f * r * 0.55;
-      const plateGrad = g.createLinearGradient(-r * 0.75, py, r * 0.75, py);
-      plateGrad.addColorStop(0, plateShade);
-      plateGrad.addColorStop(0.5, plate);
-      plateGrad.addColorStop(1, plateShade);
-      g.fillStyle = plateGrad;
+    g.strokeStyle = 'rgba(0,0,0,0.3)';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(0, -r * 0.5 + wobble);
+    g.lineTo(0, r * 0.4);
+    g.stroke();
+    [-0.12, 0.22].forEach((f) => {
+      const py = f * r + wobble;
+      const bandGrad = g.createLinearGradient(-r * 0.56, py, r * 0.56, py);
+      bandGrad.addColorStop(0, ironDark);
+      bandGrad.addColorStop(0.5, '#7d828c');
+      bandGrad.addColorStop(1, ironDark);
+      g.fillStyle = bandGrad;
       g.beginPath();
-      g.ellipse(0, py, r * 0.8, r * 0.17, 0, 0, Math.PI * 2);
+      g.ellipse(0, py, r * 0.5, r * 0.06, 0, 0, Math.PI * 2);
       g.fill();
-      g.strokeStyle = 'rgba(10,10,12,0.6)';
-      g.lineWidth = 1.2;
-      g.stroke();
-      drawLastKnightArmorGem(g, 0, py, r * 0.085);
     });
 
+    // pauldrons
+    [-1, 1].forEach((side) => {
+      const px = side * r * 0.66, py = -r * 0.52 + wobble;
+      const pg = g.createRadialGradient(px - side * r * 0.1, py - r * 0.1, 1, px, py, r * 0.3);
+      pg.addColorStop(0, ironLight);
+      pg.addColorStop(1, ironDark);
+      g.beginPath();
+      g.arc(px, py, r * 0.28, 0, Math.PI * 2);
+      g.fillStyle = pg;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.55)';
+      g.lineWidth = 1.5;
+      g.stroke();
+      drawLastKnightArmorGem(g, px, py, r * 0.065);
+    });
+
+    drawLastKnightArmorGem(g, 0, -r * 0.02 + wobble, r * 0.13);
+
+    g.save();
+    g.beginPath();
+    g.ellipse(-r * 0.25, -r * 0.3, r * 0.3, r * 0.18, -0.5, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.1)';
+    g.fill();
+    g.restore();
+
+    // helm -- a mouth shows through the gap between the brow and jaw guards
     const angle = Math.sin(t * 0.0007) * 0.3;
     g.save();
     g.rotate(angle);
-    g.translate(r * 0.55, 0);
-    g.fillStyle = '#4a4d54';
+    g.translate(r * 0.62, 0);
+    const headR = r * 0.34;
+    const helmGrad = g.createRadialGradient(-headR * 0.3, -headR * 0.4, 1, 0, 0, headR * 1.3);
+    helmGrad.addColorStop(0, '#9aa0aa');
+    helmGrad.addColorStop(1, '#3a3d44');
+
+    drawMonsterTeeth(g, headR * 1.5, { x: 1, y: 0 });
+
     g.beginPath();
-    g.ellipse(0, 0, r * 0.3, r * 0.26, 0, 0, Math.PI * 2);
+    g.ellipse(-headR * 0.05, -headR * 0.72, headR * 0.98, headR * 0.5, 0, 0, Math.PI * 2);
+    g.fillStyle = helmGrad;
     g.fill();
     g.strokeStyle = 'rgba(0,0,0,0.6)';
-    g.lineWidth = 1.5;
+    g.lineWidth = 1.4;
     g.stroke();
-    g.fillStyle = '#ff5a4a';
-    g.shadowColor = '#ff5a4a';
-    g.shadowBlur = 8;
-    g.fillRect(r * 0.08, -r * 0.045, r * 0.2, r * 0.09);
-    g.shadowBlur = 0;
+    g.fillStyle = '#3a3d44';
+    g.beginPath();
+    g.ellipse(0, -headR * 1.3, headR * 0.16, headR * 0.35, 0, 0, Math.PI * 2);
+    g.fill();
+
+    g.beginPath();
+    g.ellipse(headR * 0.05, headR * 0.68, headR * 0.92, headR * 0.44, 0, 0, Math.PI * 2);
+    g.fillStyle = helmGrad;
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.lineWidth = 1.4;
+    g.stroke();
+
+    [-1, 1].forEach((side) => {
+      g.beginPath();
+      g.ellipse(side * headR * 0.95, headR * 0.1, headR * 0.3, headR * 0.6, 0, 0, Math.PI * 2);
+      g.fillStyle = helmGrad;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 1.2;
+      g.stroke();
+    });
     g.restore();
 
     const swordAngle = angle + 0.15;
