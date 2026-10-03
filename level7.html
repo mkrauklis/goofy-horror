@@ -19,16 +19,18 @@
 </header>
 
 <div class="wrap">
-  <div id="hud">
-    <span id="hud-buttons">Lever: not pulled</span>
-    <span id="hud-door">Door: locked</span>
-    <span id="hud-timer">Time: 0:00.0</span>
-    <span id="hud-best">Best: --:--</span>
-    <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-buttons">Lever: not pulled</span>
+      <span id="hud-door">Door: locked</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
   </div>
-  <div id="game-canvas-holder" class="panel">
-    <canvas id="game-canvas" width="920" height="340"></canvas>
-    <div id="game-message"></div>
   </div>
   <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
 </div>
@@ -70,9 +72,9 @@
   </p>
   <p class="level-description">
     Each of you is carrying a shotgun, empty. Find a shell in a crate
-    (you can only hold one at a time) and it's loaded automatically
+    (you can carry up to 3 at a time) and each one's loaded automatically
     &mdash; let the thing get close while it's hunting you and it goes
-    off on its own, stunning it for 3 seconds. No button to press;
+    off on its own, stunning it for 5 seconds. No button to press;
     just don't walk in without one.
   </p>
 </div>

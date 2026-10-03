@@ -101,13 +101,16 @@
   }
 
   // A fullscreen toggle next to the music toggle, on every level page --
-  // shared here instead of duplicated into all 6 game{N}.js files. Targets
-  // the canvas holder specifically (not the whole page) so the HUD stays
-  // visible and legible while fullscreen.
+  // shared here instead of duplicated into all 10 game{N}.js files. Targets
+  // a wrapper around BOTH the HUD and the canvas holder (not just the
+  // canvas holder alone) so the HUD -- and whatever of the objective
+  // you've got done -- stays on screen while fullscreen, instead of
+  // disappearing the way it did when only the canvas itself went
+  // fullscreen and the HUD, a sibling outside it, was left behind.
   function setupFullscreenToggle() {
-    const holder = document.getElementById('game-canvas-holder');
+    const wrap = document.getElementById('game-fullscreen-wrap');
     const hud = document.getElementById('hud');
-    if (!holder || !hud || !document.fullscreenEnabled) return;
+    if (!wrap || !hud || !document.fullscreenEnabled) return;
 
     const btn = document.createElement('button');
     btn.id = 'fullscreen-toggle';
@@ -120,13 +123,13 @@
       if (document.fullscreenElement) {
         document.exitFullscreen();
       } else {
-        holder.requestFullscreen().catch(() => {});
+        wrap.requestFullscreen().catch(() => {});
       }
     });
     document.addEventListener('fullscreenchange', () => {
-      const active = document.fullscreenElement === holder;
+      const active = document.fullscreenElement === wrap;
       btn.textContent = active ? '⛶ Exit fullscreen' : '⛶ Fullscreen';
-      holder.classList.toggle('is-fullscreen', active);
+      wrap.classList.toggle('is-fullscreen', active);
     });
   }
 
