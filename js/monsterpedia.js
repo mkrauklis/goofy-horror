@@ -18,6 +18,7 @@
   const lastKnightCtx = ctxFor('monster-canvas-lastknight');
   const frostCtx = ctxFor('monster-canvas-frost');
   const mutationCtx = ctxFor('monster-canvas-mutation');
+  const broodCtx = ctxFor('monster-canvas-brood');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -1304,6 +1305,25 @@
     g.restore();
   }
 
+  // The Level 13 creatures: tiny, pale, half-size cousins of the Crawler --
+  // three of them clustered to read as "a bunch of these," not just one.
+  function drawBrood(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    [[-30, -14, 31], [26, -18, 47], [2, 20, 63]].forEach(([ox, oy, seed]) => {
+      g.save();
+      g.translate(ox, oy);
+      const r = 13;
+      drawTentacles(g, r, '#5a4a30', t, seed);
+      drawBlobBody(g, r, '#8a7a5a', '#5a4a30', seed, t);
+      const angle = t * 0.0006 + seed;
+      drawEye(g, r, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+      g.restore();
+    });
+    g.restore();
+  }
+
   function drawPortraitOrLock(ctx, drawFn, t) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
@@ -1329,6 +1349,7 @@
       drawPortraitOrLock(wingedCtx, drawWinged, t);
       drawPortraitOrLock(frostCtx, drawFrostTentacleCreature, t);
       drawPortraitOrLock(mutationCtx, drawMutation, t);
+      drawPortraitOrLock(broodCtx, drawBrood, t);
       drawPortraitOrLock(vaultGuardCtx, drawVaultGuardian, t);
       drawPortraitOrLock(wraithCtx, drawWraith, t);
       drawPortraitOrLock(digWormCtx, drawDigWorm, t);
