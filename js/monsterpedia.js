@@ -17,6 +17,7 @@
   const digWormCtx = ctxFor('monster-canvas-digworm');
   const lastKnightCtx = ctxFor('monster-canvas-lastknight');
   const frostCtx = ctxFor('monster-canvas-frost');
+  const mutationCtx = ctxFor('monster-canvas-mutation');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -1267,6 +1268,42 @@
     g.restore();
   }
 
+  // The Level 12 creature: a purple, three-headed mutant tentacle thing --
+  // condensed from game12.js's own drawMonster/drawBlobBody.
+  function drawMutation(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const radius = 30, seed = 73;
+
+    const tentCount = 5;
+    for (let i = 0; i < tentCount; i++) {
+      const a = (i / tentCount) * Math.PI * 2 + seed + Math.sin(t * 0.0015 + i) * 0.3;
+      const len = radius * 1.7;
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
+      drawTaperedTentacle(g, tx, ty, tx * 0.5, ty * 0.5, radius * 0.2, '#4a1a6a');
+    }
+
+    const sideR = radius * 0.6;
+    [-1, 1].forEach((side) => {
+      g.save();
+      g.translate(side * radius * 0.7, radius * 0.35);
+      drawBlobBody(g, sideR, '#6a2a8a', '#3a1452', seed + side * 7, t);
+      g.restore();
+    });
+
+    drawBlobBody(g, radius, '#7a3a9a', '#3a1452', seed, t);
+
+    const angle = t * 0.0006;
+    drawEye(g, radius, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    g.save();
+    g.translate(-radius * 0.7, radius * 0.35);
+    drawEye(g, sideR, seed + 3, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    g.restore();
+
+    g.restore();
+  }
+
   function drawPortraitOrLock(ctx, drawFn, t) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
@@ -1291,6 +1328,7 @@
       drawPortraitOrLock(knightCtx, drawKnight, t);
       drawPortraitOrLock(wingedCtx, drawWinged, t);
       drawPortraitOrLock(frostCtx, drawFrostTentacleCreature, t);
+      drawPortraitOrLock(mutationCtx, drawMutation, t);
       drawPortraitOrLock(vaultGuardCtx, drawVaultGuardian, t);
       drawPortraitOrLock(wraithCtx, drawWraith, t);
       drawPortraitOrLock(digWormCtx, drawDigWorm, t);

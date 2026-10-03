@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 12</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 12 &mdash; The Mutation</h1>
+  <p class="objective">Find both fuses and seat them in the double fuse box to open the door. Missing floor tiles force you onto boardwalks in a few rooms. A purple, three-headed thing hunts by sight &mdash; but only once something moves.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-fuse">Fuses: 0 / 2 installed</span>
+      <span id="hud-door">Door: locked</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    Same icicle-and-snow dressing as the frozen halls before it, but a
+    few rooms here have lost their floor entirely &mdash; the only way
+    across is the boardwalk laid through each one. Two fuses are
+    scattered through the level; carry both to the double fuse box and
+    get them seated to unlock the door. Item crates can turn up a radar,
+    a scanner pointing at whichever fuse still needs attention, a
+    distracting slab of meat, or a CO2 blast.
+  </p>
+  <p class="level-description">
+    A purple, three-headed mutant tentacle thing patrols the halls --
+    two heads carry an eye, the third grew in blind. It's
+    <strong>2.3x</strong> your speed once it locks on, but its sight is
+    entirely motion-based: stand still, even right next to it, and it
+    has no idea you're there.
+  </p>
+  <p class="level-description">
+    Each of you is carrying a shotgun, empty. Find a shell in a crate
+    (you can carry up to 3 at a time) and each one loads automatically
+    &mdash; let something get close while it's hunting you and it goes
+    off on its own, stunning it for 5 seconds.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level12/level.js"></script>
+<script src="js/game12.js"></script>
+</body>
+</html>
