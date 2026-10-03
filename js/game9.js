@@ -967,7 +967,7 @@
     });
   }
 
-  // 20 stationary minecarts scattered on the rail tracks; walking onto an
+  // Stationary minecarts scattered on the rail tracks; walking onto an
   // unsearched one checks it once. 3 of them hold dynamite -- find all 3
   // and the exit doors blow open.
   function updateMinecarts(now) {
@@ -1507,7 +1507,7 @@
     });
   }
 
-  // 20 stationary minecarts -- unsearched ones all look identical (closed
+  // Stationary minecarts -- unsearched ones all look identical (closed
   // lid, no tell for which 3 hold dynamite); searched ones show an open,
   // empty crate regardless of what was in it, so finding dynamite doesn't
   // visually mark the other carts retroactively.
