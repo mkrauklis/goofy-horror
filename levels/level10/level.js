@@ -42,7 +42,6 @@
     spawn2: { x: 5, y: 3 },
     monsterSpawns: [{ x: 15, y: 10 }],
     exitTrigger: { x: 35, y: 10 },
-    minecartSpawn: { x: 30, y: 10 },
     crateSpawns: [
       { x: 27, y: 2 }, { x: 1, y: 6 }, { x: 2, y: 3 }, { x: 17, y: 17 }, { x: 12, y: 18 },
       { x: 9, y: 19 }, { x: 28, y: 6 }, { x: 24, y: 17 }, { x: 6, y: 10 }, { x: 2, y: 20 },

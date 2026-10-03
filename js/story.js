@@ -1,9 +1,9 @@
 // Story mode progress, shared across every level page and the menu. A
-// single localStorage record (not five separate "did you beat it" flags)
+// single localStorage record (not ten separate "did you beat it" flags)
 // so the whole save lives in one place and resetting the story resets
 // everything at once. Per-level best times still live in their own
 // goofy-horror-best-levelN keys (see index.html) -- this is purely about
-// which chapters are unlocked/finished, not how fast you did it.
+// which levels are unlocked/finished, not how fast you did it.
 (function () {
   const KEY = 'goofy-horror-story';
   const TOTAL_LEVELS = 10;
@@ -40,7 +40,7 @@
   }
 
   // Called once from the level that was just won, right where it already
-  // records its best time. Idempotent -- replaying a finished chapter
+  // records its best time. Idempotent -- replaying a finished level
   // calls this again harmlessly.
   function completeLevel(n) {
     if (!isCompleted(n)) state.completed.push(n);
@@ -48,9 +48,9 @@
     persist();
   }
 
-  // Where "Continue" on the menu should send you: the first chapter not
+  // Where "Continue" on the menu should send you: the first level not
   // yet beaten, or the last one if the whole story's done (so replaying
-  // from the menu lands you back on the finale, not chapter 1).
+  // from the menu lands you back on the finale, not level 1).
   function nextLevel() {
     for (let i = 1; i <= TOTAL_LEVELS; i++) {
       if (!isCompleted(i)) return i;
@@ -77,21 +77,27 @@
     resetProgress,
   };
 
-  // Locks the top nav's own level links too -- the menu's cards already
-  // hide a locked chapter, but the same nav bar is duplicated at the top of
-  // every page, and clicking straight from there used to skip that check
-  // entirely (the level itself would still refuse to run, but only after
-  // a confusing "why did it lock me out" trip).
-  function gateNav() {
-    document.querySelectorAll('nav.level-nav a[href]').forEach((a) => {
-      const m = a.getAttribute('href').match(/^level(\d+)\.html$/);
-      if (!m) return;
-      const n = parseInt(m[1], 10);
-      if (isUnlocked(n)) return;
-      a.classList.add('nav-locked');
-      a.removeAttribute('href');
-      a.title = `Locked — finish Chapter ${n - 1} first`;
-    });
+  // Each level belongs to one of two 5-level areas (Area 1 = levels 1-5,
+  // Area 2 = levels 6-10) -- a plain-text label in the nav, not a link, so
+  // a level page shows which area it's part of without reintroducing the
+  // old row of direct level-to-level jump links.
+  function areaForLevel(n) {
+    return n <= 5 ? 1 : 2;
+  }
+
+  function injectAreaLabel() {
+    const match = window.location.pathname.match(/\/level(\d+)\.html$/);
+    if (!match) return;
+    const n = parseInt(match[1], 10);
+    const nav = document.querySelector('nav.level-nav');
+    const menuLink = nav && nav.querySelector('a[href="index.html"]');
+    if (!nav || !menuLink) return;
+    const label = document.createElement('span');
+    label.className = 'nav-area-label';
+    label.textContent = `Area ${areaForLevel(n)}`;
+    const sep = document.createElement('span');
+    sep.textContent = '·';
+    menuLink.after(sep, label);
   }
 
   // A fullscreen toggle next to the music toggle, on every level page --
@@ -128,6 +134,6 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
     else fn();
   }
-  onReady(gateNav);
+  onReady(injectAreaLabel);
   onReady(setupFullscreenToggle);
 })();

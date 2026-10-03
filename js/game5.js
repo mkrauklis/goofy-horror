@@ -1,11 +1,11 @@
 (function () {
   // Story mode gate: direct URL access can't skip ahead even though the
-  // menu already hides the link for a locked chapter.
+  // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(5)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
-      msg.innerHTML = 'LOCKED &mdash; finish the previous chapter first. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
+      msg.innerHTML = 'LOCKED &mdash; finish the previous level first. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
     }
     return;
   }
@@ -3022,7 +3022,7 @@
 
   // Runs while the floor is giving way: records the win the instant the
   // cutscene is over (not before -- elapsedMs is already frozen the moment
-  // gameState left 'playing') and warps to the next chapter.
+  // gameState left 'playing') and warps to the next level.
   function updateCollapse(now) {
     if (collapseFinished || now - collapseStartedAt < COLLAPSE_DURATION_MS) return;
     collapseFinished = true;

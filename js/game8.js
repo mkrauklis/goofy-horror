@@ -1,11 +1,11 @@
 (function () {
   // Story mode gate: direct URL access can't skip ahead even though the
-  // menu already hides the link for a locked chapter.
+  // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(8)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
-      msg.innerHTML = 'LOCKED &mdash; finish the previous chapter first. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
+      msg.innerHTML = 'LOCKED &mdash; finish the previous level first. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
     }
     return;
   }

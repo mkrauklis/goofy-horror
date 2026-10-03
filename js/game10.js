@@ -1,11 +1,11 @@
 (function () {
   // Story mode gate: direct URL access can't skip ahead even though the
-  // menu already hides the link for a locked chapter.
+  // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(10)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
-      msg.innerHTML = 'LOCKED &mdash; finish the previous chapter first. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
+      msg.innerHTML = 'LOCKED &mdash; finish the previous level first. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
     }
     return;
   }
@@ -86,10 +86,12 @@
   const DYNAMITE_DAMAGE_STUNNED = 3;
   const DYNAMITE_DAMAGE_NORMAL = 1;
 
-  // Once the boss is down, a minecart waits where it fell -- board it and
-  // it rides itself (and both of you) straight to the exit over this long.
-  const RIDE_DURATION_MS = 2600;
-  const MINECART_BOARD_RADIUS = 26;
+  // Once the boss is down, it freezes solid where it fell -- icicles form
+  // over this long before a blast of snow carries both of you off to the
+  // next level.
+  const FREEZE_CUTSCENE_MS = 4000;
+  const ICICLE_COUNT = 7;
+  const SNOW_COUNT = 90;
 
   const RADAR_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
@@ -232,12 +234,15 @@
     scheduleBossStep();
   }
 
-  const BOSS_NOTE = { A1: 55.0, C2: 65.41, D2: 73.42, E2: 82.41, G2: 98.0, A2: 110.0, C3: 130.81, D3: 146.83, E3: 164.81 };
+  // A different key, a different shape, and a galloping kick pattern
+  // instead of Level 5's -- a marching, regal theme for a knight rather
+  // than that one's frantic fire-demon riff.
+  const BOSS_NOTE = { D2: 73.42, F2: 87.31, G2: 98.0, A2: 110.0, Bb2: 116.54, C3: 130.81, D3: 146.83, F3: 174.61, G3: 196.0 };
   const BOSS_BASS_RIFF = [
-    BOSS_NOTE.A1, 0, BOSS_NOTE.C2, 0, BOSS_NOTE.A1, 0, BOSS_NOTE.E2, 0,
-    BOSS_NOTE.A1, 0, BOSS_NOTE.C2, 0, BOSS_NOTE.G2, 0, BOSS_NOTE.E2, 0,
+    BOSS_NOTE.D2, 0, BOSS_NOTE.F2, 0, BOSS_NOTE.G2, 0, BOSS_NOTE.D2, 0,
+    BOSS_NOTE.A2, 0, BOSS_NOTE.G2, 0, BOSS_NOTE.F2, 0, BOSS_NOTE.D2, 0,
   ];
-  const BOSS_LEAD_PHRASE = [BOSS_NOTE.A2, BOSS_NOTE.C3, BOSS_NOTE.D3, BOSS_NOTE.E3, BOSS_NOTE.D3, BOSS_NOTE.C3, BOSS_NOTE.A2, BOSS_NOTE.G2];
+  const BOSS_LEAD_PHRASE = [BOSS_NOTE.D3, BOSS_NOTE.F3, BOSS_NOTE.G3, BOSS_NOTE.F3, BOSS_NOTE.D3, BOSS_NOTE.C3, BOSS_NOTE.Bb2, BOSS_NOTE.A2];
 
   function playBossBassNote(freq, t, dur, peak) {
     const osc = audioCtx.createOscillator();
@@ -301,7 +306,7 @@
     if (boss.defeated) { bossPulseTimer = null; return; }
 
     const healthFrac = bossHealthFrac();
-    const bpm = 96 + (1 - healthFrac) * 48;
+    const bpm = 84 + (1 - healthFrac) * 40;
     const stepDur = 60 / bpm / 4;
     const t = audioCtx.currentTime;
     const i = bossStep % 16;
@@ -309,7 +314,7 @@
 
     const bassNote = BOSS_BASS_RIFF[i];
     if (bassNote) playBossBassNote(bassNote, t, stepDur * 1.8, 0.18 + (1 - healthFrac) * 0.07);
-    if (i === 0 || i === 8) playBossKick(t);
+    if (i === 0 || i === 6 || i === 8 || i === 12) playBossKick(t);
     if (i % 2 === 1) playBossHat(t, 0.04 + (1 - healthFrac) * 0.02);
 
     if (bar === 1 && i < 8) {
@@ -517,28 +522,53 @@
     [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
   }
 
-  // A steady rumble while the minecart rides to the exit.
-  function playRideRumble() {
+  // A sharp, glassy crack -- ice forming fast over the boss's armor as the
+  // freeze cutscene starts.
+  function playIceCrack() {
     if (!audioCtx) return;
     const start = audioCtx.currentTime;
-    const dur = RIDE_DURATION_MS / 1000;
+    for (let i = 0; i < 4; i++) {
+      const t = start + i * 0.12;
+      const osc = audioCtx.createOscillator();
+      const env = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1600 - i * 200, t);
+      osc.frequency.exponentialRampToValueAtTime(300, t + 0.25);
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.exponentialRampToValueAtTime(0.22, t + 0.015);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      osc.connect(env);
+      env.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.32);
+    }
+  }
+
+  // A rising, airy wind howl for the blast of snow that carries both
+  // players off at the end of the freeze cutscene.
+  function playSnowGust() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const dur = FREEZE_CUTSCENE_MS / 1000;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(60, start);
-    osc.frequency.linearRampToValueAtTime(75, start + dur);
+    osc.frequency.setValueAtTime(40, start);
+    osc.frequency.linearRampToValueAtTime(220, start + dur);
     const filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 500;
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(300, start);
+    filter.frequency.linearRampToValueAtTime(2200, start + dur);
+    filter.Q.value = 0.8;
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.22, start + 0.3);
-    gain.gain.setValueAtTime(0.22, start + dur - 0.4);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    gain.gain.exponentialRampToValueAtTime(0.16, start + dur * 0.5);
+    gain.gain.exponentialRampToValueAtTime(0.3, start + dur - 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur + 0.1);
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start(start);
-    osc.stop(start + dur + 0.1);
+    osc.stop(start + dur + 0.2);
   }
 
   function updateAmbientTension() {
@@ -601,7 +631,7 @@
       keys[e.key] = true;
       e.preventDefault();
     }
-    if (e.key === 'Enter' && (gameState === 'complete' || gameState === 'wiped')) {
+    if (e.key === 'Enter' && gameState === 'wiped') {
       resetLevel();
       gameState = 'playing';
     }
@@ -691,7 +721,7 @@
   let runStartTime = performance.now();
   let elapsedMs = 0;
   let bestRecorded = false;
-  let completeAt = null;
+  let freezeFinished = false;
 
   function formatTime(ms) {
     const totalSec = Math.max(0, ms / 1000);
@@ -705,7 +735,7 @@
   let dynamiteSticks = []; // DYNAMITE_LIVE_COUNT live at once: [{x, y, seed}]
   let bossHealth = BOSS_MAX_HEALTH;
   let doorUnlocked = false;
-  let gameState = 'playing'; // 'playing' | 'complete' | 'wiped'
+  let gameState = 'playing'; // 'playing' | 'freezing' | 'wiped'
   let catchFlash = 0;
 
   function bossHealthFrac() {
@@ -773,10 +803,8 @@
 
   const boss = makeBoss();
   let floorTiles = []; // floortiles attack: [{x, y, dirX, dirY}]
-  let minecart = null; // appears once the boss is defeated: {x, y}
-  let rideActive = false;
-  let rideStartedAt = 0;
-  let rideFrom = null, rideTo = null;
+  let snowParticles = []; // the freeze cutscene's blowing snow: [{x, y, vx, vy, size, drift}]
+  let freezeStartedAt = 0;
 
   const OPEN_FLOOR_TILES = (() => {
     const list = [];
@@ -835,8 +863,8 @@
     boss.attackCount = 0; boss.lastAttack = null;
     boss.sweepRotation = 0; boss.swordAngle = 0;
     floorTiles = [];
-    minecart = null;
-    rideActive = false;
+    snowParticles = [];
+    freezeStartedAt = 0;
 
     bossHealth = BOSS_MAX_HEALTH;
     dynamiteSticks = [];
@@ -858,7 +886,7 @@
     runStartTime = performance.now();
     elapsedMs = 0;
     bestRecorded = false;
-    completeAt = null;
+    freezeFinished = false;
   }
   resetLevel();
 
@@ -1197,17 +1225,6 @@
     });
   }
 
-  function updateTriggers() {
-    players.forEach((p) => {
-      const t = worldToTile(p.x, p.y);
-      const ch = tileChar(t.x, t.y);
-      if (ch === 'X' && doorUnlocked && gameState === 'playing') {
-        gameState = 'complete';
-        playWinJingle();
-      }
-    });
-  }
-
   // Walking onto a dynamite stick sets it off against the boss immediately.
   // Up to DYNAMITE_LIVE_COUNT are live at once; a fresh one spawns elsewhere
   // the instant one goes off, until the boss is out of health. The damage
@@ -1236,8 +1253,11 @@
         if (bossHealth <= 0) {
           boss.defeated = true;
           doorUnlocked = true;
-          minecart = tileCenter(LEVEL.minecartSpawn.x, LEVEL.minecartSpawn.y);
-          playDoorUnlockChime();
+          gameState = 'freezing';
+          freezeStartedAt = now;
+          spawnSnow();
+          playIceCrack();
+          playSnowGust();
         } else {
           spawnDynamite();
         }
@@ -1515,58 +1535,101 @@
     }
   }
 
-  // ---- the minecart ride to the exit ----
-  function updateMinecartBoard(now) {
-    if (!boss.defeated || rideActive || !minecart) return;
-    if (players.some((p) => Math.hypot(p.x - minecart.x, p.y - minecart.y) < MINECART_BOARD_RADIUS)) {
-      rideActive = true;
-      rideStartedAt = now;
-      rideFrom = { x: minecart.x, y: minecart.y };
-      rideTo = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
-      playRideRumble();
+  // ---- the freeze cutscene: the boss ices over, then a blast of snow
+  // carries both players off to the next level ----
+  function spawnSnow() {
+    snowParticles = [];
+    for (let i = 0; i < SNOW_COUNT; i++) {
+      snowParticles.push({
+        x: Math.random() * 920,
+        y: Math.random() * 340,
+        vx: -120 - Math.random() * 100,
+        vy: 30 + Math.random() * 50,
+        size: 1.5 + Math.random() * 2.5,
+        drift: Math.random() * Math.PI * 2,
+      });
     }
   }
 
-  function updateMinecartRide(now) {
-    if (!rideActive) return;
-    const t = clamp((now - rideStartedAt) / RIDE_DURATION_MS, 0, 1);
-    const x = rideFrom.x + (rideTo.x - rideFrom.x) * t;
-    const y = rideFrom.y + (rideTo.y - rideFrom.y) * t;
-    minecart.x = x; minecart.y = y;
-    players.forEach((p) => { p.x = x; p.y = y; });
-    if (t >= 1) rideActive = false;
+  function updateSnow(dt) {
+    snowParticles.forEach((s) => {
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.drift += dt * 3;
+      if (s.x < -10) { s.x = 930; s.y = Math.random() * 340; }
+      if (s.y > 350) { s.y = -10; }
+    });
   }
 
-  function drawMinecart(g) {
-    if (!minecart) return;
+  function drawSnow(g) {
     g.save();
-    g.translate(minecart.x, minecart.y);
-    g.fillStyle = 'rgba(0,0,0,0.3)';
-    g.beginPath();
-    g.ellipse(0, 12, 16, 5, 0, 0, Math.PI * 2);
-    g.fill();
-    const grad = g.createLinearGradient(-14, 0, 14, 0);
-    grad.addColorStop(0, '#5a4a30');
-    grad.addColorStop(0.5, '#7a6038');
-    grad.addColorStop(1, '#4a3c26');
-    g.fillStyle = grad;
-    g.beginPath();
-    g.moveTo(-15, -6); g.lineTo(15, -6); g.lineTo(13, 8); g.lineTo(-13, 8);
-    g.closePath();
-    g.fill();
-    g.strokeStyle = '#2a2016';
-    g.lineWidth = 2;
-    g.stroke();
-    g.strokeStyle = '#8a8f99';
-    g.lineWidth = 1.5;
-    [-8, 8].forEach((wx) => {
+    snowParticles.forEach((s) => {
+      const wob = Math.sin(s.drift) * 6;
       g.beginPath();
-      g.arc(wx, 9, 4, 0, Math.PI * 2);
-      g.fillStyle = '#3a3d42';
+      g.arc(s.x + wob, s.y, s.size, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,255,255,0.85)';
       g.fill();
-      g.stroke();
     });
     g.restore();
+  }
+
+  // Runs while the boss is freezing solid: records the win the instant the
+  // cutscene is over (same "freeze elapsedMs the moment gameState leaves
+  // 'playing'" pattern Level 5's own collapse cutscene uses) and warps to
+  // the menu, same as every other level once the whole story's done.
+  function updateFreezeCutscene(now) {
+    if (freezeFinished || now - freezeStartedAt < FREEZE_CUTSCENE_MS) return;
+    freezeFinished = true;
+    if (!bestRecorded) {
+      bestRecorded = true;
+      if (bestMs === null || elapsedMs < bestMs) {
+        bestMs = elapsedMs;
+        localStorage.setItem(BEST_TIME_KEY, String(bestMs));
+      }
+    }
+    if (window.GoofyStory) window.GoofyStory.completeLevel(10);
+    window.location.href = 'index.html';
+  }
+
+  // Icicles hanging from fixed anchor points on the boss's own silhouette,
+  // growing in from nothing over the cutscene -- real icicles always point
+  // straight down regardless of which way the boss itself is facing.
+  const ICICLE_ANCHORS = (() => {
+    const anchors = [];
+    for (let i = 0; i < ICICLE_COUNT; i++) {
+      const a = (i / ICICLE_COUNT) * Math.PI * 2 + 0.4;
+      anchors.push({ x: Math.cos(a) * 0.55, y: Math.sin(a) * 0.5, delay: (i % 3) * 0.12 });
+    }
+    return anchors;
+  })();
+
+  function drawIcicles(g, freezeT, r) {
+    ICICLE_ANCHORS.forEach((a) => {
+      const local = clamp((freezeT - a.delay) / (1 - a.delay), 0, 1);
+      if (local <= 0) return;
+      const ax = a.x * r, ay = a.y * r;
+      const len = r * 0.7 * local;
+      const w = r * 0.1;
+      g.beginPath();
+      g.moveTo(ax - w, ay);
+      g.lineTo(ax + w, ay);
+      g.lineTo(ax, ay + len);
+      g.closePath();
+      const grad = g.createLinearGradient(ax, ay, ax, ay + len);
+      grad.addColorStop(0, 'rgba(200,235,255,0.95)');
+      grad.addColorStop(1, 'rgba(140,200,240,0.6)');
+      g.fillStyle = grad;
+      g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.6)';
+      g.lineWidth = 1;
+      g.stroke();
+    });
+
+    // a frost tint spreading over the whole body
+    g.beginPath();
+    g.ellipse(0, 0, r * 1.05, r * 1.05, 0, 0, Math.PI * 2);
+    g.fillStyle = `rgba(210,240,255,${freezeT * 0.55})`;
+    g.fill();
   }
 
   // ---- blood splatter / particles ----
@@ -1722,7 +1785,6 @@
     drawBloodSplatters(g);
     drawCrates(g);
     drawDynamiteSticks(g, now);
-    drawMinecart(g);
   }
 
   function drawDynamiteSticks(g, now) {
@@ -2210,6 +2272,11 @@
       if (boss.phase2) drawPhase2Flames(g, t);
     }
 
+    if (gameState === 'freezing') {
+      const freezeT = clamp((t - freezeStartedAt) / FREEZE_CUTSCENE_MS, 0, 1);
+      drawIcicles(g, freezeT, boss.radius);
+    }
+
     if (t < boss.frozenUntil) {
       const points = 14;
       g.beginPath();
@@ -2627,10 +2694,7 @@
   }
 
   function updateOverlay() {
-    if (gameState === 'complete') {
-      messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'THE KNIGHT FALLS &mdash; press Enter to replay, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
-    } else if (gameState === 'wiped') {
+    if (gameState === 'wiped') {
       messageEl.style.display = 'flex';
       messageEl.innerHTML = 'BOTH OF YOU ARE DOWN &mdash; press Enter to try again, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
     } else {
@@ -2645,19 +2709,6 @@
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
 
-    if (gameState === 'complete' && !bestRecorded) {
-      bestRecorded = true;
-      if (bestMs === null || elapsedMs < bestMs) {
-        bestMs = elapsedMs;
-        localStorage.setItem(BEST_TIME_KEY, String(bestMs));
-      }
-      if (window.GoofyStory) window.GoofyStory.completeLevel(10);
-      completeAt = performance.now();
-    }
-    if (gameState === 'complete' && completeAt !== null && performance.now() - completeAt >= 2000) {
-      window.location.href = 'index.html';
-    }
-
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
   }
@@ -2671,22 +2722,19 @@
 
     if (gameState === 'playing') {
       elapsedMs = now - runStartTime;
-      if (rideActive) {
-        updateMinecartRide(now);
-      } else {
-        updateInputMovement(now, dt);
-      }
-      updateTriggers();
+      updateInputMovement(now, dt);
       updateCrates(now);
       updateSmokeBombs(now);
       updateDynamite(now);
       updateBoss(now, dt);
       updateShotgunDefense(now);
       updateCatch(now);
-      updateMinecartBoard(now);
       updateCutscenes(now);
       updateExploration();
       updateAmbientTension();
+    } else if (gameState === 'freezing') {
+      updateSnow(dt);
+      updateFreezeCutscene(now);
     }
     updateParticles(dt);
     updateFloatingTexts(dt);
@@ -2695,6 +2743,19 @@
     renderViewport(0, now);
     renderViewport(1, now);
     drawDivider();
+
+    if (gameState === 'freezing') {
+      const freezeT = clamp((now - freezeStartedAt) / FREEZE_CUTSCENE_MS, 0, 1);
+      drawSnow(ctx);
+      ctx.fillStyle = `rgba(220,240,255,${freezeT * 0.75})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (freezeT > 0.3) {
+        ctx.font = 'bold 22px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = `rgba(20,40,60,${Math.min(1, (freezeT - 0.3) * 2.5)})`;
+        ctx.fillText('THE COLD TAKES IT...', canvas.width / 2, canvas.height / 2);
+      }
+    }
 
     if (catchFlash > 0) {
       ctx.fillStyle = `rgba(180,20,30,${catchFlash * 0.5})`;

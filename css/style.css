@@ -63,6 +63,36 @@ a {
   color: #5a5064;
 }
 
+/* A plain-text label (not a link) in a level page's own nav, showing
+   which of the two 5-level areas it belongs to. */
+.level-nav .nav-area-label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent-dim);
+}
+
+/* The menu's own section heading, separating the two 5-level areas'
+   worth of level cards below. */
+.area-divider {
+  max-width: 1000px;
+  margin: 2rem auto 0.75rem;
+  padding: 0 1.5rem;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-dim);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 1.25rem;
+}
+
+.area-divider:first-of-type {
+  margin-top: 1.5rem;
+  border-top: none;
+  padding-top: 0;
+}
+
 #game-canvas-holder.is-fullscreen {
   width: 100vw;
   height: 100vh;
