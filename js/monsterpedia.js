@@ -16,6 +16,7 @@
   const wraithCtx = ctxFor('monster-canvas-wraith');
   const digWormCtx = ctxFor('monster-canvas-digworm');
   const lastKnightCtx = ctxFor('monster-canvas-lastknight');
+  const frostCtx = ctxFor('monster-canvas-frost');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -1182,17 +1183,101 @@
     g.restore();
   }
 
+  // The Level 11 creature: a pale blue tentacle thing with icicles jutting
+  // out of every side of its body -- condensed from game11.js's own
+  // drawMonster/drawTaperedTentacle into a single static pose.
+  function drawFrostTentacleCreature(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const radius = 30, seed = 61;
+
+    const tentCount = 6;
+    for (let i = 0; i < tentCount; i++) {
+      const baseA = (i / tentCount) * Math.PI * 2 + seed;
+      const sway = Math.sin(t * 0.0017 + i * 1.6 + seed) * 0.4;
+      const a = baseA + sway * 0.3;
+      const len = radius * (1.6 + 0.2 * Math.sin(t * 0.0013 + i * 2.3));
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
+      const wobble = Math.sin(t * 0.004 + i * 2.1 + seed) * (radius * 0.2);
+      const perpA = a + Math.PI / 2;
+      const midX = (tx / 2) + Math.cos(perpA) * wobble;
+      const midY = (ty / 2) + Math.sin(perpA) * wobble;
+      drawTaperedTentacle(g, tx, ty, midX, midY, radius * 0.16, i % 2 === 0 ? '#2a5a7a' : '#3a7a9a');
+    }
+
+    const points = 12;
+    const path = [];
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const r = radius + Math.sin(t * 0.006 + i * 1.7 + seed) * 2.5 + Math.sin(t * 0.0021 + i * 3.1 + seed) * 1.2;
+      path.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    const trace = () => {
+      g.beginPath();
+      path.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+      g.closePath();
+    };
+
+    trace();
+    const bodyGrad = g.createRadialGradient(-radius * 0.3, -radius * 0.35, 1, 0, 0, radius * 1.05);
+    bodyGrad.addColorStop(0, '#bfe8ff');
+    bodyGrad.addColorStop(0.55, '#6ab0d8');
+    bodyGrad.addColorStop(1, '#2e5e7e');
+    g.fillStyle = bodyGrad;
+    g.shadowColor = '#8fd6ff';
+    g.shadowBlur = 10;
+    g.fill();
+    g.shadowBlur = 0;
+
+    const spikeCount = 8;
+    for (let i = 0; i < spikeCount; i++) {
+      const a = (i / spikeCount) * Math.PI * 2 + seed * 0.3;
+      const baseX = Math.cos(a) * radius * 0.92, baseY = Math.sin(a) * radius * 0.92;
+      const tipLen = radius * (0.45 + (i % 3) * 0.12);
+      const tipX = Math.cos(a) * (radius * 0.92 + tipLen), tipY = Math.sin(a) * (radius * 0.92 + tipLen);
+      const perp = a + Math.PI / 2;
+      const w2 = radius * 0.14;
+      g.beginPath();
+      g.moveTo(baseX + Math.cos(perp) * w2, baseY + Math.sin(perp) * w2);
+      g.lineTo(baseX - Math.cos(perp) * w2, baseY - Math.sin(perp) * w2);
+      g.lineTo(tipX, tipY);
+      g.closePath();
+      const spikeGrad = g.createLinearGradient(baseX, baseY, tipX, tipY);
+      spikeGrad.addColorStop(0, 'rgba(200,235,255,0.95)');
+      spikeGrad.addColorStop(1, 'rgba(140,200,240,0.55)');
+      g.fillStyle = spikeGrad;
+      g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.5)';
+      g.lineWidth = 1;
+      g.stroke();
+    }
+
+    g.save();
+    trace();
+    g.clip();
+    g.beginPath();
+    g.ellipse(-radius * 0.3, -radius * 0.35, radius * 0.5, radius * 0.3, -0.5, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.25)';
+    g.fill();
+    g.restore();
+
+    const angle = t * 0.0006;
+    drawEye(g, radius, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    g.restore();
+  }
+
   function drawPortraitOrLock(ctx, drawFn, t) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
     drawFn(ctx, PORTRAIT, PORTRAIT, t);
   }
 
-  // This page redraws twelve fully-detailed monster portraits at once, so it
-  // caps itself around 30fps instead of riding requestAnimationFrame's full
-  // 60 -- plenty smooth for a reference gallery nobody is dodging, and it
-  // halves the cost of a page that (unlike any single level) never has
-  // fewer than twelve creatures on screen simultaneously.
+  // This page redraws thirteen fully-detailed monster portraits at once, so
+  // it caps itself around 30fps instead of riding requestAnimationFrame's
+  // full 60 -- plenty smooth for a reference gallery nobody is dodging, and
+  // it halves the cost of a page that (unlike any single level) never has
+  // fewer than thirteen creatures on screen simultaneously.
   let lastDraw = 0;
   function loop(t) {
     if (t - lastDraw >= 33) {
@@ -1205,6 +1290,7 @@
       drawPortraitOrLock(bossCtx, drawBoss, t);
       drawPortraitOrLock(knightCtx, drawKnight, t);
       drawPortraitOrLock(wingedCtx, drawWinged, t);
+      drawPortraitOrLock(frostCtx, drawFrostTentacleCreature, t);
       drawPortraitOrLock(vaultGuardCtx, drawVaultGuardian, t);
       drawPortraitOrLock(wraithCtx, drawWraith, t);
       drawPortraitOrLock(digWormCtx, drawDigWorm, t);

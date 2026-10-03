@@ -6,7 +6,7 @@
 // which levels are unlocked/finished, not how fast you did it.
 (function () {
   const KEY = 'goofy-horror-story';
-  const TOTAL_LEVELS = 10;
+  const TOTAL_LEVELS = 11;
 
   function load() {
     try {
@@ -77,12 +77,12 @@
     resetProgress,
   };
 
-  // Each level belongs to one of two 5-level areas (Area 1 = levels 1-5,
-  // Area 2 = levels 6-10) -- a plain-text label in the nav, not a link, so
-  // a level page shows which area it's part of without reintroducing the
-  // old row of direct level-to-level jump links.
+  // Each level belongs to a 5-level area (Area 1 = levels 1-5, Area 2 =
+  // levels 6-10, Area 3 = levels 11-15, and so on) -- a plain-text label
+  // in the nav, not a link, so a level page shows which area it's part of
+  // without reintroducing the old row of direct level-to-level jump links.
   function areaForLevel(n) {
-    return n <= 5 ? 1 : 2;
+    return Math.ceil(n / 5);
   }
 
   function injectAreaLabel() {

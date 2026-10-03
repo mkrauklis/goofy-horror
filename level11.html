@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 11</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 11 &mdash; The Frost</h1>
+  <p class="objective">Get all <strong>3 generators</strong> online &mdash; both players holding down a generator's pair of pressure plates at once charges it &mdash; to open the door. Icicles litter the floor and snow drifts past in the dark.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-generator">Generators: 0 / 3 online</span>
+      <span id="hud-door">Door: locked</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    A frozen stretch of the facility, icicles hanging off the ceiling
+    into frame throughout and a steady drift of snow past the flashlight
+    beam. Three separate generator rooms are scattered through it, each
+    with its own pair of pressure plates &mdash; get both of you onto a
+    room's plates at once and hold for 5 seconds to bring that generator
+    online. All three have to be lit before the door out opens.
+  </p>
+  <p class="level-description">
+    A pale blue tentacle thing patrols the halls, icicles jutting out of
+    every side of its body. It's only <strong>1.8x</strong> your speed
+    once it spots you, but a CO2 blast barely slows it down instead of
+    freezing it solid the way it would anything else &mdash; don't count
+    on buying more than a few seconds with one.
+  </p>
+  <p class="level-description">
+    Each of you is carrying a shotgun, empty. Find a shell in a crate
+    (you can carry up to 3 at a time) and each one loads automatically
+    &mdash; let something get close while it's hunting you and it goes
+    off on its own, stunning it for 5 seconds.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level11/level.js"></script>
+<script src="js/game11.js"></script>
+</body>
+</html>

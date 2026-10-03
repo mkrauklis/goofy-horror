@@ -1588,7 +1588,7 @@
       }
     }
     if (window.GoofyStory) window.GoofyStory.completeLevel(10);
-    window.location.href = 'index.html';
+    window.location.href = 'level11.html';
   }
 
   // Icicles hanging from fixed anchor points on the boss's own silhouette,
