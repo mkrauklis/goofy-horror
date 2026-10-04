@@ -559,7 +559,6 @@
       pathIndex: 0,
       nextRepathAt: 0,
       lookDir: { x: 1, y: 0 },
-      tentacleTargets: [],
       state: 'patrol', // 'patrol' | 'alert'
       alertUntil: 0,
       alertTargetTile: null,
@@ -568,8 +567,13 @@
       luredState: 'none', // 'none' | 'lured' | 'eating'
       lureTarget: null,
       eatingUntil: 0,
+      trail: [],
+      segments: [],
     };
   }
+
+  const SEGMENT_COUNT = 6;
+  const SEGMENT_SPACING = 9;
 
   const MONSTER_COUNT = 5;
   const monsters = Array.from({ length: MONSTER_COUNT }, (_, i) =>
@@ -646,6 +650,7 @@
       mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
       mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
       mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.eatingUntil = 0;
+      mon.trail = []; mon.segments = [];
     });
 
     buttonsPressed = [false, false, false];
@@ -1154,27 +1159,42 @@
     return { x: c.x + off.x * 10, y: c.y + off.y * 10 };
   }
 
-  function updateTentacleTargets(m, tile) {
-    const targets = [];
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        if (tileChar(tile.x + dx, tile.y + dy) === '#') {
-          targets.push(tileCenter(tile.x + dx, tile.y + dy));
-        }
+  // Lays down a short trail of body segments behind the head, same
+  // technique as Level 3/9's caterpillars -- just generalized to take any
+  // monster object instead of a single global one, since this level has
+  // five of them.
+  function updateCaterpillarSegments(m) {
+    m.trail.unshift({ x: m.x, y: m.y });
+    if (m.trail.length > 200) m.trail.length = 200;
+    const segPositions = [];
+    let distAccum = 0;
+    let targetDist = SEGMENT_SPACING;
+    let segIndex = 0;
+    for (let i = 1; i < m.trail.length && segIndex < SEGMENT_COUNT; i++) {
+      const a = m.trail[i - 1], b = m.trail[i];
+      const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+      while (distAccum + segLen >= targetDist && segIndex < SEGMENT_COUNT) {
+        const t = segLen > 0.0001 ? (targetDist - distAccum) / segLen : 0;
+        segPositions.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+        segIndex++;
+        targetDist += SEGMENT_SPACING;
       }
+      distAccum += segLen;
     }
-    m.tentacleTargets = targets.slice(0, 3);
+    const last = m.trail[m.trail.length - 1] || { x: m.x, y: m.y };
+    while (segPositions.length < SEGMENT_COUNT) segPositions.push(last);
+    m.segments = segPositions;
   }
 
   function updateMonster(m, now, dt) {
-    if (now < m.frozenUntil) return; // frozen solid: no movement, no perception
+    if (now < m.frozenUntil) { updateCaterpillarSegments(m); return; } // frozen solid: no movement, no perception
 
     if (m.luredState === 'eating') {
       if (now >= m.eatingUntil) {
         m.luredState = 'none';
         m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
       } else {
+        updateCaterpillarSegments(m);
         return;
       }
     }
@@ -1188,7 +1208,6 @@
         const path = bfsPath(graph, startTile, goalTile);
         m.path = path && path.length > 1 ? path.slice(1) : [];
         m.pathIndex = 0;
-        updateTentacleTargets(m, startTile);
       }
       if (m.path && m.pathIndex < m.path.length) {
         const step = LURE_SPEED * dt;
@@ -1207,6 +1226,7 @@
         m.luredState = 'eating';
         m.eatingUntil = now + EAT_DURATION_MS;
       }
+      updateCaterpillarSegments(m);
       return;
     }
 
@@ -1228,7 +1248,6 @@
           m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       }
-      updateTentacleTargets(m, startTile);
     }
 
     if (m.path && m.pathIndex < m.path.length) {
@@ -1248,6 +1267,7 @@
         m.y += (dy / d) * step;
       }
     }
+    updateCaterpillarSegments(m);
   }
 
 
@@ -1617,25 +1637,88 @@
   }
 
   function drawMonster(g, t, m) {
+    // Ground shadow trail, drawn first so it sits under every segment.
+    g.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let i = m.segments.length - 1; i >= 0; i--) {
+      const seg = m.segments[i];
+      const r = m.radius * (1 - i * 0.08);
+      g.beginPath();
+      g.ellipse(seg.x, seg.y + r * 0.5, Math.max(2, r * 0.85), Math.max(1.5, r * 0.35), 0, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // Body segments, tail first so the head draws on top.
+    for (let i = m.segments.length - 1; i >= 0; i--) {
+      const seg = m.segments[i];
+      const r = Math.max(2.5, m.radius * (1 - i * 0.08));
+      const base = i % 2 === 0 ? '#8a7a5a' : '#978967';
+      g.save();
+      g.translate(seg.x, seg.y);
+      const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
+      grad.addColorStop(0, shade(base, 0.28));
+      grad.addColorStop(0.6, base);
+      grad.addColorStop(1, shade(base, -0.3));
+      g.beginPath();
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.fillStyle = grad;
+      g.shadowColor = '#5a4a30';
+      g.shadowBlur = 4;
+      g.fill();
+      g.shadowBlur = 0;
+
+      // a pair of stubby legs per segment
+      g.strokeStyle = 'rgba(40,32,18,0.6)';
+      g.lineWidth = 1.1;
+      [-1, 1].forEach((side) => {
+        g.beginPath();
+        g.moveTo(0, side * r * 0.7);
+        g.lineTo(-1.4, side * (r * 0.7 + 2.6));
+        g.stroke();
+      });
+      g.restore();
+    }
+
     g.save();
     g.translate(m.x, m.y);
 
-    m.tentacleTargets.forEach((tt, i) => {
-      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * m.radius * 0.35;
-      const tx = tt.x - m.x, ty = tt.y - m.y;
-      const dist = Math.hypot(tx, ty) || 1;
-      const perpX = -ty / dist, perpY = tx / dist;
-      const midX = tx / 2 + perpX * wobble;
-      const midY = ty / 2 + perpY * wobble;
-      drawTaperedTentacle(g, tx, ty, midX, midY, m.radius * 0.22, '#6a1826');
-    });
+    const points = 12;
+    const path = [];
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const r = m.radius
+        + Math.sin(t * 0.006 + i * 1.7 + m.seed) * 1.5
+        + Math.sin(t * 0.0021 + i * 3.1 + m.seed) * 0.7;
+      path.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    const trace = () => {
+      g.beginPath();
+      path.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+      g.closePath();
+    };
 
-    drawBlobBody(g, m.radius, '#8a7a5a', '#5a4a30', m.seed, t);
+    trace();
+    const headGrad = g.createRadialGradient(-m.radius * 0.3, -m.radius * 0.35, 1, 0, 0, m.radius * 1.05);
+    headGrad.addColorStop(0, shade('#978967', 0.3));
+    headGrad.addColorStop(0.55, '#978967');
+    headGrad.addColorStop(1, shade('#978967', -0.3));
+    g.fillStyle = headGrad;
+    g.shadowColor = '#5a4a30';
+    g.shadowBlur = 6;
+    g.fill();
+    g.shadowBlur = 0;
+
+    g.save();
+    trace();
+    g.clip();
+    g.beginPath();
+    g.ellipse(-m.radius * 0.3, -m.radius * 0.35, m.radius * 0.5, m.radius * 0.3, -0.5, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.12)';
+    g.fill();
+    g.restore();
 
     drawMonsterEye(g, m);
 
     if (t < m.frozenUntil) {
-      const points = 12;
       g.beginPath();
       for (let i = 0; i <= points; i++) {
         const a = (i / points) * Math.PI * 2;
