@@ -1,7 +1,7 @@
 (function () {
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
-  if (window.GoofyStory && !window.GoofyStory.isUnlocked(13)) {
+  if (window.GoofyStory && !window.GoofyStory.isUnlocked(14)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
@@ -10,7 +10,7 @@
     return;
   }
 
-  const LEVEL = window.LEVEL13;
+  const LEVEL = window.LEVEL14;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
@@ -27,7 +27,7 @@
   // took longer than usual (e.g. a big tile grid redraw).
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  const MONSTER_SPEED = PLAYER_SPEED * 1.1;
+  const MONSTER_SPEED = PLAYER_SPEED * 2;
   const PATROL_SPEED = PLAYER_SPEED * 0.5;
   const LURE_SPEED = PLAYER_SPEED * 0.6;
   const CATCH_RADIUS = 20;
@@ -510,14 +510,15 @@
   }
 
   // ---- game state ----
-  let buttonsPressed = [false, false, false];
+  let heaterOn = false;
+  let meltedSet = new Set(); // world tile keys ("x,y") of snow the heater has melted
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
 
   // ---- timer / best time (best is kept per-browser in localStorage, not
   // shared between players or devices) ----
-  const BEST_TIME_KEY = 'goofy-horror-best-level13';
+  const BEST_TIME_KEY = 'goofy-horror-best-level14';
   let bestMs = (() => {
     const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
     return Number.isFinite(v) ? v : null;
@@ -553,7 +554,7 @@
     return {
       x: 0,
       y: 0,
-      radius: 8,
+      radius: 15,
       seed: Math.random() * 100,
       path: [],
       pathIndex: 0,
@@ -575,7 +576,7 @@
   const SEGMENT_COUNT = 6;
   const SEGMENT_SPACING = 9;
 
-  const MONSTER_COUNT = 5;
+  const MONSTER_COUNT = 2;
   const monsters = Array.from({ length: MONSTER_COUNT }, (_, i) =>
     makeMonster(Math.floor((i * LEVEL.patrolPoints.length) / MONSTER_COUNT))
   );
@@ -653,7 +654,8 @@
       mon.trail = []; mon.segments = [];
     });
 
-    buttonsPressed = [false, false, false];
+    heaterOn = false;
+    meltedSet = new Set();
     doorUnlocked = false;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
@@ -904,18 +906,11 @@
     }
   }
 
-  // The scanner points at the nearest button that hasn't been pressed yet --
-  // once a button's done, it drops out of consideration entirely so the
-  // scanner never wastes a reading on somewhere you've already been.
+  // The scanner points at the heater until it's switched on, then stops
+  // showing anything -- nothing left to find.
   function nearestUnpressedButton(x, y) {
-    let best = null, bestD = Infinity;
-    LEVEL.buttons.forEach((b, i) => {
-      if (buttonsPressed[i]) return;
-      const c = tileCenter(b.x, b.y);
-      const d = Math.hypot(x - c.x, y - c.y);
-      if (d < bestD) { bestD = d; best = c; }
-    });
-    return best;
+    if (heaterOn) return null;
+    return tileCenter(LEVEL.heater.x, LEVEL.heater.y);
   }
 
   function applyItemEffect(item, x, y, now, p) {
@@ -1036,22 +1031,14 @@
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
       const ch = tileChar(t.x, t.y);
-      if (ch === 'B') {
-        const idx = LEVEL.buttons.findIndex((b) => b.x === t.x && b.y === t.y);
-        if (idx >= 0 && !buttonsPressed[idx]) {
-          buttonsPressed[idx] = true;
-          playButtonChime();
-          if (buttonsPressed.every(Boolean)) {
-            doorUnlocked = true;
-            playDoorUnlockChime();
-          }
-        }
+      if (ch === 'H' && !heaterOn) {
+        turnOnHeater(performance.now());
       }
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
         playWinJingle();
-        if (window.GoofyStory) window.GoofyStory.completeLevel(13);
-        setTimeout(() => { window.location.href = 'level14.html'; }, 2000);
+        if (window.GoofyStory) window.GoofyStory.completeLevel(14);
+        setTimeout(() => { window.location.href = 'index.html'; }, 2000);
       }
     });
   }
@@ -1411,6 +1398,28 @@
     return { x0, y0, x1, y1 };
   })();
 
+  // Every snow-covered floor tile, precomputed once -- the heater melts a
+  // random 10% of these the instant it's switched on.
+  const SNOW_TILES = (() => {
+    const list = [];
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (LEVEL.grid[y][x] === 'N') list.push({ x, y });
+      }
+    }
+    return list;
+  })();
+  function turnOnHeater(now) {
+    if (heaterOn) return;
+    heaterOn = true;
+    doorUnlocked = true;
+    playDoorUnlockChime();
+    const shuffled = SNOW_TILES.slice().sort(() => Math.random() - 0.5);
+    const meltCount = Math.round(SNOW_TILES.length * 0.1);
+    meltedSet = new Set(shuffled.slice(0, meltCount).map((t) => `${t.x},${t.y}`));
+    spawnFloatingText(tileCenter(LEVEL.heater.x, LEVEL.heater.y).x, tileCenter(LEVEL.heater.x, LEVEL.heater.y).y, 'HEATER ON');
+  }
+
   function drawTiles(g, camX, camY) {
     const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
     const maxTX = Math.min(COLS - 1, Math.ceil((camX + VIEW_W / 2) / TILE) + 1);
@@ -1428,6 +1437,8 @@
           case 'E': color = '#3a301f'; break;
           case 'I': color = '#243440'; break;
           case 'C': color = floorShade(x, y); break;
+          case 'W': color = floorShade(x, y); break;
+          case 'N': color = meltedSet.has(`${x},${y}`) ? '#2a3a44' : '#dce8f0'; break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
@@ -1437,6 +1448,31 @@
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+        }
+        if (ch === 'N' && !meltedSet.has(`${x},${y}`)) {
+          g.fillStyle = 'rgba(255,255,255,0.25)';
+          const seed = (x * 13 + y * 19) % 11;
+          g.beginPath();
+          g.arc(px + 10 + (seed % 4) * 4, py + 10 + ((seed * 2) % 4) * 4, 2.5, 0, Math.PI * 2);
+          g.fill();
+        }
+        if (ch === 'N' && meltedSet.has(`${x},${y}`)) {
+          g.fillStyle = 'rgba(60,100,130,0.3)';
+          g.beginPath();
+          g.ellipse(px + TILE / 2, py + TILE / 2, 7, 4, 0, 0, Math.PI * 2);
+          g.fill();
+        }
+        if (ch === 'W') {
+          const seed = (x * 7 + y * 23) % 17;
+          const wy = py + 6 + (seed % 5) * 4;
+          g.strokeStyle = 'rgba(60,160,100,0.55)';
+          g.lineWidth = 1.5;
+          g.beginPath();
+          g.moveTo(px, wy);
+          g.lineTo(px + TILE * 0.3, wy + 5);
+          g.lineTo(px + TILE * 0.6, wy - 4);
+          g.lineTo(px + TILE, wy + 3);
+          g.stroke();
         }
         if (ch === 'I') {
           const seed = (x * 11 + y * 17) % 13;
@@ -1484,16 +1520,27 @@
       g.strokeRect(dx0 + 2, dy0 + 2, dw - 4, dh - 4);
     }
 
-    LEVEL.buttons.forEach((b, i) => {
-      const c = tileCenter(b.x, b.y);
-      g.beginPath();
-      g.arc(c.x, c.y, 9, 0, Math.PI * 2);
-      g.fillStyle = buttonsPressed[i] ? '#3ddc84' : '#e0546b';
-      g.shadowColor = g.fillStyle;
-      g.shadowBlur = 10;
-      g.fill();
+    (() => {
+      const c = tileCenter(LEVEL.heater.x, LEVEL.heater.y);
+      g.save();
+      g.translate(c.x, c.y);
+      g.fillStyle = '#3a3d42';
+      g.fillRect(-13, -15, 26, 30);
+      g.strokeStyle = '#1c1e22';
+      g.lineWidth = 2;
+      g.strokeRect(-13, -15, 26, 30);
+      const glowColor = heaterOn ? '#ff8a3d' : '#555';
+      for (let i = 0; i < 3; i++) {
+        g.beginPath();
+        g.arc(0, -8 + i * 8, 3, 0, Math.PI * 2);
+        g.fillStyle = glowColor;
+        g.shadowColor = glowColor;
+        g.shadowBlur = heaterOn ? 10 : 0;
+        g.fill();
+      }
       g.shadowBlur = 0;
-    });
+      g.restore();
+    })();
 
     const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
     g.beginPath();
@@ -1636,50 +1683,60 @@
     });
   }
 
+  // A single leg rendered as a tapered icicle shard: a short wide base at
+  // the body, pulled to a sharp point at the foot. Reuses the exact
+  // triangle-plus-linear-gradient technique as the 'I' floor decoration
+  // and Level 10's icicle growth, just oriented along the leg's own axis
+  // instead of always pointing straight down.
+  function drawIcicleLeg(g, baseX, baseY, footX, footY, baseWidth) {
+    const dx = footX - baseX, dy = footY - baseY;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    const midX = baseX + dx * 0.4, midY = baseY + dy * 0.4;
+    const bendX = midX + nx * baseWidth * 0.7, bendY = midY + ny * baseWidth * 0.7;
+
+    g.beginPath();
+    g.moveTo(baseX + nx * baseWidth, baseY + ny * baseWidth);
+    g.lineTo(baseX - nx * baseWidth, baseY - ny * baseWidth);
+    g.quadraticCurveTo(bendX, bendY, footX, footY);
+    g.closePath();
+    const grad = g.createLinearGradient(baseX, baseY, footX, footY);
+    grad.addColorStop(0, 'rgba(200,245,220,0.75)');
+    grad.addColorStop(0.6, 'rgba(170,230,195,0.55)');
+    grad.addColorStop(1, 'rgba(210,250,235,0.3)');
+    g.fillStyle = grad;
+    g.fill();
+    g.strokeStyle = 'rgba(230,255,240,0.5)';
+    g.lineWidth = 0.6;
+    g.stroke();
+  }
+
   function drawMonster(g, t, m) {
-    // Ground shadow trail, drawn first so it sits under every segment.
+    const LEG_COUNT = 8;
+    const BODY_COLOR = '#7fd68a';
+
+    // Ground shadow, drawn first.
     g.fillStyle = 'rgba(0,0,0,0.25)';
-    for (let i = m.segments.length - 1; i >= 0; i--) {
-      const seg = m.segments[i];
-      const r = m.radius * (1 - i * 0.08);
-      g.beginPath();
-      g.ellipse(seg.x, seg.y + r * 0.5, Math.max(2, r * 0.85), Math.max(1.5, r * 0.35), 0, 0, Math.PI * 2);
-      g.fill();
-    }
-
-    // Body segments, tail first so the head draws on top.
-    for (let i = m.segments.length - 1; i >= 0; i--) {
-      const seg = m.segments[i];
-      const r = Math.max(2.5, m.radius * (1 - i * 0.08));
-      const base = i % 2 === 0 ? '#8a7a5a' : '#978967';
-      g.save();
-      g.translate(seg.x, seg.y);
-      const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
-      grad.addColorStop(0, shade(base, 0.28));
-      grad.addColorStop(0.6, base);
-      grad.addColorStop(1, shade(base, -0.3));
-      g.beginPath();
-      g.arc(0, 0, r, 0, Math.PI * 2);
-      g.fillStyle = grad;
-      g.shadowColor = '#5a4a30';
-      g.shadowBlur = 4;
-      g.fill();
-      g.shadowBlur = 0;
-
-      // a pair of stubby legs per segment
-      g.strokeStyle = 'rgba(40,32,18,0.6)';
-      g.lineWidth = 1.1;
-      [-1, 1].forEach((side) => {
-        g.beginPath();
-        g.moveTo(0, side * r * 0.7);
-        g.lineTo(-1.4, side * (r * 0.7 + 2.6));
-        g.stroke();
-      });
-      g.restore();
-    }
+    g.beginPath();
+    g.ellipse(m.x, m.y + m.radius * 0.6, m.radius * 1.3, m.radius * 0.5, 0, 0, Math.PI * 2);
+    g.fill();
 
     g.save();
     g.translate(m.x, m.y);
+
+    // Icicle legs radiate out from the body before the body is drawn, so
+    // their bases tuck underneath the silhouette.
+    for (let i = 0; i < LEG_COUNT; i++) {
+      const a = (i / LEG_COUNT) * Math.PI * 2 + m.seed
+        + Math.sin(t * 0.004 + i * 1.3 + m.seed) * 0.12;
+      const reach = m.radius * (1.9 + ((i * 7) % 3) * 0.18)
+        + Math.sin(t * 0.005 + i * 2.1 + m.seed) * m.radius * 0.1;
+      const baseX = Math.cos(a) * m.radius * 0.7;
+      const baseY = Math.sin(a) * m.radius * 0.7;
+      const footX = Math.cos(a) * reach;
+      const footY = Math.sin(a) * reach;
+      drawIcicleLeg(g, baseX, baseY, footX, footY, Math.max(1, m.radius * 0.12));
+    }
 
     const points = 12;
     const path = [];
@@ -1698,11 +1755,11 @@
 
     trace();
     const headGrad = g.createRadialGradient(-m.radius * 0.3, -m.radius * 0.35, 1, 0, 0, m.radius * 1.05);
-    headGrad.addColorStop(0, shade('#978967', 0.3));
-    headGrad.addColorStop(0.55, '#978967');
-    headGrad.addColorStop(1, shade('#978967', -0.3));
+    headGrad.addColorStop(0, shade(BODY_COLOR, 0.3));
+    headGrad.addColorStop(0.55, BODY_COLOR);
+    headGrad.addColorStop(1, shade(BODY_COLOR, -0.3));
     g.fillStyle = headGrad;
-    g.shadowColor = '#5a4a30';
+    g.shadowColor = '#1f4a28';
     g.shadowBlur = 6;
     g.fill();
     g.shadowBlur = 0;
@@ -1712,7 +1769,7 @@
     g.clip();
     g.beginPath();
     g.ellipse(-m.radius * 0.3, -m.radius * 0.35, m.radius * 0.5, m.radius * 0.3, -0.5, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.12)';
+    g.fillStyle = 'rgba(255,255,255,0.18)';
     g.fill();
     g.restore();
 
@@ -2308,9 +2365,8 @@
   }
 
   function updateHud() {
-    const pressedCount = buttonsPressed.filter(Boolean).length;
-    hudButtonsEl.textContent = `Buttons: ${pressedCount} / ${LEVEL.buttons.length}`;
-    hudButtonsEl.classList.toggle('done', pressedCount === LEVEL.buttons.length);
+    hudButtonsEl.textContent = `Heater: ${heaterOn ? 'on' : 'off'}`;
+    hudButtonsEl.classList.toggle('done', heaterOn);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
 
@@ -2320,7 +2376,7 @@
         bestMs = elapsedMs;
         localStorage.setItem(BEST_TIME_KEY, String(bestMs));
       }
-      if (window.GoofyStory) window.GoofyStory.completeLevel(13);
+      if (window.GoofyStory) window.GoofyStory.completeLevel(14);
     }
 
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;

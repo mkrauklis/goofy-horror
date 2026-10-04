@@ -19,6 +19,7 @@
   const frostCtx = ctxFor('monster-canvas-frost');
   const mutationCtx = ctxFor('monster-canvas-mutation');
   const broodCtx = ctxFor('monster-canvas-brood');
+  const thawSpiderCtx = ctxFor('monster-canvas-thawspider');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -1324,17 +1325,67 @@
     g.restore();
   }
 
+  // A single leg rendered as a tapered icicle shard -- same technique as
+  // Level 14's own drawIcicleLeg, just reused here against this file's
+  // plain 2D context instead of a translated monster-local one.
+  function drawIcicleLeg(g, baseX, baseY, footX, footY, baseWidth) {
+    const dx = footX - baseX, dy = footY - baseY;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    const midX = baseX + dx * 0.4, midY = baseY + dy * 0.4;
+    const bendX = midX + nx * baseWidth * 0.7, bendY = midY + ny * baseWidth * 0.7;
+
+    g.beginPath();
+    g.moveTo(baseX + nx * baseWidth, baseY + ny * baseWidth);
+    g.lineTo(baseX - nx * baseWidth, baseY - ny * baseWidth);
+    g.quadraticCurveTo(bendX, bendY, footX, footY);
+    g.closePath();
+    const grad = g.createLinearGradient(baseX, baseY, footX, footY);
+    grad.addColorStop(0, 'rgba(200,245,220,0.75)');
+    grad.addColorStop(0.6, 'rgba(170,230,195,0.55)');
+    grad.addColorStop(1, 'rgba(210,250,235,0.3)');
+    g.fillStyle = grad;
+    g.fill();
+    g.strokeStyle = 'rgba(230,255,240,0.5)';
+    g.lineWidth = 0.6;
+    g.stroke();
+  }
+
+  // The Level 14 creature: a pale green spider whose legs are rendered as
+  // tapered icicle shards rather than joints -- same body silhouette as
+  // the Crawler family, just recolored and re-legged.
+  function drawThawSpider(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const radius = 24, seed = 11;
+    const legCount = 8;
+    for (let i = 0; i < legCount; i++) {
+      const a = (i / legCount) * Math.PI * 2 + seed
+        + Math.sin(t * 0.0012 + i * 1.3 + seed) * 0.12;
+      const reach = radius * (1.9 + ((i * 7) % 3) * 0.18)
+        + Math.sin(t * 0.0015 + i * 2.1 + seed) * radius * 0.1;
+      const baseX = Math.cos(a) * radius * 0.7, baseY = Math.sin(a) * radius * 0.7;
+      const footX = Math.cos(a) * reach, footY = Math.sin(a) * reach;
+      drawIcicleLeg(g, baseX, baseY, footX, footY, Math.max(1, radius * 0.12));
+    }
+    drawBlobBody(g, radius, '#7fd68a', '#1f4a28', seed, t);
+    const angle = t * 0.0006;
+    drawEye(g, radius, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    g.restore();
+  }
+
   function drawPortraitOrLock(ctx, drawFn, t) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
     drawFn(ctx, PORTRAIT, PORTRAIT, t);
   }
 
-  // This page redraws thirteen fully-detailed monster portraits at once, so
+  // This page redraws sixteen fully-detailed monster portraits at once, so
   // it caps itself around 30fps instead of riding requestAnimationFrame's
   // full 60 -- plenty smooth for a reference gallery nobody is dodging, and
   // it halves the cost of a page that (unlike any single level) never has
-  // fewer than thirteen creatures on screen simultaneously.
+  // fewer than sixteen creatures on screen simultaneously.
   let lastDraw = 0;
   function loop(t) {
     if (t - lastDraw >= 33) {
@@ -1350,6 +1401,7 @@
       drawPortraitOrLock(frostCtx, drawFrostTentacleCreature, t);
       drawPortraitOrLock(mutationCtx, drawMutation, t);
       drawPortraitOrLock(broodCtx, drawBrood, t);
+      drawPortraitOrLock(thawSpiderCtx, drawThawSpider, t);
       drawPortraitOrLock(vaultGuardCtx, drawVaultGuardian, t);
       drawPortraitOrLock(wraithCtx, drawWraith, t);
       drawPortraitOrLock(digWormCtx, drawDigWorm, t);
