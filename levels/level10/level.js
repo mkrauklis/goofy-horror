@@ -1,21 +1,21 @@
 (function () {
-  // Legend: # wall, . floor, T dirt (decorative only), V vent (a
-  // single-tile notch in the outer wall -- the boss can't enter one and
-  // nothing it does can catch a player standing inside it), D door (2
+  // Legend: # wall, . floor, T dirt (decorative only), D door (2
   // tiles tall, blocks until the boss is defeated), E exit alcove floor,
-  // X exit trigger (only fires once a player rides the minecart there).
+  // X exit trigger. The single-tile notches in the outer wall used to be
+  // vent safe-zones (a 'V' tile the boss couldn't enter); removed on
+  // direct request, so they're now just plain floor.
   //
   // A plain rectangular arena, a little bigger than Level 5's (40x22 vs
   // 34x20), with the whole thing visible on screen at once -- see game10.js's
   // ZOOM, chosen to fit the full arena rather than following the players.
   const grid = [
-    '##########V#########V###################',
+    '##########.#########.###################',
     '#..............................#########',
     '#.....T.............T...T......#########',
     '#.T.T.............T...T........#########',
     '#.T.....TT........T....T....TT.#########',
     '#...T..T..T.T....T.....T....T..#########',
-    'V.T...........T..............T.#########',
+    '..T...........T..............T.#########',
     '#......T.......................#########',
     '#...T..T.T..T...T.T.........T..#EEEEEEE#',
     '#..T....TT.........T...........#EEEEEEE#',
@@ -24,13 +24,13 @@
     '#......T.................T.....#EEEEEEE#',
     '#....T...................T.....#EEEEEEE#',
     '#....T............T....TT.T.T..#########',
-    'V.......T....T...T..T.....T....#########',
+    '........T....T...T..T.....T....#########',
     '#....T.....T...........T.......#########',
     '#.TT.......T......TTT..........#########',
     '#................T....TT..T....#########',
     '#...T.T....T....TT......T..T...#########',
     '#..............................#########',
-    '########V#############V#################',
+    '########.#############.#################',
   ];
 
   window.LEVEL10 = {

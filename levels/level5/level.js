@@ -1,22 +1,21 @@
 (function () {
   // Legend: # wall, . floor, T dirt (missing floor tile, decorative),
   // D door (2 tiles wide; blocks players and the boss until it's defeated),
-  // E exit alcove floor, X exit trigger, V vent (a dead-end pocket punched
-  // into the outer wall -- see LEVEL5.grid's 'V' handling in game5.js: the
-  // boss physically can't enter one and nothing it does can catch a player
-  // standing inside one, so they're the level's only real hiding spots).
+  // E exit alcove floor, X exit trigger. The dead-end pockets punched into
+  // the outer wall used to be vent safe-zones (a 'V' tile the boss couldn't
+  // enter); removed on direct request, so they're now just plain floor.
   //
   // The arena was shrunk to 1/3 its old size (32x20, was 96x60) so the boss's
   // attack set -- a bouncing spin dash, a straight-line charge -- has a room
   // small enough that it can actually reach every corner of it.
   const grid = [
-    '######V#########V#########V#####',
+    '######.#########.#########.#####',
     '#..........T................TTT#',
     '#.........TT...............TTTT#',
     '#.........TTT.....TT.T....TTT.T#',
     '#.........TT.T..TTTTT.....TTT..#',
     '#...........TT.TTTTTTT.....T...#',
-    'V........TTTT....TT.......TT...V',
+    '.........TTTT....TT.......TT....',
     '#.TT.TTTTTT.T..............T...#',
     '#T.TT.....TTT..................#',
     '#.TT.......TT..................#',
@@ -24,12 +23,12 @@
     '#..............................#',
     '#..............................#',
     '#..........TT...........########',
-    'V..........TT...T.......#EEEEE##',
+    '...........TT...T.......#EEEEE##',
     '#...T......T.TTTTTTTT...DEEXEE##',
     '#TTTT......T..TTTTT.....DEEEEE##',
     '#TTTTT......TTTTT.......#EEEEE##',
     '#....TT.................########',
-    '######V#########V###############',
+    '######.#########.###############',
   ];
 
   window.LEVEL5 = {

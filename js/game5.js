@@ -87,7 +87,7 @@
   // 6. Blink: plants itself, pulses a 3s warning, then strobes color for 2s
   // before whipping all 9 tentacles out twice in a row. Each tentacle is a
   // straight raycast that stops dead at the first wall tile it hits --
-  // ducking behind a wall (a vent, most reliably) blocks it completely.
+  // ducking behind any wall corner blocks it completely.
   const BLINK_WARNING_MS = 3000;
   const BLINK_DURATION_MS = 2000;
   const BLINK_STRIKE_COUNT = 2;
@@ -970,12 +970,10 @@
     return false;
   }
 
-  // Standing in a vent (or in a smoke bomb's cloud) takes you out of play
-  // entirely -- every attack's hit test and the boss's own contact-catch
-  // all check this before landing.
+  // Standing in a smoke bomb's cloud takes you out of play entirely --
+  // every attack's hit test and the boss's own contact-catch all check
+  // this before landing.
   function isHidden(p, now) {
-    const t = worldToTile(p.x, p.y);
-    if (tileChar(t.x, t.y) === 'V') return true;
     return smokeBombs.some((b) => b.exploded && now < b.endsAt && Math.hypot(p.x - b.x, p.y - b.y) < SMOKE_RADIUS);
   }
 
@@ -1057,7 +1055,6 @@
   function minimapColorFor(ch) {
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
-    if (ch === 'V') return '#3ddc84';
     if (ch === 'T') return '#5a4127';
     return '#3c3c46';
   }
@@ -1377,7 +1374,7 @@
 
   // ---- boss AI ----
   function monsterCanOccupy(ch) {
-    if (ch === '#' || ch === 'V') return false;
+    if (ch === '#') return false;
     if (ch === 'D') return doorUnlocked;
     return true;
   }
@@ -1448,9 +1445,7 @@
     ];
     return corners.every(([cx, cy]) => {
       const t = worldToTile(cx, cy);
-      // Vents block the boss even though they don't block players -- that's
-      // what makes them an actual hiding spot rather than just a label.
-      return !isWallForPlayer(t.x, t.y) && tileChar(t.x, t.y) !== 'V';
+      return !isWallForPlayer(t.x, t.y);
     });
   }
 
@@ -2056,7 +2051,6 @@
         let color;
         switch (ch) {
           case '#': color = '#262629'; break;
-          case 'V': color = '#16302a'; break;
           case 'T': color = dirtShade(x, y); break;
           case 'E': color = '#3a301f'; break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
@@ -2068,25 +2062,6 @@
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
-        }
-
-        // A grated-vent look (a dim teal glow plus a few slats) -- reads as
-        // distinctly safe rather than just another floor tile.
-        if (ch === 'V') {
-          g.fillStyle = 'rgba(61,220,132,0.12)';
-          g.fillRect(px, py, TILE, TILE);
-          g.strokeStyle = 'rgba(61,220,132,0.5)';
-          g.lineWidth = 2;
-          for (let s = 1; s <= 3; s++) {
-            const sy = py + (TILE / 4) * s;
-            g.beginPath();
-            g.moveTo(px + 3, sy);
-            g.lineTo(px + TILE - 3, sy);
-            g.stroke();
-          }
-          g.strokeStyle = 'rgba(61,220,132,0.65)';
-          g.lineWidth = 1.5;
-          g.strokeRect(px + 1.5, py + 1.5, TILE - 3, TILE - 3);
         }
       }
     }
@@ -2513,7 +2488,7 @@
     if (boss.phase === 'blink') {
       if (boss.blinkSubPhase === 'warning') {
         // A steady 3s pulse building toward the blink -- the clock is
-        // literally how long you have left to reach a vent.
+        // literally how long you have left to get clear of it.
         const pulse = 0.5 + 0.5 * Math.sin(t / 110);
         g.beginPath();
         g.arc(0, 0, boss.radius * 1.08, 0, Math.PI * 2);

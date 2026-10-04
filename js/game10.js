@@ -68,8 +68,8 @@
   const FLOORTILE_HIT_RADIUS = 16;
 
   // 4. Tentacle sweep: tentacles extend all the way out and slowly swing
-  // around together, 1x speed at the tip -- ducking behind a wall (a vent,
-  // most reliably) still blocks a tentacle dead, same as the Ashen One.
+  // around together, 1x speed at the tip -- ducking behind any wall
+  // corner still blocks a tentacle dead, same as the Ashen One.
   const TENTACLESWEEP_DURATION_MS = 5000;
   const TENTACLE_COUNT = 6;
   const TENTACLE_REACH = 320;
@@ -899,8 +899,6 @@
   }
 
   function isHidden(p, now) {
-    const t = worldToTile(p.x, p.y);
-    if (tileChar(t.x, t.y) === 'V') return true;
     return smokeBombs.some((b) => b.exploded && now < b.endsAt && Math.hypot(p.x - b.x, p.y - b.y) < SMOKE_RADIUS);
   }
 
@@ -978,7 +976,6 @@
   function minimapColorFor(ch) {
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
-    if (ch === 'V') return '#3ddc84';
     if (ch === 'T') return '#5a4127';
     return '#3c3c46';
   }
@@ -1266,9 +1263,7 @@
   }
 
   // ---- boss AI ----
-  // A boss-sized version of the player's canStandAt -- vents block the boss
-  // even though they don't block players, which is what makes them an
-  // actual hiding spot rather than just a label.
+  // A boss-sized version of the player's canStandAt.
   function canBossStandAt(x, y) {
     const r = boss.radius * 0.7;
     const corners = [
@@ -1277,7 +1272,7 @@
     ];
     return corners.every(([cx, cy]) => {
       const t = worldToTile(cx, cy);
-      return !isWallForPlayer(t.x, t.y) && tileChar(t.x, t.y) !== 'V';
+      return !isWallForPlayer(t.x, t.y);
     });
   }
 
@@ -1716,7 +1711,6 @@
         let color;
         switch (ch) {
           case '#': color = '#262629'; break;
-          case 'V': color = '#16302a'; break;
           case 'T': color = dirtShade(x, y); break;
           case 'E': color = '#3a301f'; break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
@@ -1728,23 +1722,6 @@
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
-        }
-
-        if (ch === 'V') {
-          g.fillStyle = 'rgba(61,220,132,0.12)';
-          g.fillRect(px, py, TILE, TILE);
-          g.strokeStyle = 'rgba(61,220,132,0.5)';
-          g.lineWidth = 2;
-          for (let s = 1; s <= 3; s++) {
-            const sy = py + (TILE / 4) * s;
-            g.beginPath();
-            g.moveTo(px + 3, sy);
-            g.lineTo(px + TILE - 3, sy);
-            g.stroke();
-          }
-          g.strokeStyle = 'rgba(61,220,132,0.65)';
-          g.lineWidth = 1.5;
-          g.strokeRect(px + 1.5, py + 1.5, TILE - 3, TILE - 3);
         }
       }
     }
