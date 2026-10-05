@@ -77,15 +77,16 @@
     resetProgress,
   };
 
-  // Each level belongs to a 5-level area (Area 1 = levels 1-5, Area 2 =
-  // levels 6-10, Area 3 = levels 11-15, and so on) -- a plain-text label
-  // in the nav, not a link, so a level page shows which area it's part of
-  // without reintroducing the old row of direct level-to-level jump links.
-  function areaForLevel(n) {
+  // Each level belongs to a 5-level chapter (Chapter 1 = levels 1-5,
+  // Chapter 2 = levels 6-10, Chapter 3 = levels 11-15, and so on) -- a
+  // plain-text label in the nav, not a link, so a level page shows which
+  // chapter it's part of without reintroducing the old row of direct
+  // level-to-level jump links.
+  function chapterForLevel(n) {
     return Math.ceil(n / 5);
   }
 
-  function injectAreaLabel() {
+  function injectChapterLabel() {
     const match = window.location.pathname.match(/\/level(\d+)\.html$/);
     if (!match) return;
     const n = parseInt(match[1], 10);
@@ -93,8 +94,8 @@
     const menuLink = nav && nav.querySelector('a[href="index.html"]');
     if (!nav || !menuLink) return;
     const label = document.createElement('span');
-    label.className = 'nav-area-label';
-    label.textContent = `Area ${areaForLevel(n)}`;
+    label.className = 'nav-chapter-label';
+    label.textContent = `Chapter ${chapterForLevel(n)}`;
     const sep = document.createElement('span');
     sep.textContent = '·';
     menuLink.after(sep, label);
@@ -137,6 +138,6 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
     else fn();
   }
-  onReady(injectAreaLabel);
+  onReady(injectChapterLabel);
   onReady(setupFullscreenToggle);
 })();

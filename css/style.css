@@ -64,8 +64,8 @@ a {
 }
 
 /* A plain-text label (not a link) in a level page's own nav, showing
-   which of the two 5-level areas it belongs to. */
-.level-nav .nav-area-label {
+   which 5-level chapter it belongs to. */
+.level-nav .nav-chapter-label {
   text-transform: uppercase;
   font-size: 0.75rem;
   font-weight: 600;
@@ -73,24 +73,44 @@ a {
   color: var(--accent-dim);
 }
 
-/* The menu's own section heading, separating the two 5-level areas'
-   worth of level cards below. */
-.area-divider {
+/* Each 5-level chapter gets its own bordered card on the menu, tinted to
+   that chapter's own theme (set per .chapter-N below) rather than one
+   plain divider line repeated identically for every chapter. */
+.chapter {
   max-width: 1000px;
-  margin: 2rem auto 0.75rem;
-  padding: 0 1.5rem;
+  margin: 2rem auto 0;
+  padding: 1.5rem;
+  border: 1px solid var(--chapter-color, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--chapter-wash, rgba(255, 255, 255, 0.02)), transparent 40%);
+}
+
+.chapter:first-of-type {
+  margin-top: 1.5rem;
+}
+
+.chapter-1 {
+  --chapter-color: rgba(224, 84, 107, 0.4);
+  --chapter-wash: rgba(224, 84, 107, 0.05);
+}
+
+.chapter-2 {
+  --chapter-color: rgba(138, 143, 153, 0.4);
+  --chapter-wash: rgba(138, 143, 153, 0.05);
+}
+
+.chapter-3 {
+  --chapter-color: rgba(94, 201, 232, 0.4);
+  --chapter-wash: rgba(94, 201, 232, 0.05);
+}
+
+.chapter-divider {
+  margin: 0 0 1.25rem;
+  padding: 0;
   font-size: 1rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--accent-dim);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 1.25rem;
-}
-
-.area-divider:first-of-type {
-  margin-top: 1.5rem;
-  border-top: none;
-  padding-top: 0;
 }
 
 /* The element that actually goes fullscreen wraps both #hud and
