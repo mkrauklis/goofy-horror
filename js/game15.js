@@ -1382,7 +1382,7 @@
       boss.wallSubPhase = 'warning';
       boss.wallStartedAt = now;
       boss.wallX = TILE;
-      const gapRows = Math.max(1, ROWS - 2 - WALLPUSH_GAP_TILES);
+      const gapRows = Math.max(1, LEVEL.arenaRows - 2 - WALLPUSH_GAP_TILES);
       const gapStart = 1 + Math.floor(Math.random() * gapRows);
       boss.wallGapY0 = gapStart;
       boss.wallGapY1 = gapStart + WALLPUSH_GAP_TILES;
@@ -1390,7 +1390,7 @@
       playBossWindup();
     } else if (kind === 'expand') {
       boss.x = WORLD_W / 2;
-      boss.y = WORLD_H / 2;
+      boss.y = (LEVEL.arenaRows * TILE) / 2;
       boss.expandSubPhase = 'windup';
       boss.expandStartedAt = now;
       boss.expandRadius = 0;
