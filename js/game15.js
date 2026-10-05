@@ -106,6 +106,10 @@
   const CHASE_PACE_MARGIN = 40;
   const CHASE_ICICLE_SPEED = PLAYER_SPEED * 2.5;
   const CHASE_ICICLE_INTERVAL_MS = 650;
+  // The spike wall that opens phase 2: it doesn't just sit there sealing
+  // the retreat, it actively advances toward the gate, shoving anyone
+  // dawdling near the arena end forward into the hallway.
+  const SPIKEWALL_SPEED = PLAYER_SPEED * 1.3;
   // The freeze item used to stop the boss dead; now it only costs it 20%
   // of its current speed, in or out of the chase.
   const FROZEN_SPEED_MULT = 0.8;
@@ -1304,15 +1308,8 @@
   }
 
   // ---- boss AI ----
-  // 'S' (the spawn safe zone) blocks the boss and its clones even though
-  // it's open floor for players -- that's what keeps a respawn from
-  // walking straight into an attack already in progress.
-  function isWallForBoss(tx, ty) {
-    const ch = tileChar(tx, ty);
-    return isWallForPlayer(tx, ty) || ch === 'S';
-  }
-
-  // A boss-sized version of the player's canStandAt.
+  // A boss-sized version of the player's canStandAt. No safe zone at
+  // spawn -- the boss walks in like anywhere else.
   function canBossStandAt(x, y) {
     const r = boss.radius * 0.7;
     const corners = [
@@ -1321,7 +1318,7 @@
     ];
     return corners.every(([cx, cy]) => {
       const t = worldToTile(cx, cy);
-      return !isWallForBoss(t.x, t.y);
+      return !isWallForPlayer(t.x, t.y);
     });
   }
 
@@ -1356,7 +1353,7 @@
     ];
     return corners.every(([cx, cy]) => {
       const t = worldToTile(cx, cy);
-      return !isWallForBoss(t.x, t.y);
+      return !isWallForPlayer(t.x, t.y);
     });
   }
 
@@ -1533,9 +1530,9 @@
     }
   }
 
-  // Phase 2: triggered once, at 15 HP. The gate opens, a spike wall seals
-  // off the retreat behind wherever the boss currently is, and it locks
-  // into 'chase' for good -- no more picking from the attack list.
+  // Phase 2: triggered once, at 15 HP. The gate opens, a spike wall
+  // starts pushing in from behind wherever the boss currently is, and it
+  // locks into 'chase' for good -- no more picking from the attack list.
   function enterPhase2(now) {
     boss.phase2 = true;
     boss.phase = 'chase';
@@ -1547,14 +1544,15 @@
     playIceCrack();
   }
 
-  // The retreat-sealing spike wall: a stationary line just north of
-  // wherever the boss was standing when phase 2 began, damaging anyone
-  // who touches it. It only matters until the boss itself has committed
-  // to the hallway -- once it's past the gate, there's nothing left to
-  // sneak around it for.
-  function updateSpikeWall(now) {
+  // The retreat-sealing spike wall: starts just north of wherever the
+  // boss was standing when phase 2 began and advances steadily toward
+  // the gate, damaging anyone it touches -- there's no waiting it out,
+  // only moving with it. It deactivates once it reaches the gate itself,
+  // since by then there's nowhere left behind it for anyone to be.
+  function updateSpikeWall(now, dt) {
     if (!boss.spikeWallActive) return;
-    if (boss.y >= LEVEL.hallway.y0 * TILE) {
+    boss.spikeWallY += SPIKEWALL_SPEED * dt;
+    if (boss.spikeWallY >= LEVEL.hallway.y0 * TILE) {
       boss.spikeWallActive = false;
       return;
     }
@@ -1810,7 +1808,6 @@
         switch (ch) {
           case '#': color = '#262629'; break;
           case 'N': color = '#d8e6ee'; break;
-          case 'S': color = '#2a3a42'; break;
           case 'G': color = boss.phase2 ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
@@ -2046,7 +2043,7 @@
 
   // The retreat-sealing spike wall: a jagged red-lit line across the
   // arena, same "rigid, angular" silhouette technique as the wall-push
-  // attack's ice slabs, just a single stationary band instead of a
+  // attack's ice slabs, just a single advancing band instead of a
   // sweeping pair.
   function drawSpikeWall(g) {
     if (!boss.spikeWallActive) return;
@@ -2761,7 +2758,7 @@
       updateSmokeBombs(now);
       updateTorches(now);
       updateBoss(now, dt);
-      updateSpikeWall(now);
+      updateSpikeWall(now, dt);
       updateShotgunDefense(now);
       updateCatch(now);
       updateCutscenes(now);
