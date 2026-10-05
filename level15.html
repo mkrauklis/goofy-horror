@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 15</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 15 &mdash; The Thaw's End</h1>
+  <p class="objective">A mutation twice the size of the one before it fills a wide snow-covered arena &mdash; the whole thing visible on screen at once. Catch the torches it leaves you no choice but to grab, and watch for the wall that opens once it's hurting badly enough.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-boss">Boss: 25/25 HP</span>
+      <span id="hud-torches">Torches: 0 live</span>
+      <span id="hud-phase">Phase: 1</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    The mutation from the fuse-box lab out here is bigger, two full body
+    widths across, with patches of ice crusted across its lower half. The
+    arena is wide, open, and buried in snow, with nowhere to hide and
+    nothing in the way &mdash; the whole thing fits on screen at once, so
+    every attack is readable the moment it starts. A torch spawns
+    somewhere on the open floor every 10 seconds (up to 5 live at once);
+    walking onto one lands 2 damage against its 25 HP.
+  </p>
+  <p class="level-description">
+    Four attacks, cycling forever. <strong>Split</strong>: it tears into
+    two smaller copies, one a lumbering <strong>1.2x</strong> your speed,
+    the other a fast <strong>1.9x</strong>, both hunting independently
+    until they collapse back into one. <strong>Icicle shower</strong>: it
+    fires shards at whoever's nearest for 5 seconds straight, each one
+    flying at <strong>2x</strong> speed. <strong>Wall push</strong>: an
+    ice wall rises along one side of the arena, one gap left open, and
+    sweeps across at <strong>1.5x</strong> your speed &mdash; find the
+    gap before it reaches you. <strong>Expand</strong>: it plants itself
+    dead center and a hazard ring slowly grows outward &mdash; the
+    corners are always far enough away to be safe.
+  </p>
+  <p class="level-description">
+    At 15 HP it turns bright red and tears a gate open in the south
+    wall, sealing a spike wall shut behind itself so there's no going
+    back &mdash; from there it's an endless chase down a narrow hallway.
+    It paces itself off you: fall behind and it eases to
+    <strong>0.8x</strong> your speed, pull ahead and it surges to
+    <strong>2x</strong>, otherwise it holds a steady <strong>1.25x</strong>.
+    Icicles keep coming at <strong>2.5x</strong> speed the whole way down,
+    and a fresh torch waits every 15 tiles. Land enough of them and a
+    wave of water finally takes it.
+  </p>
+  <p class="level-description">
+    Each of you is carrying a shotgun, empty. Find a shell in a crate
+    (you can carry up to 3 at a time) and each one loads automatically
+    &mdash; get close enough to the boss while it's hunting you and it
+    goes off on its own, costing it 20% of its speed for 5 seconds.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level15/level.js"></script>
+<script src="js/game15.js"></script>
+</body>
+</html>

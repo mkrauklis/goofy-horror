@@ -20,6 +20,7 @@
   const mutationCtx = ctxFor('monster-canvas-mutation');
   const broodCtx = ctxFor('monster-canvas-brood');
   const thawSpiderCtx = ctxFor('monster-canvas-thawspider');
+  const frozenMutationCtx = ctxFor('monster-canvas-frozenmutation');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -951,15 +952,17 @@
   // own drawKnightBody/drawKnightHelm/drawSword into a single static pose
   // instead of a live attack cycle, since this is a reference gallery, not
   // the fight itself.
-  function drawLastKnightArmorGem(g, x, y, r) {
+  function drawLastKnightArmorGem(g, x, y, r, phase2) {
+    const hi = phase2 ? '#8fd6ff' : '#ff3a4a';
+    const lo = phase2 ? '#2a6bd6' : '#8a1620';
     const grad = g.createRadialGradient(x - r * 0.3, y - r * 0.3, 0.5, x, y, r);
-    grad.addColorStop(0, '#ff3a4a');
-    grad.addColorStop(1, '#8a1620');
+    grad.addColorStop(0, hi);
+    grad.addColorStop(1, lo);
     g.beginPath();
     g.arc(x, y, r, 0, Math.PI * 2);
     g.fillStyle = grad;
-    g.shadowColor = '#ff3a4a';
-    g.shadowBlur = 4;
+    g.shadowColor = hi;
+    g.shadowBlur = phase2 ? 7 : 4;
     g.fill();
     g.shadowBlur = 0;
     g.strokeStyle = 'rgba(0,0,0,0.5)';
@@ -967,7 +970,10 @@
     g.stroke();
   }
 
-  function drawLastKnight(g, w, h, t) {
+  // phase2 swaps every gem from ruby-red to sapphire-blue and adds a faint
+  // blue flame along the blade -- the same two tells game10.js's own boss
+  // uses once it drops to half health.
+  function drawLastKnight(g, w, h, t, phase2) {
     clear(g, w, h);
     g.save();
     g.translate(w / 2, h / 2);
@@ -1047,10 +1053,10 @@
       g.strokeStyle = 'rgba(0,0,0,0.55)';
       g.lineWidth = 1.5;
       g.stroke();
-      drawLastKnightArmorGem(g, px, py, r * 0.065);
+      drawLastKnightArmorGem(g, px, py, r * 0.065, phase2);
     });
 
-    drawLastKnightArmorGem(g, 0, -r * 0.02 + wobble, r * 0.13);
+    drawLastKnightArmorGem(g, 0, -r * 0.02 + wobble, r * 0.13, phase2);
 
     g.save();
     g.beginPath();
@@ -1134,7 +1140,22 @@
     g.strokeStyle = 'rgba(0,0,0,0.4)';
     g.lineWidth = 1;
     g.stroke();
-    drawLastKnightArmorGem(g, -16, 0, 5);
+    drawLastKnightArmorGem(g, -16, 0, 5, phase2);
+    if (phase2) {
+      const flick = 0.6 + 0.4 * Math.sin(t * 0.01);
+      const flameGrad = g.createLinearGradient(12, 0, 150, 0);
+      flameGrad.addColorStop(0, `rgba(143,214,255,${0.5 * flick})`);
+      flameGrad.addColorStop(1, 'rgba(42,107,214,0)');
+      g.beginPath();
+      g.moveTo(10, -8);
+      g.lineTo(138, -3.5);
+      g.lineTo(150, 0);
+      g.lineTo(138, 3.5);
+      g.lineTo(10, 8);
+      g.closePath();
+      g.fillStyle = flameGrad;
+      g.fill();
+    }
     g.restore();
 
     g.restore();
@@ -1306,6 +1327,78 @@
     g.restore();
   }
 
+  // The Level 15 boss: the Mutation grown to twice its old size, with a
+  // few icicle shards clinging to its lower half -- the same frost-patch
+  // technique game15.js's own drawFrostPatches uses, just reused here
+  // against this file's plain 2D context.
+  function drawFrostPatches(g, radius) {
+    const count = 6;
+    for (let i = 0; i < count; i++) {
+      const angle = Math.PI * 0.15 + (i / (count - 1)) * Math.PI * 0.7;
+      const len = radius * (0.3 + (i % 3) * 0.08);
+      const ax = Math.cos(angle) * radius * 0.92, ay = Math.sin(angle) * radius * 0.92;
+      const nx = Math.cos(angle), ny = Math.sin(angle);
+      const px = -ny, py = nx;
+      g.beginPath();
+      g.moveTo(ax + px * radius * 0.08, ay + py * radius * 0.08);
+      g.lineTo(ax - px * radius * 0.08, ay - py * radius * 0.08);
+      g.lineTo(ax + nx * len, ay + ny * len);
+      g.closePath();
+      const grad = g.createLinearGradient(ax, ay, ax + nx * len, ay + ny * len);
+      grad.addColorStop(0, 'rgba(210,240,255,0.7)');
+      grad.addColorStop(1, 'rgba(170,220,250,0.25)');
+      g.fillStyle = grad;
+      g.fill();
+    }
+    g.beginPath();
+    g.ellipse(0, radius * 0.45, radius * 0.85, radius * 0.4, 0, 0, Math.PI);
+    g.fillStyle = 'rgba(200,235,255,0.18)';
+    g.fill();
+  }
+
+  // phase2 turns the whole thing bright red and drops the frost patches
+  // -- the same two tells game15.js's own boss uses once it drops to 15
+  // HP and the chase begins.
+  function drawFrozenMutation(g, w, h, t, phase2) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const radius = 38, seed = 91;
+    const tentColor = phase2 ? '#8a1414' : '#4a1a6a';
+    const sideColor = phase2 ? '#b02424' : '#6a2a8a';
+    const coreColor = phase2 ? '#d83a3a' : '#7a3a9a';
+    const shadowColor = phase2 ? '#4a0a0a' : '#3a1452';
+
+    const tentCount = 5;
+    for (let i = 0; i < tentCount; i++) {
+      const a = (i / tentCount) * Math.PI * 2 + seed + Math.sin(t * 0.0015 + i) * 0.3;
+      const len = radius * 1.6;
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
+      drawTaperedTentacle(g, tx, ty, tx * 0.5, ty * 0.5, radius * 0.18, tentColor);
+    }
+
+    const sideR = radius * 0.6;
+    [-1, 1].forEach((side) => {
+      g.save();
+      g.translate(side * radius * 0.7, radius * 0.35);
+      drawBlobBody(g, sideR, sideColor, shadowColor, seed + side * 7, t);
+      g.restore();
+    });
+
+    drawBlobBody(g, radius, coreColor, shadowColor, seed, t);
+
+    const angle = t * 0.0006;
+    drawEye(g, radius, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    g.save();
+    g.translate(-radius * 0.7, radius * 0.35);
+    drawEye(g, sideR, seed + 3, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    g.restore();
+
+    if (!phase2) drawFrostPatches(g, radius);
+
+    g.restore();
+  }
+
   // The Level 13 creatures: tiny, pale, half-size cousins of the Crawler --
   // three of them clustered to read as "a bunch of these," not just one.
   function drawBrood(g, w, h, t) {
@@ -1375,17 +1468,34 @@
     g.restore();
   }
 
-  function drawPortraitOrLock(ctx, drawFn, t) {
+  function drawPortraitOrLock(ctx, drawFn, t, phase2) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
-    drawFn(ctx, PORTRAIT, PORTRAIT, t);
+    drawFn(ctx, PORTRAIT, PORTRAIT, t, phase2);
   }
 
-  // This page redraws sixteen fully-detailed monster portraits at once, so
+  // Bosses with a real phase 2 (a health-threshold recolor/behavior
+  // change in the actual level, not just a palette swap for its own
+  // sake) show it on click -- a second click flips back to phase 1.
+  // Every other portrait's canvas is left alone.
+  const phase2Shown = new Set();
+  function wirePhase2Toggle(ctx) {
+    if (!ctx) return;
+    ctx.canvas.style.cursor = 'pointer';
+    ctx.canvas.title = 'Click for phase 2';
+    ctx.canvas.addEventListener('click', () => {
+      if (isLocked(ctx)) return;
+      if (phase2Shown.has(ctx)) phase2Shown.delete(ctx); else phase2Shown.add(ctx);
+    });
+  }
+  wirePhase2Toggle(lastKnightCtx);
+  wirePhase2Toggle(frozenMutationCtx);
+
+  // This page redraws seventeen fully-detailed monster portraits at once, so
   // it caps itself around 30fps instead of riding requestAnimationFrame's
   // full 60 -- plenty smooth for a reference gallery nobody is dodging, and
   // it halves the cost of a page that (unlike any single level) never has
-  // fewer than sixteen creatures on screen simultaneously.
+  // fewer than seventeen creatures on screen simultaneously.
   let lastDraw = 0;
   function loop(t) {
     if (t - lastDraw >= 33) {
@@ -1402,10 +1512,11 @@
       drawPortraitOrLock(mutationCtx, drawMutation, t);
       drawPortraitOrLock(broodCtx, drawBrood, t);
       drawPortraitOrLock(thawSpiderCtx, drawThawSpider, t);
+      drawPortraitOrLock(frozenMutationCtx, drawFrozenMutation, t, phase2Shown.has(frozenMutationCtx));
       drawPortraitOrLock(vaultGuardCtx, drawVaultGuardian, t);
       drawPortraitOrLock(wraithCtx, drawWraith, t);
       drawPortraitOrLock(digWormCtx, drawDigWorm, t);
-      drawPortraitOrLock(lastKnightCtx, drawLastKnight, t);
+      drawPortraitOrLock(lastKnightCtx, drawLastKnight, t, phase2Shown.has(lastKnightCtx));
     }
     requestAnimationFrame(loop);
   }

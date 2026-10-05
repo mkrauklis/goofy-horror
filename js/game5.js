@@ -52,6 +52,10 @@
   // instead -- see BOMB_DAMAGE_* for why that window matters.
   const BOSS_IDLE_SPEED = PLAYER_SPEED * 0.35;
   const BOSS_IDLE_MIN_MS = 700;
+  // A grace window after the level first loads, before the boss's very
+  // first attack -- gives players a moment to get oriented instead of
+  // getting hit before they've even seen the room.
+  const BOSS_INTRO_GRACE_MS = 3000;
   const BOSS_IDLE_MAX_MS = 1400;
 
   // 1. Spin: bounces off the arena walls DVD-logo style at high speed.
@@ -928,7 +932,7 @@
     boss.path = []; boss.pathIndex = 0; boss.nextRepathAt = 0;
     boss.frozenUntil = 0; boss.luredState = 'none'; boss.lureTarget = null; boss.eatingUntil = 0;
     boss.defeated = false;
-    boss.phase = 'idle'; boss.phaseStartedAt = 0; boss.nextIdleUntil = 0;
+    boss.phase = 'idle'; boss.phaseStartedAt = 0; boss.nextIdleUntil = performance.now() + BOSS_INTRO_GRACE_MS;
     boss.attackCount = 0; boss.lastAttack = null; boss.spinAngle = 0;
     boss.blinkSubPhase = 'warning'; boss.blinkStrikesLeft = 0; boss.lastStrikeAt = 0; boss.lastStrikeReaches = null;
     telegraphs = []; spikeTelegraphs = []; bossBombs = [];

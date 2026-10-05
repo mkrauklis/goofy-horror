@@ -1,7 +1,7 @@
 (function () {
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
-  if (window.GoofyStory && !window.GoofyStory.isUnlocked(10)) {
+  if (window.GoofyStory && !window.GoofyStory.isUnlocked(15)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
@@ -10,7 +10,7 @@
     return;
   }
 
-  const LEVEL = window.LEVEL10;
+  const LEVEL = window.LEVEL15;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
@@ -19,26 +19,32 @@
 
   const VIEW_W = 460;
   const VIEW_H = 340;
-  // Chosen so the WHOLE arena fits on screen at once -- VISIBLE_HALF_W/H
-  // both end up bigger than half the world, so the clamp() in
-  // renderViewport's camera math collapses to a fixed center point instead
-  // of following either player around.
-  const ZOOM = 0.33;
-  const VISIBLE_HALF_W = (VIEW_W / 2) / ZOOM;
-  const VISIBLE_HALF_H = (VIEW_H / 2) / ZOOM;
+  // Chosen so the WHOLE arena fits on screen at once in phase 1 --
+  // VISIBLE_HALF_W/H (computed from whichever zoom is active -- see
+  // currentZoom()) both end up bigger than half the arena, so the
+  // clamp() in renderViewport's camera math collapses to a fixed center
+  // point instead of following either player around. Phase 2's chase
+  // hallway switches to CHASE_ZOOM, a normal 1:1 follow-cam, once the
+  // fight leaves the arena -- a zoomed-out view of an 80-tile corridor
+  // would make the chase unreadable.
+  const ZOOM = 0.4;
+  const CHASE_ZOOM = 1;
+  function currentZoom() {
+    return boss.phase2 ? CHASE_ZOOM : ZOOM;
+  }
+  function visibleHalfW() { return (VIEW_W / 2) / currentZoom(); }
+  function visibleHalfH() { return (VIEW_H / 2) / currentZoom(); }
 
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
 
-  // The boss: a giant armored knight, dark ruby and iron, with a sword
-  // roughly twice its own body width long. Every attack speed below is
-  // defined relative to PLAYER_SPEED, same convention as every monster
-  // elsewhere in this game.
-  const BOSS_RADIUS = 72;
-  const SWORD_LENGTH = 150;
-  const BOSS_CATCH_RADIUS = BOSS_RADIUS * 1.2;
+  // The boss: the Mutation from Level 12, grown to twice its old size and
+  // partly iced over. Every attack speed below is defined relative to
+  // PLAYER_SPEED, same convention as every monster elsewhere in this game.
+  const BOSS_RADIUS = 48;
+  const BOSS_CATCH_RADIUS = BOSS_RADIUS * 1.15;
 
-  const BOSS_IDLE_SPEED = PLAYER_SPEED * 0.35;
+  const BOSS_IDLE_SPEED = PLAYER_SPEED * 0.3;
   const BOSS_IDLE_MIN_MS = 700;
   // A grace window after the level first loads, before the boss's very
   // first attack -- gives players a moment to get oriented instead of
@@ -46,56 +52,67 @@
   const BOSS_INTRO_GRACE_MS = 3000;
   const BOSS_IDLE_MAX_MS = 1400;
 
-  // Phase 2 kicks in at half health: the rubies turn blue and start
-  // producing fire, and the whole boss moves 1.5x faster across every
-  // attack below -- see speedMult().
-  const PHASE2_HEALTH_THRESHOLD = 25;
-  const PHASE2_SPEED_MULT = 1.5;
+  // 1. Split: the mutation tears itself into two smaller copies -- one a
+  // slow lumbering 1.2x, the other a fast 1.9x -- that hunt independently
+  // until the attack's timer runs out and they collapse back into one.
+  const SPLIT_DURATION_MS = 9000;
+  const SPLIT_CLONE_RADIUS = BOSS_RADIUS * 0.72;
+  const SPLIT_SLOW_SPEED = PLAYER_SPEED * 1.2;
+  const SPLIT_FAST_SPEED = PLAYER_SPEED * 1.9;
 
-  // 1. Charge: one straight-line dash, sword pointed forward, 5x speed.
-  const CHARGE_SPEED_BASE = PLAYER_SPEED * 5;
-  const CHARGE_WINDUP_MS = 400;
-  const CHARGE_MAX_DASH_MS = 1400;
-  const CHARGE_RECOVER_MS = 500;
+  // 2. Icicle shower: fires a shard at the nearest player every
+  // ICICLE_FIRE_INTERVAL_MS for ICICLESHOOT_DURATION_MS straight, each one
+  // a straight-line shot at 2x speed from wherever the boss is standing.
+  const ICICLESHOOT_DURATION_MS = 5000;
+  const ICICLE_FIRE_INTERVAL_MS = 550;
+  const ICICLE_PROJECTILE_SPEED = PLAYER_SPEED * 2;
+  const ICICLE_HIT_RADIUS = 20;
 
-  // 2. Swordspin: the blade turns red hot and the boss slowly wanders the
-  // arena while swinging it fast in a full circle around itself.
-  const SWORDSPIN_DURATION_MS = 4500;
-  const SWORD_ANGULAR_SPEED_BASE = 9; // radians/second -- a bit over one full spin/sec
-  const SWORDSPIN_MOVE_SPEED_BASE = PLAYER_SPEED * 0.4;
-  const SWORD_HIT_WIDTH = 26;
+  // 3. Wall push: an ice wall rises along the arena's left edge, one gap
+  // (WALLPUSH_GAP_TILES tall, picked fresh each time) left open, and
+  // sweeps right at 1.5x player speed -- anyone it reaches outside the
+  // gap's row range is crushed.
+  const WALLPUSH_SPEED = PLAYER_SPEED * 1.5;
+  const WALLPUSH_GAP_TILES = 2;
+  const WALLPUSH_WARNING_MS = 900;
 
-  // 3. Floor tiles: a burst of broken floor shot outward in every direction
-  // at once, 3x speed, until each one hits a wall or leaves the arena.
-  const FLOORTILES_COUNT = 14;
-  const FLOORTILE_SPEED_BASE = PLAYER_SPEED * 3;
-  const FLOORTILE_HIT_RADIUS = 16;
+  // 4. Expand: the mutation plants itself at the arena's center and swells
+  // a growing hazard ring out from its body over EXPAND_DURATION_MS --
+  // EXPAND_MAX_RADIUS stays well short of the distance to any corner, so
+  // the corners are always safe no matter how far it grows.
+  const EXPAND_WINDUP_MS = 700;
+  const EXPAND_DURATION_MS = 6000;
+  const EXPAND_MAX_RADIUS = 350;
 
-  // 4. Tentacle sweep: tentacles extend all the way out and slowly swing
-  // around together, 1x speed at the tip -- ducking behind any wall
-  // corner still blocks a tentacle dead, same as the Ashen One.
-  const TENTACLESWEEP_DURATION_MS = 5000;
-  const TENTACLE_COUNT = 6;
-  const TENTACLE_REACH = 320;
-  const TENTACLE_SWEEP_LINEAR_SPEED_BASE = PLAYER_SPEED * 1;
-  const TENTACLE_HIT_WIDTH = 22;
+  // Torches: the only way to actually hurt this boss. One spawns
+  // somewhere on the open floor every TORCH_SPAWN_INTERVAL_MS as long as
+  // fewer than TORCH_MAX_LIVE are already down; walking onto one picks it
+  // up and lands TORCH_DAMAGE immediately.
+  const TORCH_SPAWN_INTERVAL_MS = 10000;
+  const TORCH_MAX_LIVE = 5;
+  const TORCH_DAMAGE = 2;
+  const TORCH_RESPAWN_MS = 8000; // phase 2's hallway points, after a pickup
+  const BOSS_MAX_HEALTH = 25;
 
-  const ATTACKS_PER_STUN = 5;
-  const STUN_DURATION_MS = 10000;
-
-  // The dynamite sticks players use against the boss: up to DYNAMITE_LIVE_COUNT
-  // sit on the map at once, respawning elsewhere the instant one goes off.
-  const DYNAMITE_LIVE_COUNT = 3;
-  const BOSS_MAX_HEALTH = 50;
-  const DYNAMITE_DAMAGE_STUNNED = 3;
-  const DYNAMITE_DAMAGE_NORMAL = 1;
-
-  // Once the boss is down, it freezes solid where it fell -- icicles form
-  // over this long before a blast of snow carries both of you off to the
-  // next level.
-  const FREEZE_CUTSCENE_MS = 4000;
-  const ICICLE_COUNT = 7;
-  const SNOW_COUNT = 90;
+  // Phase 2: at 15 HP the gate opens, a spike wall seals the retreat, and
+  // the boss permanently switches to chasing. Speed scales with how far
+  // ahead or behind the nearest player is down the corridor -- 1.25x at
+  // an even pace, 2x if they've pulled ahead, 0.8x if they've fallen
+  // behind, so neither sprinting nor dawdling is ever free.
+  const PHASE2_HEALTH_THRESHOLD = 15;
+  const CHASE_SPEED_BASE = PLAYER_SPEED * 1.25;
+  const CHASE_SPEED_AHEAD = PLAYER_SPEED * 2;
+  const CHASE_SPEED_BEHIND = PLAYER_SPEED * 0.8;
+  const CHASE_PACE_MARGIN = 40;
+  const CHASE_ICICLE_SPEED = PLAYER_SPEED * 2.5;
+  const CHASE_ICICLE_INTERVAL_MS = 650;
+  // The freeze item used to stop the boss dead; now it only costs it 20%
+  // of its current speed, in or out of the chase.
+  const FROZEN_SPEED_MULT = 0.8;
+  // A blast of water once the boss finally goes down, the drowning
+  // counterpart to every other boss's freeze/icicle cutscene.
+  const WATERWAVE_CUTSCENE_MS = 3000;
+  const WATER_PARTICLE_COUNT = 110;
 
   const RADAR_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
@@ -132,7 +149,8 @@
   maskCanvas.height = VIEW_H;
   const maskCtx = maskCanvas.getContext('2d');
   const hudBossEl = document.getElementById('hud-boss');
-  const hudDoorEl = document.getElementById('hud-door');
+  const hudTorchesEl = document.getElementById('hud-torches');
+  const hudPhaseEl = document.getElementById('hud-phase');
   const hudTimerEl = document.getElementById('hud-timer');
   const hudBestEl = document.getElementById('hud-best');
 
@@ -145,7 +163,7 @@
   const MINIMAP_W = 90;
 
   // ---- procedural audio (no asset files) ----
-  const MUSIC_KEY = 'goofy-horror-level10-music';
+  const MUSIC_KEY = 'goofy-horror-level15-music';
   let audioCtx = null;
   let musicMasterGain = null;
   let musicEnabled = localStorage.getItem(MUSIC_KEY) === '1';
@@ -156,6 +174,8 @@
   let bossBassFilter = null;
   let bossBassGain = null;
   let bossLeadGain = null;
+  let bossWellDelay = null;
+  let bossWellFeedback = null;
   let bossNoiseBuffer = null;
   let bossStep = 0;
   let bossPulseTimer = null;
@@ -219,8 +239,8 @@
 
     bossBassFilter = audioCtx.createBiquadFilter();
     bossBassFilter.type = 'lowpass';
-    bossBassFilter.frequency.value = 900;
-    bossBassFilter.Q.value = 0.7;
+    bossBassFilter.frequency.value = 420; // muffled, like it's rising up a stone shaft
+    bossBassFilter.Q.value = 0.6;
     bossBassGain = audioCtx.createGain();
     bossBassGain.gain.value = 1;
     bossBassFilter.connect(bossBassGain);
@@ -228,7 +248,24 @@
 
     bossLeadGain = audioCtx.createGain();
     bossLeadGain.gain.value = 1;
+
+    // A well-shaft echo: every drip/lead note repeats, fainter, four times
+    // on a slow feedback loop -- the one thing that makes this boss's
+    // theme read as "dwelling somewhere hollow and far down" rather than
+    // just another quiet minor-key riff.
+    bossWellDelay = audioCtx.createDelay(1);
+    bossWellDelay.delayTime.value = 0.34;
+    bossWellFeedback = audioCtx.createGain();
+    bossWellFeedback.gain.value = 0.46;
+    const wellDamp = audioCtx.createBiquadFilter();
+    wellDamp.type = 'lowpass';
+    wellDamp.frequency.value = 1800;
     bossLeadGain.connect(bossMusicGain);
+    bossLeadGain.connect(bossWellDelay);
+    bossWellDelay.connect(wellDamp);
+    wellDamp.connect(bossWellFeedback);
+    bossWellFeedback.connect(bossWellDelay);
+    bossWellFeedback.connect(bossMusicGain);
 
     bossNoiseBuffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * 0.08), audioCtx.sampleRate);
     const noiseData = bossNoiseBuffer.getChannelData(0);
@@ -238,15 +275,16 @@
     scheduleBossStep();
   }
 
-  // A different key, a different shape, and a galloping kick pattern
-  // instead of Level 5's -- a marching, regal theme for a knight rather
-  // than that one's frantic fire-demon riff.
-  const BOSS_NOTE = { D2: 73.42, F2: 87.31, G2: 98.0, A2: 110.0, Bb2: 116.54, C3: 130.81, D3: 146.83, F3: 174.61, G3: 196.0 };
+  // A hollow, dripping well-dweller theme -- low, sparse, mostly rests,
+  // in place of every other boss's busier riff. The well-echo delay above
+  // does most of the work; the notes themselves just need room for it to
+  // be heard.
+  const BOSS_NOTE = { D1: 36.71, F1: 43.65, G1: 49.0, A1: 55.0, C2: 65.41, D2: 73.42, F2: 87.31, G2: 98.0, A2: 110.0 };
   const BOSS_BASS_RIFF = [
-    BOSS_NOTE.D2, 0, BOSS_NOTE.F2, 0, BOSS_NOTE.G2, 0, BOSS_NOTE.D2, 0,
-    BOSS_NOTE.A2, 0, BOSS_NOTE.G2, 0, BOSS_NOTE.F2, 0, BOSS_NOTE.D2, 0,
+    BOSS_NOTE.D1, 0, 0, 0, 0, 0, BOSS_NOTE.F1, 0,
+    0, 0, BOSS_NOTE.G1, 0, 0, 0, 0, 0,
   ];
-  const BOSS_LEAD_PHRASE = [BOSS_NOTE.D3, BOSS_NOTE.F3, BOSS_NOTE.G3, BOSS_NOTE.F3, BOSS_NOTE.D3, BOSS_NOTE.C3, BOSS_NOTE.Bb2, BOSS_NOTE.A2];
+  const BOSS_LEAD_PHRASE = [BOSS_NOTE.D2, 0, BOSS_NOTE.A1, 0, BOSS_NOTE.C2, 0, BOSS_NOTE.G1, 0];
 
   function playBossBassNote(freq, t, dur, peak) {
     const osc = audioCtx.createOscillator();
@@ -280,49 +318,54 @@
     const osc = audioCtx.createOscillator();
     const env = audioCtx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(130, t);
-    osc.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+    osc.frequency.setValueAtTime(95, t);
+    osc.frequency.exponentialRampToValueAtTime(32, t + 0.3);
     env.gain.setValueAtTime(0.5, t);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
     osc.connect(env);
     env.connect(bossBassGain);
     osc.start(t);
-    osc.stop(t + 0.18);
+    osc.stop(t + 0.4);
   }
 
-  function playBossHat(t, peak) {
-    const src = audioCtx.createBufferSource();
-    src.buffer = bossNoiseBuffer;
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.value = 7000;
+  // A single glassy drip -- a short, high triangle blip that falls
+  // through the well-echo delay and repeats, fainter, trailing off into
+  // the dark. Replaces the usual hi-hat.
+  function playBossDrip(t, peak) {
+    const osc = audioCtx.createOscillator();
     const env = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1900 + Math.random() * 300, t);
+    osc.frequency.exponentialRampToValueAtTime(900, t + 0.09);
     env.gain.setValueAtTime(peak, t);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
-    src.connect(filter);
-    filter.connect(env);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    osc.connect(env);
     env.connect(bossLeadGain);
-    src.start(t);
+    osc.start(t);
+    osc.stop(t + 0.14);
   }
 
   function scheduleBossStep() {
     if (!audioCtx || !bossBassGain) return;
     if (boss.defeated) { bossPulseTimer = null; return; }
 
+    // Slow and sparse throughout -- a well-dweller doesn't rush, and the
+    // long rests are what let the echo actually be heard between hits.
     const healthFrac = bossHealthFrac();
-    const bpm = 84 + (1 - healthFrac) * 40;
+    const bpm = 58 + (1 - healthFrac) * 18;
     const stepDur = 60 / bpm / 4;
     const t = audioCtx.currentTime;
     const i = bossStep % 16;
     const bar = Math.floor(bossStep / 16) % 2;
 
     const bassNote = BOSS_BASS_RIFF[i];
-    if (bassNote) playBossBassNote(bassNote, t, stepDur * 1.8, 0.18 + (1 - healthFrac) * 0.07);
-    if (i === 0 || i === 6 || i === 8 || i === 12) playBossKick(t);
-    if (i % 2 === 1) playBossHat(t, 0.04 + (1 - healthFrac) * 0.02);
+    if (bassNote) playBossBassNote(bassNote, t, stepDur * 3.2, 0.22 + (1 - healthFrac) * 0.08);
+    if (i === 0 || i === 10) playBossKick(t);
+    if (i === 3 || i === 11 || i === 14) playBossDrip(t, 0.09 + (1 - healthFrac) * 0.04);
 
-    if (bar === 1 && i < 8) {
-      playBossLeadNote(BOSS_LEAD_PHRASE[i], t + stepDur * 0.15, stepDur * 1.6, 0.07);
+    if (bar === 1) {
+      const leadNote = BOSS_LEAD_PHRASE[i % BOSS_LEAD_PHRASE.length];
+      if (leadNote) playBossLeadNote(leadNote, t, stepDur * 2.4, 0.08);
     }
 
     bossStep++;
@@ -467,27 +510,6 @@
     osc.stop(start + 0.7);
   }
 
-  // Marks a phase transformation -- a stuttering two-tone flicker, the same
-  // cue Level 5's blink warning used, repurposed here for "it just changed."
-  function playPhaseShift() {
-    if (!audioCtx) return;
-    const start = audioCtx.currentTime;
-    for (let i = 0; i < 8; i++) {
-      const t = start + i * 0.09;
-      const osc = audioCtx.createOscillator();
-      osc.type = 'square';
-      osc.frequency.value = i % 2 === 0 ? 220 : 880;
-      const env = audioCtx.createGain();
-      env.gain.setValueAtTime(0.0001, t);
-      env.gain.exponentialRampToValueAtTime(0.16, t + 0.015);
-      env.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
-      osc.connect(env);
-      env.connect(audioCtx.destination);
-      osc.start(t);
-      osc.stop(t + 0.09);
-    }
-  }
-
   function playTentacleStrike() {
     if (!audioCtx) return;
     const start = audioCtx.currentTime;
@@ -502,24 +524,6 @@
     gain.connect(audioCtx.destination);
     osc.start(start);
     osc.stop(start + 0.2);
-  }
-
-  // A heavy ringing clang -- the sword striking the ground on a charge's
-  // recovery beat, distinct from every blast/chime cue above.
-  function playSwordClang() {
-    if (!audioCtx) return;
-    const start = audioCtx.currentTime;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(1400, start);
-    osc.frequency.exponentialRampToValueAtTime(300, start + 0.3);
-    gain.gain.setValueAtTime(0.22, start);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.4);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(start);
-    osc.stop(start + 0.45);
   }
 
   function playWinJingle() {
@@ -548,12 +552,13 @@
     }
   }
 
-  // A rising, airy wind howl for the blast of snow that carries both
-  // players off at the end of the freeze cutscene.
+  // A rising, airy rush for the wave of water that carries both players
+  // off at the end of the drowning cutscene -- the same filtered-sweep
+  // shape a wind howl would use, just as fitting for a flood.
   function playSnowGust() {
     if (!audioCtx) return;
     const start = audioCtx.currentTime;
-    const dur = FREEZE_CUTSCENE_MS / 1000;
+    const dur = WATERWAVE_CUTSCENE_MS / 1000;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'sawtooth';
@@ -672,13 +677,6 @@
     return FLOOR_SHADES[idx];
   }
 
-  const DIRT_SHADES = ['#5a4127', '#63482b', '#4e3a22', '#6b4f30'];
-  function dirtShade(x, y) {
-    const h = Math.imul(x + 91, 374761393) ^ Math.imul(y - 17, 668265263);
-    const idx = ((h ^ (h >>> 13)) >>> 0) % DIRT_SHADES.length;
-    return DIRT_SHADES[idx];
-  }
-
   function shade(hex, amt) {
     const n = parseInt(hex.slice(1), 16);
     const clampC = (v) => Math.max(0, Math.min(255, Math.round(v)));
@@ -717,7 +715,7 @@
   }
 
   // ---- game state ----
-  const BEST_TIME_KEY = 'goofy-horror-best-level10';
+  const BEST_TIME_KEY = 'goofy-horror-best-level15';
   let bestMs = (() => {
     const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
     return Number.isFinite(v) ? v : null;
@@ -734,20 +732,18 @@
     return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
   }
 
-  const DYNAMITE_MIN_PLAYER_DIST = 100;
-  const DYNAMITE_MIN_PLAYER_DIST_LOW = 55;
-  let dynamiteSticks = []; // DYNAMITE_LIVE_COUNT live at once: [{x, y, seed}]
   let bossHealth = BOSS_MAX_HEALTH;
-  let doorUnlocked = false;
-  let gameState = 'playing'; // 'playing' | 'freezing' | 'wiped'
+  let gameState = 'playing'; // 'playing' | 'drowning' | 'wiped'
   let catchFlash = 0;
 
   function bossHealthFrac() {
     return clamp(bossHealth / BOSS_MAX_HEALTH, 0, 1);
   }
 
-  function speedMult() {
-    return boss.phase2 ? PHASE2_SPEED_MULT : 1;
+  // The freeze item used to stop the boss dead; now it only costs 20% of
+  // whatever speed it's currently moving at, in or out of the chase.
+  function speedMult(now) {
+    return now < boss.frozenUntil ? FROZEN_SPEED_MULT : 1;
   }
 
   function makePlayer(spawn, color) {
@@ -766,9 +762,10 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
-  // The boss: one giant armored knight. A single object, same as Level 5's
-  // boss -- there's only ever one, so no need for the multi-monster array
-  // machinery the other levels use.
+  // The boss: one giant mutation. A single object, same convention as
+  // Level 5 and Level 10's bosses -- there's only ever one "real" boss
+  // entity, even while it's torn itself into two clones for the split
+  // attack (those live in a separate array below).
   function makeBoss() {
     return {
       x: 0,
@@ -777,57 +774,72 @@
       seed: Math.random() * 100,
       lookDir: { x: 1, y: 0 },
       defeated: false,
+
+      // Phase 2: once health drops to 15, the gate opens, a spike wall
+      // seals off the retreat, and the boss permanently switches to
+      // 'chase' -- no more picking from the phase-1 attack list.
       phase2: false,
+      spikeWallActive: false,
+      spikeWallY: 0,
 
       frozenUntil: 0,
 
       // ---- attack cycle ----
-      // 'idle' | 'charge' | 'swordspin' | 'floortiles' | 'tentaclesweep' | 'stunned'
+      // 'idle' | 'split' | 'iceshoot' | 'wallpush' | 'expand' | 'chase'
       phase: 'idle',
       phaseStartedAt: 0,
       nextIdleUntil: 0,
       attackCount: 0,
       lastAttack: null,
 
-      chargeDir: { x: 1, y: 0 },
-      chargeSubPhase: 'windup', // 'windup' | 'dash' | 'recover'
-      chargeSubStartedAt: 0,
+      splitUntil: 0,
 
-      swordAngle: 0,
-      swordSpinUntil: 0,
-      wanderDir: { x: 1, y: 0 },
-      wanderChangeAt: 0,
+      nextIcicleAt: 0,
+      iceshootUntil: 0,
 
-      tentacleAngles: [],
-      sweepRotation: 0,
-      sweepUntil: 0,
-      tentacleReaches: [],
+      wallSubPhase: 'warning', // 'warning' | 'sweeping'
+      wallStartedAt: 0,
+      wallX: 0,
+      wallGapY0: 0,
+      wallGapY1: 0,
+
+      expandSubPhase: 'windup', // 'windup' | 'growing'
+      expandStartedAt: 0,
+      expandRadius: 0,
     };
   }
 
   const boss = makeBoss();
-  let floorTiles = []; // floortiles attack: [{x, y, dirX, dirY}]
-  let snowParticles = []; // the freeze cutscene's blowing snow: [{x, y, vx, vy, size, drift}]
-  let freezeStartedAt = 0;
+  let clones = []; // split attack: [{x, y, radius, speed, seed, lookDir}]
+  let icicles = []; // icicle shower / chase: [{x, y, dirX, dirY, seed, speed}]
+  let waterParticles = []; // the drowning cutscene's foam: [{x, y, vx, vy, size, drift}]
+  let freezeStartedAt = 0; // kept as the generic cutscene start-time field
+
+  // Torches: the only way to actually hurt this boss. In phase 1 one
+  // spawns somewhere on the open floor every TORCH_SPAWN_INTERVAL_MS as
+  // long as fewer than TORCH_MAX_LIVE are already down; in phase 2 they
+  // spawn at the hallway's fixed points instead (see updateTorches).
+  let torches = []; // [{x, y, seed}]
+  let nextTorchSpawnAt = 0;
+  let hallwayTorchState = []; // [{x, y, nextAt}]
 
   const OPEN_FLOOR_TILES = (() => {
     const list = [];
-    for (let y = 1; y < ROWS - 1; y++) {
+    for (let y = 1; y < LEVEL.arenaRows - 1; y++) {
       for (let x = 1; x < COLS - 1; x++) {
-        const ch = LEVEL.grid[y][x];
-        if (ch === '.' || ch === 'T') list.push({ x, y });
+        if (LEVEL.grid[y][x] === 'N') list.push({ x, y });
       }
     }
     return list;
   })();
 
-  function spawnDynamite() {
-    const minDist = DYNAMITE_MIN_PLAYER_DIST_LOW + bossHealthFrac() * (DYNAMITE_MIN_PLAYER_DIST - DYNAMITE_MIN_PLAYER_DIST_LOW);
+  function spawnTorch() {
+    const MIN_PLAYER_DIST = 90;
     for (let tries = 0; tries < 30; tries++) {
       const t = OPEN_FLOOR_TILES[Math.floor(Math.random() * OPEN_FLOOR_TILES.length)];
       const c = tileCenter(t.x, t.y);
-      if (players.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < minDist)) continue;
-      dynamiteSticks.push({ x: c.x, y: c.y, seed: Math.random() * 1000 });
+      if (players.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < MIN_PLAYER_DIST)) continue;
+      torches.push({ x: c.x, y: c.y, seed: Math.random() * 1000 });
       return;
     }
   }
@@ -863,17 +875,18 @@
     boss.frozenUntil = 0;
     boss.defeated = false;
     boss.phase2 = false;
+    boss.spikeWallActive = false;
     boss.phase = 'idle'; boss.phaseStartedAt = 0; boss.nextIdleUntil = performance.now() + BOSS_INTRO_GRACE_MS;
     boss.attackCount = 0; boss.lastAttack = null;
-    boss.sweepRotation = 0; boss.swordAngle = 0;
-    floorTiles = [];
-    snowParticles = [];
+    clones = [];
+    icicles = [];
+    waterParticles = [];
     freezeStartedAt = 0;
 
     bossHealth = BOSS_MAX_HEALTH;
-    dynamiteSticks = [];
-    for (let i = 0; i < DYNAMITE_LIVE_COUNT; i++) spawnDynamite();
-    doorUnlocked = false;
+    torches = [];
+    nextTorchSpawnAt = performance.now() + TORCH_SPAWN_INTERVAL_MS;
+    hallwayTorchState = LEVEL.hallwayTorchPoints.map((p) => ({ x: p.x, y: p.y, nextAt: 0 }));
 
     if (audioCtx && bossPulseTimer === null) { bossStep = 0; scheduleBossStep(); }
 
@@ -895,10 +908,13 @@
   resetLevel();
 
   // ---- player movement & collision ----
+  // 'G' (the phase-2 gate) is a solid wall until the boss drops to 15 HP
+  // and the chase begins -- it opens for players and the boss at the
+  // same moment.
   function isWallForPlayer(tx, ty) {
     const ch = tileChar(tx, ty);
     if (ch === '#') return true;
-    if (ch === 'D') return !doorUnlocked;
+    if (ch === 'G') return !boss.phase2;
     return false;
   }
 
@@ -980,7 +996,7 @@
   function minimapColorFor(ch) {
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
-    if (ch === 'T') return '#5a4127';
+    if (ch === 'N') return '#c9d8e0';
     return '#3c3c46';
   }
 
@@ -1004,20 +1020,39 @@
     });
   }
 
+  // The minimap only ever shows the arena -- once phase 2 starts the
+  // fight leaves it for a long straight corridor a traditional top-down
+  // minimap doesn't help with, so it collapses to a plain "CHASE" plate
+  // in the same footprint instead (keeps the stamina bar below it from
+  // jumping around).
   function drawMinimap(vx, now) {
-    const mh = Math.round(MINIMAP_W * ROWS / COLS);
+    const arenaH = LEVEL.arenaRows * TILE;
+    const mh = Math.round(MINIMAP_W * LEVEL.arenaRows / COLS);
     const mx = vx + 8, my = 8;
     ctx.save();
     ctx.fillStyle = 'rgba(5,5,8,0.65)';
     ctx.fillRect(mx - 3, my - 3, MINIMAP_W + 6, mh + 6);
+
+    if (boss.phase2) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(mx + 0.5, my + 0.5, MINIMAP_W - 1, mh - 1);
+      ctx.fillStyle = 'rgba(200,60,60,0.85)';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('CHASE', mx + MINIMAP_W / 2, my + mh / 2 + 3);
+      ctx.restore();
+      return mh;
+    }
+
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(exploredCanvas, mx, my, MINIMAP_W, mh);
+    ctx.drawImage(exploredCanvas, 0, 0, COLS, LEVEL.arenaRows, mx, my, MINIMAP_W, mh);
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(mx + 0.5, my + 0.5, MINIMAP_W - 1, mh - 1);
     players.forEach((pl) => {
       const px = mx + (pl.x / WORLD_W) * MINIMAP_W;
-      const py = my + (pl.y / WORLD_H) * mh;
+      const py = my + (pl.y / arenaH) * mh;
       ctx.beginPath();
       ctx.arc(px, py, 2.2, 0, Math.PI * 2);
       ctx.fillStyle = pl.color;
@@ -1025,23 +1060,23 @@
     });
     if (!boss.defeated) {
       const pulse = 0.6 + 0.4 * Math.sin(now / 180);
-      dynamiteSticks.forEach((d) => {
-        const dmx = mx + (d.x / WORLD_W) * MINIMAP_W;
-        const dmy = my + (d.y / WORLD_H) * mh;
+      torches.forEach((tr) => {
+        const tmx = mx + (tr.x / WORLD_W) * MINIMAP_W;
+        const tmy = my + (tr.y / arenaH) * mh;
         ctx.beginPath();
-        ctx.arc(dmx, dmy, 2.6, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,200,80,${pulse})`;
-        ctx.shadowColor = '#ffcf6a';
+        ctx.arc(tmx, tmy, 2.4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,160,60,${pulse})`;
+        ctx.shadowColor = '#ff8c3c';
         ctx.shadowBlur = 4;
         ctx.fill();
       });
     }
 
     const bx = mx + (boss.x / WORLD_W) * MINIMAP_W;
-    const by = my + (boss.y / WORLD_H) * mh;
+    const by = my + (boss.y / arenaH) * mh;
     ctx.beginPath();
     ctx.arc(bx, by, 3.2, 0, Math.PI * 2);
-    ctx.fillStyle = boss.phase2 ? '#4ab0ff' : '#ff5a2a';
+    ctx.fillStyle = '#9a4ac9';
     ctx.shadowColor = ctx.fillStyle;
     ctx.shadowBlur = 5;
     ctx.fill();
@@ -1080,9 +1115,8 @@
 
     ctx.font = '11px monospace';
     ctx.textAlign = 'center';
-    ctx.fillStyle = boss.defeated ? '#8a8578' : boss.phase === 'stunned' ? '#8fd6ff' : boss.phase2 ? '#6ac8ff' : '#e8b06a';
-    const label = boss.defeated ? 'BOSS — DEFEATED' : boss.phase === 'stunned'
-      ? `BOSS — STUNNED (${bossHealth}/${BOSS_MAX_HEALTH})` : `BOSS (${bossHealth}/${BOSS_MAX_HEALTH})${boss.phase2 ? ' — PHASE 2' : ''}`;
+    ctx.fillStyle = boss.defeated ? '#8a8578' : '#c08ae8';
+    const label = boss.defeated ? 'BOSS — DEFEATED' : `BOSS (${bossHealth}/${BOSS_MAX_HEALTH})`;
     ctx.fillText(label, bx + barW / 2, by - 4);
 
     ctx.fillStyle = '#1a1a1c';
@@ -1093,15 +1127,9 @@
       ctx.fillRect(bx, by, barW * frac, barH);
     } else {
       const grad = ctx.createLinearGradient(bx, 0, bx + barW, 0);
-      if (boss.phase2) {
-        grad.addColorStop(0, '#6ac8ff');
-        grad.addColorStop(0.5, '#2a6bd6');
-        grad.addColorStop(1, '#173a7a');
-      } else {
-        grad.addColorStop(0, '#ff5a6a');
-        grad.addColorStop(0.5, '#b01c2a');
-        grad.addColorStop(1, '#5a0f16');
-      }
+      grad.addColorStop(0, '#c08ae8');
+      grad.addColorStop(0.5, '#7a3a9a');
+      grad.addColorStop(1, '#3a1452');
       ctx.fillStyle = grad;
       ctx.fillRect(bx, by, barW * frac, barH);
 
@@ -1130,11 +1158,11 @@
   }
 
   function nearestUnpressedButton(x, y) {
-    if (boss.defeated || dynamiteSticks.length === 0) return null;
+    if (boss.defeated || torches.length === 0) return null;
     let best = null, bestD = Infinity;
-    dynamiteSticks.forEach((d) => {
-      const dist = Math.hypot(x - d.x, y - d.y);
-      if (dist < bestD) { bestD = dist; best = d; }
+    torches.forEach((tr) => {
+      const d = Math.hypot(x - tr.x, y - tr.y);
+      if (d < bestD) { bestD = d; best = tr; }
     });
     return best;
   }
@@ -1226,47 +1254,64 @@
     });
   }
 
-  // Walking onto a dynamite stick sets it off against the boss immediately.
-  // Up to DYNAMITE_LIVE_COUNT are live at once; a fresh one spawns elsewhere
-  // the instant one goes off, until the boss is out of health. The damage
-  // depends on whether it's stunned right now.
-  function updateDynamite(now) {
+  function updateTorches(now) {
     if (boss.defeated) return;
+
+    if (boss.phase2) {
+      hallwayTorchState.forEach((pt) => {
+        if (now < pt.nextAt) return;
+        const occupied = torches.some((tr) => tr.x === pt.x * TILE + TILE / 2 && tr.y === pt.y * TILE + TILE / 2);
+        if (occupied) return;
+        torches.push({ x: pt.x * TILE + TILE / 2, y: pt.y * TILE + TILE / 2, seed: Math.random() * 1000 });
+        pt.nextAt = Infinity; // cleared again once this torch is picked up
+      });
+    } else if (now >= nextTorchSpawnAt) {
+      if (torches.length < TORCH_MAX_LIVE) spawnTorch();
+      nextTorchSpawnAt = now + TORCH_SPAWN_INTERVAL_MS;
+    }
+
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
-      for (let i = dynamiteSticks.length - 1; i >= 0; i--) {
-        const d = dynamiteSticks[i];
-        const dt_ = worldToTile(d.x, d.y);
-        if (dt_.x !== t.x || dt_.y !== t.y) continue;
-        dynamiteSticks.splice(i, 1);
-        const stunned = boss.phase === 'stunned';
-        const dmg = stunned ? DYNAMITE_DAMAGE_STUNNED : DYNAMITE_DAMAGE_NORMAL;
-        bossHealth = Math.max(0, bossHealth - dmg);
-        spawnFloatingText(d.x, d.y, stunned ? `BOOM! -${DYNAMITE_DAMAGE_STUNNED}` : `boom -${DYNAMITE_DAMAGE_NORMAL}`);
+      for (let i = torches.length - 1; i >= 0; i--) {
+        const tr = torches[i];
+        const trT = worldToTile(tr.x, tr.y);
+        if (trT.x !== t.x || trT.y !== t.y) continue;
+        torches.splice(i, 1);
+
+        if (boss.phase2) {
+          const pt = hallwayTorchState.find((hp) => hp.x === trT.x && hp.y === trT.y);
+          if (pt) pt.nextAt = now + TORCH_RESPAWN_MS;
+        }
+
+        bossHealth = Math.max(0, bossHealth - TORCH_DAMAGE);
+        spawnFloatingText(tr.x, tr.y, `-${TORCH_DAMAGE}`);
         playBombBlast();
 
         if (!boss.phase2 && bossHealth > 0 && bossHealth <= PHASE2_HEALTH_THRESHOLD) {
-          boss.phase2 = true;
-          spawnFloatingText(boss.x, boss.y, 'PHASE 2');
-          playPhaseShift();
+          enterPhase2(now);
         }
 
         if (bossHealth <= 0) {
           boss.defeated = true;
-          doorUnlocked = true;
-          gameState = 'freezing';
+          gameState = 'drowning';
           freezeStartedAt = now;
-          spawnSnow();
+          spawnWaterWave();
           playIceCrack();
           playSnowGust();
-        } else {
-          spawnDynamite();
         }
       }
     });
   }
 
   // ---- boss AI ----
+  // 'S' (the spawn safe zone) blocks the boss and its clones even though
+  // it's open floor for players -- that's what keeps a respawn from
+  // walking straight into an attack already in progress.
+  function isWallForBoss(tx, ty) {
+    const ch = tileChar(tx, ty);
+    return isWallForPlayer(tx, ty) || ch === 'S';
+  }
+
   // A boss-sized version of the player's canStandAt.
   function canBossStandAt(x, y) {
     const r = boss.radius * 0.7;
@@ -1276,29 +1321,25 @@
     ];
     return corners.every(([cx, cy]) => {
       const t = worldToTile(cx, cy);
-      return !isWallForPlayer(t.x, t.y);
+      return !isWallForBoss(t.x, t.y);
     });
   }
 
-  const ALL_ATTACKS = ['charge', 'swordspin', 'floortiles', 'tentaclesweep'];
+  const ALL_ATTACKS = ['split', 'iceshoot', 'wallpush', 'expand'];
+  const CLONE_CATCH_RADIUS = SPLIT_CLONE_RADIUS * 1.2;
+  let wallPassedPlayers = new Set();
 
   function nearestPlayer(x, y) {
     return players.reduce((a, b) => (Math.hypot(x - a.x, y - a.y) <= Math.hypot(x - b.x, y - b.y) ? a : b));
   }
 
-  // Every ATTACKS_PER_STUN'th attack, the boss keels over stunned instead
-  // of picking the next one -- the window a dynamite hit actually costs it
-  // real health (3 points instead of 1).
+  // This boss has no stun window -- its only real damage source is
+  // torches, on their own independent spawn timer, so finishing an
+  // attack just means picking the next one.
   function finishAttack(now) {
     boss.attackCount++;
-    if (boss.attackCount % ATTACKS_PER_STUN === 0) {
-      boss.phase = 'stunned';
-      boss.phaseStartedAt = now;
-      playBossStunned();
-    } else {
-      boss.phase = 'idle';
-      boss.nextIdleUntil = now + BOSS_IDLE_MIN_MS + Math.random() * (BOSS_IDLE_MAX_MS - BOSS_IDLE_MIN_MS);
-    }
+    boss.phase = 'idle';
+    boss.nextIdleUntil = now + BOSS_IDLE_MIN_MS + Math.random() * (BOSS_IDLE_MAX_MS - BOSS_IDLE_MIN_MS);
   }
 
   function pickAttack() {
@@ -1306,14 +1347,17 @@
     return choices[Math.floor(Math.random() * choices.length)];
   }
 
-  function startChargeDash(now) {
-    const target = nearestPlayer(boss.x, boss.y);
-    const dx = target.x - boss.x, dy = target.y - boss.y;
-    const d = Math.hypot(dx, dy) || 1;
-    boss.chargeDir = { x: dx / d, y: dy / d };
-    boss.lookDir = boss.chargeDir;
-    boss.chargeSubPhase = 'windup';
-    boss.chargeSubStartedAt = now;
+  // A generic, radius-aware version of canBossStandAt -- used for the
+  // (smaller) split clones.
+  function canEntityStandAt(x, y, r) {
+    const corners = [
+      [x - r, y - r], [x + r, y - r],
+      [x - r, y + r], [x + r, y + r],
+    ];
+    return corners.every(([cx, cy]) => {
+      const t = worldToTile(cx, cy);
+      return !isWallForBoss(t.x, t.y);
+    });
   }
 
   function startAttack(kind, now) {
@@ -1321,28 +1365,35 @@
     boss.phaseStartedAt = now;
     boss.lastAttack = kind;
 
-    if (kind === 'charge') {
-      startChargeDash(now);
-      playBossWindup();
-    } else if (kind === 'swordspin') {
-      boss.swordAngle = 0;
-      boss.swordSpinUntil = now + SWORDSPIN_DURATION_MS;
+    if (kind === 'split') {
+      boss.splitUntil = now + SPLIT_DURATION_MS;
       const a = Math.random() * Math.PI * 2;
-      boss.wanderDir = { x: Math.cos(a), y: Math.sin(a) };
-      boss.wanderChangeAt = now + 600 + Math.random() * 500;
+      clones = [
+        { x: boss.x, y: boss.y, radius: SPLIT_CLONE_RADIUS, speed: SPLIT_SLOW_SPEED, seed: Math.random() * 100, lookDir: { x: Math.cos(a), y: Math.sin(a) } },
+        { x: boss.x, y: boss.y, radius: SPLIT_CLONE_RADIUS, speed: SPLIT_FAST_SPEED, seed: Math.random() * 100, lookDir: { x: -Math.cos(a), y: -Math.sin(a) } },
+      ];
       playBossWindup();
-    } else if (kind === 'floortiles') {
-      floorTiles = [];
-      for (let i = 0; i < FLOORTILES_COUNT; i++) {
-        const a = (i / FLOORTILES_COUNT) * Math.PI * 2 + Math.random() * 0.2;
-        floorTiles.push({ x: boss.x, y: boss.y, dirX: Math.cos(a), dirY: Math.sin(a) });
-      }
+    } else if (kind === 'iceshoot') {
+      boss.iceshootUntil = now + ICICLESHOOT_DURATION_MS;
+      boss.nextIcicleAt = now;
+      icicles = [];
       playBossWindup();
-    } else if (kind === 'tentaclesweep') {
-      boss.tentacleAngles = Array.from({ length: TENTACLE_COUNT }, (_, i) => (i / TENTACLE_COUNT) * Math.PI * 2);
-      boss.sweepRotation = 0;
-      boss.sweepUntil = now + TENTACLESWEEP_DURATION_MS;
-      boss.tentacleReaches = boss.tentacleAngles.map(() => TENTACLE_REACH);
+    } else if (kind === 'wallpush') {
+      boss.wallSubPhase = 'warning';
+      boss.wallStartedAt = now;
+      boss.wallX = TILE;
+      const gapRows = Math.max(1, ROWS - 2 - WALLPUSH_GAP_TILES);
+      const gapStart = 1 + Math.floor(Math.random() * gapRows);
+      boss.wallGapY0 = gapStart;
+      boss.wallGapY1 = gapStart + WALLPUSH_GAP_TILES;
+      wallPassedPlayers = new Set();
+      playBossWindup();
+    } else if (kind === 'expand') {
+      boss.x = WORLD_W / 2;
+      boss.y = WORLD_H / 2;
+      boss.expandSubPhase = 'windup';
+      boss.expandStartedAt = now;
+      boss.expandRadius = 0;
       playBossWindup();
     }
   }
@@ -1356,138 +1407,208 @@
     const dx = target.x - boss.x, dy = target.y - boss.y;
     const d = Math.hypot(dx, dy);
     if (d < 1) return;
-    const step = BOSS_IDLE_SPEED * speedMult() * dt;
+    const step = BOSS_IDLE_SPEED * speedMult(now) * dt;
     const nx = boss.x + (dx / d) * step, ny = boss.y + (dy / d) * step;
     if (canBossStandAt(nx, boss.y)) boss.x = nx;
     if (canBossStandAt(boss.x, ny)) boss.y = ny;
     boss.lookDir = { x: dx / d, y: dy / d };
   }
 
-  function updateBossCharge(now, dt) {
-    const elapsed = now - boss.chargeSubStartedAt;
-    if (boss.chargeSubPhase === 'windup') {
-      if (elapsed >= CHARGE_WINDUP_MS) { boss.chargeSubPhase = 'dash'; boss.chargeSubStartedAt = now; }
+  // 1. Split: two clones hunt independently at their own fixed speeds
+  // until the timer runs out, then collapse back into one boss at their
+  // midpoint. The main boss body isn't drawn and can't be touched while
+  // this is active -- the clones are the only threat.
+  function updateBossSplit(now, dt) {
+    if (now >= boss.splitUntil) {
+      if (clones.length) {
+        boss.x = clones.reduce((s, c) => s + c.x, 0) / clones.length;
+        boss.y = clones.reduce((s, c) => s + c.y, 0) / clones.length;
+      }
+      clones = [];
+      finishAttack(now);
       return;
     }
-    if (boss.chargeSubPhase === 'dash') {
-      const step = CHARGE_SPEED_BASE * speedMult() * dt;
-      const nx = boss.x + boss.chargeDir.x * step;
-      const ny = boss.y + boss.chargeDir.y * step;
-      const blockedX = !canBossStandAt(nx, boss.y);
-      const blockedY = !canBossStandAt(boss.x, ny);
-      if (!blockedX) boss.x = nx;
-      if (!blockedY) boss.y = ny;
-      if ((blockedX && blockedY) || elapsed >= CHARGE_MAX_DASH_MS) {
-        boss.chargeSubPhase = 'recover';
-        boss.chargeSubStartedAt = now;
-        playSwordClang();
+    clones.forEach((c) => {
+      const target = nearestPlayer(c.x, c.y);
+      const dx = target.x - c.x, dy = target.y - c.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 1) {
+        const step = c.speed * speedMult(now) * dt;
+        const nx = c.x + (dx / d) * step, ny = c.y + (dy / d) * step;
+        if (canEntityStandAt(nx, c.y, c.radius * 0.7)) c.x = nx;
+        if (canEntityStandAt(c.x, ny, c.radius * 0.7)) c.y = ny;
+        c.lookDir = { x: dx / d, y: dy / d };
+      }
+      players.forEach((p) => {
+        if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
+        if (Math.hypot(p.x - c.x, p.y - c.y) < CLONE_CATCH_RADIUS) triggerCaught(p, now);
+      });
+    });
+  }
+
+  // Moves and collides every icicle currently in flight, regardless of
+  // which attack (or phase) fired it -- each carries its own speed, so
+  // phase 1's shower and phase 2's continuous chase fire can coexist with
+  // the same physics. Runs every frame so nothing already airborne just
+  // freezes in place the instant its attack ends.
+  function updateIciclesPhysics(now, dt) {
+    for (let i = icicles.length - 1; i >= 0; i--) {
+      const ic = icicles[i];
+      const nx = ic.x + ic.dirX * ic.speed * dt;
+      const ny = ic.y + ic.dirY * ic.speed * dt;
+      const t = worldToTile(nx, ny);
+      if (tileChar(t.x, t.y) === '#' || nx < 0 || ny < 0 || nx > WORLD_W || ny > WORLD_H) {
+        icicles.splice(i, 1);
+        continue;
+      }
+      ic.x = nx; ic.y = ny;
+      players.forEach((p) => {
+        if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
+        if (Math.hypot(p.x - ic.x, p.y - ic.y) < ICICLE_HIT_RADIUS) triggerCaught(p, now);
+      });
+    }
+  }
+
+  // 2. Icicle shower: fires one shard at each player's current position
+  // every ICICLE_FIRE_INTERVAL_MS while the window is open, then finishes
+  // once the window closes -- anything still airborne keeps flying and
+  // colliding via updateIciclesPhysics regardless.
+  function updateBossIceshoot(now, dt) {
+    if (now < boss.iceshootUntil && now >= boss.nextIcicleAt) {
+      players.forEach((p) => {
+        const dx = p.x - boss.x, dy = p.y - boss.y;
+        const d = Math.hypot(dx, dy) || 1;
+        icicles.push({ x: boss.x, y: boss.y, dirX: dx / d, dirY: dy / d, seed: Math.random() * 100, speed: ICICLE_PROJECTILE_SPEED });
+      });
+      boss.nextIcicleAt = now + ICICLE_FIRE_INTERVAL_MS;
+      playTentacleStrike();
+    }
+    if (now >= boss.iceshootUntil) finishAttack(now);
+  }
+
+  // 3. Wall push: a solid line sweeps right from the left wall at 1.5x
+  // player speed. The gap's row range never moves; a player is crushed
+  // the instant the sweeping line reaches their column while they're
+  // outside it.
+  function updateBossWallpush(now, dt) {
+    if (boss.wallSubPhase === 'warning') {
+      if (now - boss.wallStartedAt >= WALLPUSH_WARNING_MS) {
+        boss.wallSubPhase = 'sweeping';
       }
       return;
     }
-    if (boss.chargeSubPhase === 'recover' && elapsed >= CHARGE_RECOVER_MS) {
+    boss.wallX += WALLPUSH_SPEED * speedMult(now) * dt;
+    players.forEach((p) => {
+      if (wallPassedPlayers.has(p) || p.caught || now < p.invulnerableUntil) return;
+      if (boss.wallX < p.x) return;
+      wallPassedPlayers.add(p);
+      const t = worldToTile(p.x, p.y);
+      if (t.y < boss.wallGapY0 || t.y >= boss.wallGapY1) {
+        if (!isHidden(p, now)) triggerCaught(p, now);
+      }
+    });
+    if (boss.wallX > WORLD_W + TILE) finishAttack(now);
+  }
+
+  // 4. Expand: the boss plants itself at the arena center and a hazard
+  // ring grows out from its body -- EXPAND_MAX_RADIUS is well short of
+  // the distance to any corner, so the corners always stay safe.
+  function updateBossExpand(now, dt) {
+    if (boss.expandSubPhase === 'windup') {
+      if (now - boss.expandStartedAt >= EXPAND_WINDUP_MS) {
+        boss.expandSubPhase = 'growing';
+        boss.expandStartedAt = now;
+      }
+      return;
+    }
+    const elapsed = now - boss.expandStartedAt;
+    boss.expandRadius = Math.min(EXPAND_MAX_RADIUS, EXPAND_MAX_RADIUS * (elapsed / EXPAND_DURATION_MS));
+    players.forEach((p) => {
+      if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
+      if (Math.hypot(p.x - boss.x, p.y - boss.y) < boss.expandRadius) triggerCaught(p, now);
+    });
+    if (elapsed >= EXPAND_DURATION_MS) {
+      boss.expandRadius = 0;
       finishAttack(now);
     }
   }
 
-  function updateBossSwordspin(now, dt) {
-    if (now >= boss.swordSpinUntil) { finishAttack(now); return; }
-    const mult = speedMult();
-    boss.swordAngle += dt * SWORD_ANGULAR_SPEED_BASE * mult;
+  // Phase 2: triggered once, at 15 HP. The gate opens, a spike wall seals
+  // off the retreat behind wherever the boss currently is, and it locks
+  // into 'chase' for good -- no more picking from the attack list.
+  function enterPhase2(now) {
+    boss.phase2 = true;
+    boss.phase = 'chase';
+    boss.spikeWallActive = true;
+    boss.spikeWallY = boss.y - 60;
+    boss.nextIcicleAt = now + CHASE_ICICLE_INTERVAL_MS;
+    clones = [];
+    spawnFloatingText(boss.x, boss.y, 'IT TEARS THE WALL OPEN');
+    playIceCrack();
+  }
 
-    if (now >= boss.wanderChangeAt) {
-      const a = Math.random() * Math.PI * 2;
-      boss.wanderDir = { x: Math.cos(a), y: Math.sin(a) };
-      boss.wanderChangeAt = now + 600 + Math.random() * 500;
+  // The retreat-sealing spike wall: a stationary line just north of
+  // wherever the boss was standing when phase 2 began, damaging anyone
+  // who touches it. It only matters until the boss itself has committed
+  // to the hallway -- once it's past the gate, there's nothing left to
+  // sneak around it for.
+  function updateSpikeWall(now) {
+    if (!boss.spikeWallActive) return;
+    if (boss.y >= LEVEL.hallway.y0 * TILE) {
+      boss.spikeWallActive = false;
+      return;
     }
-    const step = SWORDSPIN_MOVE_SPEED_BASE * mult * dt;
-    const nx = boss.x + boss.wanderDir.x * step, ny = boss.y + boss.wanderDir.y * step;
-    if (canBossStandAt(nx, boss.y)) boss.x = nx; else boss.wanderDir.x *= -1;
-    if (canBossStandAt(boss.x, ny)) boss.y = ny; else boss.wanderDir.y *= -1;
-    boss.lookDir = boss.wanderDir;
-
-    const dirX = Math.cos(boss.swordAngle), dirY = Math.sin(boss.swordAngle);
+    const BAND = 16;
     players.forEach((p) => {
       if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
-      const relX = p.x - boss.x, relY = p.y - boss.y;
-      const along = relX * dirX + relY * dirY;
-      if (along < 0 || along > SWORD_LENGTH) return;
-      const perp = Math.abs(relX * dirY - relY * dirX);
-      if (perp < SWORD_HIT_WIDTH) triggerCaught(p, now);
+      if (Math.abs(p.y - boss.spikeWallY) < BAND) triggerCaught(p, now);
     });
   }
 
-  function updateBossFloortiles(now, dt) {
-    const speed = FLOORTILE_SPEED_BASE * speedMult();
-    for (let i = floorTiles.length - 1; i >= 0; i--) {
-      const ft = floorTiles[i];
-      const nx = ft.x + ft.dirX * speed * dt;
-      const ny = ft.y + ft.dirY * speed * dt;
-      const t = worldToTile(nx, ny);
-      if (tileChar(t.x, t.y) === '#' || nx < 0 || ny < 0 || nx > WORLD_W || ny > WORLD_H) {
-        floorTiles.splice(i, 1);
-        continue;
-      }
-      ft.x = nx; ft.y = ny;
-      players.forEach((p) => {
-        if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
-        if (Math.hypot(p.x - ft.x, p.y - ft.y) < FLOORTILE_HIT_RADIUS) triggerCaught(p, now);
-      });
+  // Phase 2's chase: the boss hunts forever, down the corridor's own Y
+  // axis. Falling behind the nearest player lets it ease off; pulling
+  // ahead of it (toward the exit) makes it put on a burst of speed --
+  // neither sprinting ahead nor stalling behind is ever free.
+  function updateBossChase(now, dt) {
+    const target = nearestPlayer(boss.x, boss.y);
+    const diff = target.y - boss.y;
+    let speed = CHASE_SPEED_BASE;
+    if (diff > CHASE_PACE_MARGIN) speed = CHASE_SPEED_AHEAD;
+    else if (diff < -CHASE_PACE_MARGIN) speed = CHASE_SPEED_BEHIND;
+    speed *= speedMult(now);
+
+    const dx = target.x - boss.x, dy = target.y - boss.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 1) {
+      const step = speed * dt;
+      const nx = boss.x + (dx / d) * step, ny = boss.y + (dy / d) * step;
+      if (canBossStandAt(nx, boss.y)) boss.x = nx;
+      if (canBossStandAt(boss.x, ny)) boss.y = ny;
+      boss.lookDir = { x: dx / d, y: dy / d };
     }
-    if (floorTiles.length === 0) finishAttack(now);
-  }
 
-  function updateBossTentaclesweep(now, dt) {
-    if (now >= boss.sweepUntil) { finishAttack(now); return; }
-    const mult = speedMult();
-    const angularSpeed = (TENTACLE_SWEEP_LINEAR_SPEED_BASE * mult) / TENTACLE_REACH;
-    boss.sweepRotation += dt * angularSpeed;
-
-    boss.tentacleReaches = boss.tentacleAngles.map((baseA) => {
-      const a = baseA + boss.sweepRotation;
-      const dirX = Math.cos(a), dirY = Math.sin(a);
-      const steps = Math.ceil(TENTACLE_REACH / (TILE / 2));
-      let reach = TENTACLE_REACH;
-      for (let i = 1; i <= steps; i++) {
-        const d = (i / steps) * TENTACLE_REACH;
-        const t = worldToTile(boss.x + dirX * d, boss.y + dirY * d);
-        if (tileChar(t.x, t.y) === '#') { reach = d - TENTACLE_REACH / steps; break; }
-      }
-      return Math.max(reach, 0);
-    });
-
-    boss.tentacleAngles.forEach((baseA, i) => {
-      const a = baseA + boss.sweepRotation;
-      const dirX = Math.cos(a), dirY = Math.sin(a);
-      const reach = boss.tentacleReaches[i];
+    if (now >= boss.nextIcicleAt) {
       players.forEach((p) => {
-        if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
-        const relX = p.x - boss.x, relY = p.y - boss.y;
-        const along = relX * dirX + relY * dirY;
-        if (along < 0 || along > reach) return;
-        const perp = Math.abs(relX * dirY - relY * dirX);
-        if (perp < TENTACLE_HIT_WIDTH) triggerCaught(p, now);
+        const idx = p.x - boss.x, idy = p.y - boss.y;
+        const id = Math.hypot(idx, idy) || 1;
+        icicles.push({ x: boss.x, y: boss.y, dirX: idx / id, dirY: idy / id, seed: Math.random() * 100, speed: CHASE_ICICLE_SPEED });
       });
-    });
-  }
-
-  function updateBossStunned(now) {
-    if (now - boss.phaseStartedAt >= STUN_DURATION_MS) {
-      boss.phase = 'idle';
-      boss.nextIdleUntil = now;
+      boss.nextIcicleAt = now + CHASE_ICICLE_INTERVAL_MS;
+      playTentacleStrike();
     }
   }
 
   function updateBoss(now, dt) {
     if (boss.defeated) return;
-    if (now < boss.frozenUntil) return;
+    updateIciclesPhysics(now, dt);
 
     switch (boss.phase) {
-      case 'stunned': updateBossStunned(now); break;
       case 'idle': updateBossIdle(now, dt); break;
-      case 'charge': updateBossCharge(now, dt); break;
-      case 'swordspin': updateBossSwordspin(now, dt); break;
-      case 'floortiles': updateBossFloortiles(now, dt); break;
-      case 'tentaclesweep': updateBossTentaclesweep(now, dt); break;
+      case 'split': updateBossSplit(now, dt); break;
+      case 'iceshoot': updateBossIceshoot(now, dt); break;
+      case 'wallpush': updateBossWallpush(now, dt); break;
+      case 'expand': updateBossExpand(now, dt); break;
+      case 'chase': updateBossChase(now, dt); break;
     }
   }
 
@@ -1507,8 +1628,9 @@
 
   function updateCatch(now) {
     if (boss.defeated) return;
-    if (now < boss.frozenUntil) return;
-    if (boss.phase === 'stunned') return;
+    // While split, the main body is off-screen and the clones carry their
+    // own contact check inside updateBossSplit.
+    if (boss.phase === 'split') return;
     players.forEach((p) => {
       if (p.caught) return;
       if (now < p.invulnerableUntil) return;
@@ -1534,50 +1656,62 @@
     }
   }
 
-  // ---- the freeze cutscene: the boss ices over, then a blast of snow
-  // carries both players off to the next level ----
-  function spawnSnow() {
-    snowParticles = [];
-    for (let i = 0; i < SNOW_COUNT; i++) {
-      snowParticles.push({
+  // ---- the drowning cutscene: once the boss finally goes down, a wave
+  // of water sweeps up the screen before both players are carried off to
+  // the next level ----
+  function spawnWaterWave() {
+    waterParticles = [];
+    for (let i = 0; i < WATER_PARTICLE_COUNT; i++) {
+      waterParticles.push({
         x: Math.random() * 920,
-        y: Math.random() * 340,
-        vx: -120 - Math.random() * 100,
-        vy: 30 + Math.random() * 50,
-        size: 1.5 + Math.random() * 2.5,
+        y: 340 + Math.random() * 60,
+        vx: (Math.random() - 0.5) * 40,
+        vy: -90 - Math.random() * 60,
+        size: 1.5 + Math.random() * 3,
         drift: Math.random() * Math.PI * 2,
       });
     }
   }
 
-  function updateSnow(dt) {
-    snowParticles.forEach((s) => {
+  function updateWaterWave(dt) {
+    waterParticles.forEach((s) => {
       s.x += s.vx * dt;
       s.y += s.vy * dt;
-      s.drift += dt * 3;
-      if (s.x < -10) { s.x = 930; s.y = Math.random() * 340; }
-      if (s.y > 350) { s.y = -10; }
+      s.drift += dt * 4;
+      if (s.y < -10) { s.y = 350; s.x = Math.random() * 920; }
     });
   }
 
-  function drawSnow(g) {
+  function drawWaterWave(g, t) {
+    const waveT = clamp((t - freezeStartedAt) / WATERWAVE_CUTSCENE_MS, 0, 1);
+    const level = 340 * (1 - waveT);
     g.save();
-    snowParticles.forEach((s) => {
-      const wob = Math.sin(s.drift) * 6;
+    g.fillStyle = 'rgba(20,70,130,0.88)';
+    g.fillRect(0, level, 920, 340 - level);
+    g.strokeStyle = 'rgba(140,210,240,0.8)';
+    g.lineWidth = 4;
+    g.beginPath();
+    for (let x = 0; x <= 920; x += 20) {
+      const y = level + Math.sin(x * 0.04 + t * 0.006) * 6;
+      if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    }
+    g.stroke();
+    waterParticles.forEach((s) => {
+      const wob = Math.sin(s.drift) * 5;
       g.beginPath();
       g.arc(s.x + wob, s.y, s.size, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(255,255,255,0.85)';
+      g.fillStyle = 'rgba(210,240,255,0.8)';
       g.fill();
     });
     g.restore();
   }
 
-  // Runs while the boss is freezing solid: records the win the instant the
-  // cutscene is over (same "freeze elapsedMs the moment gameState leaves
-  // 'playing'" pattern Level 5's own collapse cutscene uses) and warps to
-  // the menu, same as every other level once the whole story's done.
-  function updateFreezeCutscene(now) {
-    if (freezeFinished || now - freezeStartedAt < FREEZE_CUTSCENE_MS) return;
+  // Runs while the boss drowns: records the win the instant the cutscene
+  // is over (same "freeze elapsedMs the moment gameState leaves 'playing'"
+  // pattern every other boss cutscene uses) and warps onward to the next
+  // level.
+  function updateWaterCutscene(now) {
+    if (freezeFinished || now - freezeStartedAt < WATERWAVE_CUTSCENE_MS) return;
     freezeFinished = true;
     if (!bestRecorded) {
       bestRecorded = true;
@@ -1586,49 +1720,8 @@
         localStorage.setItem(BEST_TIME_KEY, String(bestMs));
       }
     }
-    if (window.GoofyStory) window.GoofyStory.completeLevel(10);
-    window.location.href = 'level11.html';
-  }
-
-  // Icicles hanging from fixed anchor points on the boss's own silhouette,
-  // growing in from nothing over the cutscene -- real icicles always point
-  // straight down regardless of which way the boss itself is facing.
-  const ICICLE_ANCHORS = (() => {
-    const anchors = [];
-    for (let i = 0; i < ICICLE_COUNT; i++) {
-      const a = (i / ICICLE_COUNT) * Math.PI * 2 + 0.4;
-      anchors.push({ x: Math.cos(a) * 0.55, y: Math.sin(a) * 0.5, delay: (i % 3) * 0.12 });
-    }
-    return anchors;
-  })();
-
-  function drawIcicles(g, freezeT, r) {
-    ICICLE_ANCHORS.forEach((a) => {
-      const local = clamp((freezeT - a.delay) / (1 - a.delay), 0, 1);
-      if (local <= 0) return;
-      const ax = a.x * r, ay = a.y * r;
-      const len = r * 0.7 * local;
-      const w = r * 0.1;
-      g.beginPath();
-      g.moveTo(ax - w, ay);
-      g.lineTo(ax + w, ay);
-      g.lineTo(ax, ay + len);
-      g.closePath();
-      const grad = g.createLinearGradient(ax, ay, ax, ay + len);
-      grad.addColorStop(0, 'rgba(200,235,255,0.95)');
-      grad.addColorStop(1, 'rgba(140,200,240,0.6)');
-      g.fillStyle = grad;
-      g.fill();
-      g.strokeStyle = 'rgba(255,255,255,0.6)';
-      g.lineWidth = 1;
-      g.stroke();
-    });
-
-    // a frost tint spreading over the whole body
-    g.beginPath();
-    g.ellipse(0, 0, r * 1.05, r * 1.05, 0, 0, Math.PI * 2);
-    g.fillStyle = `rgba(210,240,255,${freezeT * 0.55})`;
-    g.fill();
+    if (window.GoofyStory) window.GoofyStory.completeLevel(15);
+    window.location.href = 'level16.html';
   }
 
   // ---- blood splatter / particles ----
@@ -1704,10 +1797,11 @@
   }
 
   function drawTiles(g, camX, camY, now) {
-    const minTX = Math.max(0, Math.floor((camX - VISIBLE_HALF_W) / TILE) - 1);
-    const maxTX = Math.min(COLS - 1, Math.ceil((camX + VISIBLE_HALF_W) / TILE) + 1);
-    const minTY = Math.max(0, Math.floor((camY - VISIBLE_HALF_H) / TILE) - 1);
-    const maxTY = Math.min(ROWS - 1, Math.ceil((camY + VISIBLE_HALF_H) / TILE) + 1);
+    const halfW = visibleHalfW(), halfH = visibleHalfH();
+    const minTX = Math.max(0, Math.floor((camX - halfW) / TILE) - 1);
+    const maxTX = Math.min(COLS - 1, Math.ceil((camX + halfW) / TILE) + 1);
+    const minTY = Math.max(0, Math.floor((camY - halfH) / TILE) - 1);
+    const maxTY = Math.min(ROWS - 1, Math.ceil((camY + halfH) / TILE) + 1);
     for (let y = minTY; y <= maxTY; y++) {
       for (let x = minTX; x <= maxTX; x++) {
         const ch = LEVEL.grid[y][x];
@@ -1715,102 +1809,43 @@
         let color;
         switch (ch) {
           case '#': color = '#262629'; break;
-          case 'T': color = dirtShade(x, y); break;
-          case 'E': color = '#3a301f'; break;
-          case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
+          case 'N': color = '#d8e6ee'; break;
+          case 'S': color = '#2a3a42'; break;
+          case 'G': color = boss.phase2 ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
         g.fillStyle = color;
         g.fillRect(px, py, TILE, TILE);
 
-        if (ch === '#') {
+        if (ch === '#' || (ch === 'G' && !boss.phase2)) {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
         }
-      }
-    }
-
-    let dx0 = Infinity, dy0 = Infinity, dx1 = -Infinity, dy1 = -Infinity;
-    for (let y = minTY; y <= maxTY; y++) {
-      for (let x = minTX; x <= maxTX; x++) {
-        if (LEVEL.grid[y][x] === 'D') {
-          dx0 = Math.min(dx0, x); dy0 = Math.min(dy0, y);
-          dx1 = Math.max(dx1, x); dy1 = Math.max(dy1, y);
+        if (ch === 'N') {
+          g.fillStyle = 'rgba(255,255,255,0.3)';
+          const seed = (x * 13 + y * 19) % 11;
+          g.beginPath();
+          g.arc(px + 10 + (seed % 4) * 4, py + 10 + ((seed * 2) % 4) * 4, 2.2, 0, Math.PI * 2);
+          g.fill();
         }
       }
     }
-    if (dx0 !== Infinity) {
-      const wx0 = dx0 * TILE, wy0 = dy0 * TILE;
-      const dw = (dx1 - dx0 + 1) * TILE, dh = (dy1 - dy0 + 1) * TILE;
-      if (!doorUnlocked) {
-        g.strokeStyle = '#0d1114';
-        g.lineWidth = 4;
-        g.strokeRect(wx0 + 3, wy0 + 3, dw - 6, dh - 6);
-        g.strokeStyle = 'rgba(255,190,60,0.5)';
-        g.lineWidth = 3;
-        g.strokeRect(wx0 + 9, wy0 + 9, Math.max(dw - 18, 2), Math.max(dh - 18, 2));
-      } else {
-        g.strokeStyle = 'rgba(255,255,255,0.18)';
-        g.lineWidth = 3;
-        g.strokeRect(wx0 + 2, wy0 + 2, dw - 4, dh - 4);
-      }
-    }
 
-    const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
-    g.beginPath();
-    g.arc(ex.x, ex.y, doorUnlocked ? 12 : 6, 0, Math.PI * 2);
-    g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
-    g.fill();
+    // The gate glows a warning amber while closed, across its whole
+    // width, so it reads as "this is where it's going to open" well
+    // before the boss actually drops to 15 HP.
+    if (!boss.phase2) {
+      const gx0 = LEVEL.gate.x0 * TILE, gx1 = (LEVEL.gate.x1 + 1) * TILE;
+      const gy = LEVEL.gate.y * TILE;
+      g.strokeStyle = 'rgba(255,190,60,0.5)';
+      g.lineWidth = 3;
+      g.strokeRect(gx0 + 3, gy + 3, gx1 - gx0 - 6, TILE - 6);
+    }
 
     drawCorpses(g);
     drawBloodSplatters(g);
     drawCrates(g);
-    drawDynamiteSticks(g, now);
-  }
-
-  function drawDynamiteSticks(g, now) {
-    dynamiteSticks.forEach((d) => {
-      g.save();
-      g.translate(d.x, d.y);
-      const pulse = 0.8 + Math.sin(now * 0.012 + d.seed) * 0.2;
-      const glow = g.createRadialGradient(0, 0, 2, 0, 0, 18 * pulse);
-      glow.addColorStop(0, 'rgba(255,90,40,0.5)');
-      glow.addColorStop(1, 'rgba(255,90,40,0)');
-      g.fillStyle = glow;
-      g.beginPath();
-      g.arc(0, 0, 18 * pulse, 0, Math.PI * 2);
-      g.fill();
-
-      // two bundled sticks of dynamite
-      [-3, 3].forEach((ox) => {
-        g.fillStyle = '#b5301f';
-        g.fillRect(ox - 2.5, -9, 5, 18);
-        g.strokeStyle = '#5a1610';
-        g.lineWidth = 1;
-        g.strokeRect(ox - 2.5, -9, 5, 18);
-        g.strokeStyle = 'rgba(255,255,255,0.3)';
-        g.beginPath();
-        g.moveTo(ox - 2.5, -3); g.lineTo(ox + 2.5, -3);
-        g.moveTo(ox - 2.5, 3); g.lineTo(ox + 2.5, 3);
-        g.stroke();
-      });
-
-      g.strokeStyle = '#c9903a';
-      g.lineWidth = 2;
-      g.beginPath();
-      g.moveTo(0, -9);
-      g.quadraticCurveTo(4, -14, 1, -18);
-      g.stroke();
-      g.beginPath();
-      g.arc(1, -19, 2 + pulse, 0, Math.PI * 2);
-      g.fillStyle = '#ffd27a';
-      g.shadowColor = '#ff9c3d';
-      g.shadowBlur = 8;
-      g.fill();
-      g.shadowBlur = 0;
-
-      g.restore();
-    });
+    drawTorches(g, now);
   }
 
   function drawCorpses(g) {
@@ -1862,24 +1897,177 @@
     });
   }
 
-  function drawFloorTiles(g) {
-    floorTiles.forEach((ft) => {
+  // A single icicle shard in flight -- a tapered sliver pointed the way
+  // it's travelling, same linear-gradient technique as every other icicle
+  // on this site, just oriented along its own velocity instead of always
+  // pointing down.
+  function drawIcicleProjectiles(g) {
+    icicles.forEach((ic) => {
       g.save();
-      g.translate(ft.x, ft.y);
-      g.rotate(Math.atan2(ft.dirY, ft.dirX));
-      g.fillStyle = '#5a5248';
-      g.fillRect(-9, -9, 18, 18);
-      g.strokeStyle = '#2a2520';
-      g.lineWidth = 2;
-      g.strokeRect(-9, -9, 18, 18);
-      g.strokeStyle = 'rgba(0,0,0,0.3)';
-      g.lineWidth = 1;
+      g.translate(ic.x, ic.y);
+      g.rotate(Math.atan2(ic.dirY, ic.dirX));
       g.beginPath();
-      g.moveTo(-9, 0); g.lineTo(9, 0);
-      g.moveTo(0, -9); g.lineTo(0, 9);
+      g.moveTo(-18, -7);
+      g.lineTo(-18, 7);
+      g.lineTo(22, 0);
+      g.closePath();
+      const grad = g.createLinearGradient(-18, 0, 22, 0);
+      grad.addColorStop(0, 'rgba(50,90,130,0.75)');
+      grad.addColorStop(1, 'rgba(90,150,190,0.95)');
+      g.fillStyle = grad;
+      g.fill();
+      g.strokeStyle = 'rgba(180,220,240,0.7)';
+      g.lineWidth = 1.2;
       g.stroke();
       g.restore();
     });
+  }
+
+  // The split clones: smaller, single-head versions of the mutation --
+  // enough of a family resemblance to read as "pieces of the same thing"
+  // without the full three-head silhouette.
+  function drawClones(g, t) {
+    clones.forEach((c) => {
+      g.save();
+      g.translate(c.x, c.y);
+      drawBlobBody(g, c.radius, '#7a3a9a', '#3a1452', c.seed, t);
+      drawMonsterEye(g, c);
+      g.restore();
+    });
+  }
+
+  // The wall-push attack's ice barrier -- a solid purple-frost slab
+  // sweeping across the arena in world space, with a lit gap punched
+  // through it at the attack's chosen row range.
+  // One jagged slab of the ice wall -- a rigid, angular silhouette (not a
+  // plain rectangle) with a row of icicle shards jutting out of its
+  // leading edge, pointing the way it's travelling.
+  function drawIceWallSlab(g, cx, yTop, yBottom, thickness, warning) {
+    if (yBottom <= yTop) return;
+    const halfT = thickness / 2;
+    const jagCount = Math.max(2, Math.round((yBottom - yTop) / 22));
+    const jagH = (yBottom - yTop) / jagCount;
+
+    g.beginPath();
+    g.moveTo(cx - halfT, yTop);
+    for (let i = 0; i <= jagCount; i++) {
+      const y = yTop + i * jagH;
+      const x = cx + halfT + (i % 2 === 0 ? 4 : -4);
+      g.lineTo(x, y);
+    }
+    g.lineTo(cx - halfT, yBottom);
+    g.closePath();
+
+    const grad = g.createLinearGradient(cx - halfT, 0, cx + halfT, 0);
+    if (warning) {
+      grad.addColorStop(0, 'rgba(140,195,230,0.3)');
+      grad.addColorStop(1, 'rgba(180,220,245,0.45)');
+    } else {
+      grad.addColorStop(0, 'rgba(120,180,220,0.8)');
+      grad.addColorStop(1, 'rgba(190,230,250,0.95)');
+    }
+    g.fillStyle = grad;
+    g.fill();
+    g.strokeStyle = 'rgba(225,245,255,0.8)';
+    g.lineWidth = 2;
+    g.stroke();
+
+    if (!warning) {
+      const spikeCount = Math.max(1, Math.round((yBottom - yTop) / 30));
+      for (let i = 0; i < spikeCount; i++) {
+        const sy = yTop + ((i + 0.5) / spikeCount) * (yBottom - yTop);
+        const len = 16 + (i % 3) * 5;
+        g.beginPath();
+        g.moveTo(cx + halfT - 2, sy - 6);
+        g.lineTo(cx + halfT - 2, sy + 6);
+        g.lineTo(cx + halfT + len, sy);
+        g.closePath();
+        const sgrad = g.createLinearGradient(cx + halfT, sy, cx + halfT + len, sy);
+        sgrad.addColorStop(0, 'rgba(200,235,255,0.7)');
+        sgrad.addColorStop(1, 'rgba(230,248,255,0.3)');
+        g.fillStyle = sgrad;
+        g.fill();
+      }
+    }
+  }
+
+  function drawWallPush(g) {
+    if (boss.phase !== 'wallpush') return;
+    const gapTop = boss.wallGapY0 * TILE;
+    const gapBottom = boss.wallGapY1 * TILE;
+    const arenaBottom = LEVEL.arenaRows * TILE;
+    const wallThickness = 26;
+    const warning = boss.wallSubPhase === 'warning';
+    g.save();
+    drawIceWallSlab(g, boss.wallX, 0, gapTop, wallThickness, warning);
+    drawIceWallSlab(g, boss.wallX, gapBottom, arenaBottom, wallThickness, warning);
+    // the gap itself, lit so it reads as the way through rather than a gap
+    // in the rendering
+    g.strokeStyle = 'rgba(255,230,150,0.8)';
+    g.lineWidth = 3;
+    g.strokeRect(boss.wallX - wallThickness / 2, gapTop, wallThickness, gapBottom - gapTop);
+    g.restore();
+  }
+
+  // The torches scattered in phase 1, or waiting at fixed points down the
+  // hallway in phase 2 -- a simple stick-and-flame, distinct from every
+  // other pickup on this site.
+  function drawTorches(g, now) {
+    torches.forEach((tr) => {
+      g.save();
+      g.translate(tr.x, tr.y);
+      const flick = 0.75 + Math.sin(now * 0.012 + tr.seed) * 0.25;
+      g.fillStyle = '#5a4428';
+      g.fillRect(-2.5, -2, 5, 16);
+      g.strokeStyle = '#2a1d10';
+      g.lineWidth = 1;
+      g.strokeRect(-2.5, -2, 5, 16);
+      const glow = g.createRadialGradient(0, -14, 1, 0, -14, 14 * flick);
+      glow.addColorStop(0, 'rgba(255,200,90,0.6)');
+      glow.addColorStop(1, 'rgba(255,120,40,0)');
+      g.fillStyle = glow;
+      g.beginPath();
+      g.arc(0, -14, 14 * flick, 0, Math.PI * 2);
+      g.fill();
+      g.beginPath();
+      g.moveTo(-4, -4);
+      g.quadraticCurveTo(-5 * flick, -12, 0, -18 * flick);
+      g.quadraticCurveTo(5 * flick, -12, 4, -4);
+      g.closePath();
+      const flame = g.createLinearGradient(0, -4, 0, -18);
+      flame.addColorStop(0, '#ff5a1e');
+      flame.addColorStop(0.6, '#ffb23c');
+      flame.addColorStop(1, '#fff0a0');
+      g.fillStyle = flame;
+      g.fill();
+      g.restore();
+    });
+  }
+
+  // The retreat-sealing spike wall: a jagged red-lit line across the
+  // arena, same "rigid, angular" silhouette technique as the wall-push
+  // attack's ice slabs, just a single stationary band instead of a
+  // sweeping pair.
+  function drawSpikeWall(g) {
+    if (!boss.spikeWallActive) return;
+    const y = boss.spikeWallY;
+    const spikeCount = Math.round(WORLD_W / 26);
+    g.save();
+    g.beginPath();
+    g.moveTo(0, y - 10);
+    for (let i = 0; i <= spikeCount; i++) {
+      const x = (i / spikeCount) * WORLD_W;
+      const sy = i % 2 === 0 ? y - 10 : y + 10;
+      g.lineTo(x, sy);
+    }
+    g.lineTo(WORLD_W, y - 10);
+    g.closePath();
+    g.fillStyle = 'rgba(150,20,20,0.75)';
+    g.fill();
+    g.strokeStyle = 'rgba(255,90,70,0.8)';
+    g.lineWidth = 2;
+    g.stroke();
+    g.restore();
   }
 
   function drawFloatingTexts(g) {
@@ -1895,367 +2083,240 @@
     });
   }
 
-  // ---- the boss: a giant armored knight ----
-  function drawKnightTentacles(g, t) {
-    boss.tentacleAngles.forEach((baseA, i) => {
-      const a = baseA + boss.sweepRotation;
-      const reach = boss.tentacleReaches[i] || TENTACLE_REACH;
-      const tx = Math.cos(a) * reach, ty = Math.sin(a) * reach;
-      const color = boss.phase2 ? '#1a3a6a' : '#3a0c10';
-      drawTaperedTentacle(g, tx, ty, tx * 0.5, ty * 0.5, boss.radius * 0.12, color);
-    });
-  }
+  // ---- the boss: the Mutation, grown huge and partly frozen ----
 
-  function drawArmorGem(g, x, y, r, phase2) {
-    const color = phase2 ? '#2a6bd6' : '#8a1620';
-    const glow = phase2 ? '#8fd6ff' : '#ff3a4a';
-    const grad = g.createRadialGradient(x - r * 0.3, y - r * 0.3, 0.5, x, y, r);
-    grad.addColorStop(0, glow);
-    grad.addColorStop(1, color);
-    g.beginPath();
-    g.arc(x, y, r, 0, Math.PI * 2);
-    g.fillStyle = grad;
-    g.shadowColor = glow;
-    g.shadowBlur = phase2 ? 9 : 4;
+  // A fleshy, lit blob body -- ported from Level 12's mutation, unchanged.
+  function drawBlobBody(g, radius, fillColor, shadowColor, seed, t, opts) {
+    opts = opts || {};
+    const points = 14;
+    const path = [];
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const r = radius
+        + Math.sin(t * 0.006 + i * 1.7 + seed) * radius * 0.1
+        + Math.sin(t * 0.0021 + i * 3.3 + seed * 1.7) * radius * 0.04;
+      path.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    const trace = () => {
+      g.beginPath();
+      path.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+      g.closePath();
+    };
+
+    trace();
+    const base = g.createRadialGradient(-radius * 0.25, -radius * 0.3, radius * 0.1, 0, 0, radius * 1.05);
+    base.addColorStop(0, opts.core || shade(fillColor, 0.22));
+    base.addColorStop(0.55, fillColor);
+    base.addColorStop(1, opts.rim || shade(fillColor, -0.35));
+    g.fillStyle = base;
+    g.shadowColor = shadowColor;
+    g.shadowBlur = Math.min(radius * 0.4, 18);
     g.fill();
     g.shadowBlur = 0;
-    g.strokeStyle = 'rgba(0,0,0,0.5)';
-    g.lineWidth = 1;
-    g.stroke();
-  }
 
-  // A mouth instead of an eye -- same convention as Level 7/9's creatures:
-  // a dark wet oval, a row of teeth, oriented to face lookDir.
-  function drawMonsterMouth(g, radius, lookDir) {
-    const mouthR = radius * 0.7;
-    const angle = Math.atan2(lookDir.y, lookDir.x);
     g.save();
-    g.rotate(angle);
-
-    const mouthGrad = g.createRadialGradient(mouthR * 0.25, 0, 1, mouthR * 0.25, 0, mouthR * 0.9);
-    mouthGrad.addColorStop(0, '#180810');
-    mouthGrad.addColorStop(1, '#000000');
-    g.beginPath();
-    g.ellipse(mouthR * 0.25, 0, mouthR * 0.85, mouthR * 0.62, 0, 0, Math.PI * 2);
-    g.fillStyle = mouthGrad;
-    g.fill();
+    trace();
+    g.clip();
 
     g.beginPath();
-    g.ellipse(mouthR * 0.55, 0, mouthR * 0.25, mouthR * 0.16, 0, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(120,20,30,0.5)';
+    g.ellipse(-radius * 0.32, -radius * 0.38, radius * 0.5, radius * 0.32, -0.5, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.14)';
     g.fill();
 
-    const teeth = 9;
-    for (let i = 0; i < teeth; i++) {
-      const a = (i / (teeth - 1)) * Math.PI * 2 - Math.PI;
-      const rx = mouthR * 0.85, ry = mouthR * 0.62;
-      const bx = mouthR * 0.25 + Math.cos(a) * rx;
-      const by = Math.sin(a) * ry;
-      const inX = mouthR * 0.25 + Math.cos(a) * rx * 0.45;
-      const inY = Math.sin(a) * ry * 0.45;
-      const tw = 2.6;
-      const nx = -Math.sin(a) * tw, ny = Math.cos(a) * tw;
-      const toothGrad = g.createLinearGradient(bx, by, inX, inY);
-      toothGrad.addColorStop(0, '#ffffff');
-      toothGrad.addColorStop(1, '#c9c0b0');
+    g.strokeStyle = opts.veinColor || 'rgba(0,0,0,0.2)';
+    g.lineWidth = 1.3;
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + seed;
       g.beginPath();
-      g.moveTo(bx + nx, by + ny);
-      g.lineTo(bx - nx, by - ny);
-      g.lineTo(inX, inY);
-      g.closePath();
-      g.fillStyle = toothGrad;
-      g.fill();
+      g.moveTo(Math.cos(a) * radius * 0.15, Math.sin(a) * radius * 0.15);
+      g.lineTo(Math.cos(a) * radius * 0.88, Math.sin(a) * radius * 0.88);
+      g.stroke();
     }
 
-    g.beginPath();
-    g.ellipse(mouthR * 0.25, 0, mouthR * 0.85, mouthR * 0.62, 0, 0, Math.PI * 2);
-    g.strokeStyle = 'rgba(0,0,0,0.6)';
-    g.lineWidth = 1.5;
-    g.stroke();
     g.restore();
   }
 
-  // A proper suit of plate rather than the usual blob-with-floating-plates
-  // look every other armored creature in this game uses -- a breastplate
-  // with a tasset skirt and a pair of pauldrons, each carrying its own
-  // ruby/sapphire gem. The body itself doesn't rotate (same convention as
-  // every other monster here, only its eye/mouth tracks lookDir), so this
-  // reads the same from whichever side it's facing.
-  function drawKnightBody(g, t) {
-    const r = boss.radius;
-    const ironLight = boss.defeated ? '#4a4640' : '#8a8f99';
-    const ironMid = boss.defeated ? '#302d28' : '#5a5e66';
-    const ironDark = boss.defeated ? '#0d0c0a' : '#232529';
-    const wobble = Math.sin(t * 0.003 + boss.seed) * (r * 0.015);
+  // The mutation's single eye -- ported from Level 12, unchanged.
+  function drawMonsterEye(g, m) {
+    const lookDir = m.lookDir;
+    const ex = m.radius * 0.62, ey = ex * 0.8;
+
+    g.save();
+    g.beginPath();
+    g.ellipse(0, 0, ex, ey, 0, 0, Math.PI * 2);
+    g.clip();
+
+    const sclera = g.createRadialGradient(-ex * 0.2, -ey * 0.25, 1, 0, 0, ex * 1.15);
+    sclera.addColorStop(0, '#faf1e4');
+    sclera.addColorStop(0.55, '#dcc4b2');
+    sclera.addColorStop(1, '#6b5142');
+    g.fillStyle = sclera;
+    g.fillRect(-ex, -ey, ex * 2, ey * 2);
+
+    g.strokeStyle = 'rgba(170,25,25,0.38)';
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.15 + m.seed;
+      g.lineWidth = 0.5 + ((i * 13) % 3) * 0.35;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * ex, Math.sin(a) * ey);
+      g.quadraticCurveTo(Math.cos(a + 0.1) * ex * 0.5, Math.sin(a - 0.1) * ey * 0.5, Math.cos(a) * ex * 0.08, Math.sin(a) * ey * 0.08);
+      g.stroke();
+    }
+
+    const ix = lookDir.x * ex * 0.32, iy = lookDir.y * ey * 0.32;
+    const irisR = ex * 0.48;
+    const iris = g.createRadialGradient(ix - irisR * 0.22, iy - irisR * 0.22, 1, ix, iy, irisR);
+    iris.addColorStop(0, '#e8903f');
+    iris.addColorStop(0.45, '#c96a2e');
+    iris.addColorStop(0.8, '#7a2f10');
+    iris.addColorStop(1, '#200a05');
+    g.beginPath();
+    g.arc(ix, iy, irisR, 0, Math.PI * 2);
+    g.fillStyle = iris;
+    g.fill();
+
+    g.save();
+    g.beginPath();
+    g.arc(ix, iy, irisR, 0, Math.PI * 2);
+    g.clip();
+    g.strokeStyle = 'rgba(0,0,0,0.25)';
+    g.lineWidth = 0.6;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + m.seed * 0.3;
+      g.beginPath();
+      g.moveTo(ix + Math.cos(a) * irisR * 0.35, iy + Math.sin(a) * irisR * 0.35);
+      g.lineTo(ix + Math.cos(a) * irisR, iy + Math.sin(a) * irisR);
+      g.stroke();
+    }
+    g.restore();
 
     g.beginPath();
-    g.ellipse(0, r * 0.92, r * 0.78, r * 0.2, 0, 0, Math.PI * 2);
+    g.arc(ix, iy, irisR * 0.42, 0, Math.PI * 2);
+    g.fillStyle = '#050202';
+    g.fill();
+
+    g.beginPath();
+    g.arc(ix - irisR * 0.32, iy - irisR * 0.32, irisR * 0.22, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.3)';
+    g.fill();
+    g.beginPath();
+    g.arc(ix - irisR * 0.28, iy - irisR * 0.3, irisR * 0.11, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.9)';
+    g.fill();
+
+    g.beginPath();
+    g.ellipse(0, -ey * 0.32, ex * 0.98, ey * 0.6, 0, Math.PI, Math.PI * 2);
     g.fillStyle = 'rgba(0,0,0,0.3)';
     g.fill();
 
-    // tasset -- three overlapping skirt plates hanging off the waist
-    [-0.4, 0, 0.4].forEach((f) => {
-      g.save();
-      g.translate(f * r * 0.75, r * 0.45 + wobble);
-      g.rotate(f * 0.25);
-      const tg = g.createLinearGradient(-r * 0.16, 0, r * 0.16, 0);
-      tg.addColorStop(0, ironDark);
-      tg.addColorStop(0.5, ironLight);
-      tg.addColorStop(1, ironDark);
-      g.beginPath();
-      g.moveTo(-r * 0.2, -r * 0.08);
-      g.lineTo(r * 0.2, -r * 0.08);
-      g.lineTo(r * 0.14, r * 0.38);
-      g.lineTo(-r * 0.14, r * 0.38);
-      g.closePath();
-      g.fillStyle = tg;
-      g.fill();
-      g.strokeStyle = 'rgba(0,0,0,0.55)';
-      g.lineWidth = 1.3;
-      g.stroke();
-      g.restore();
-    });
+    g.restore();
 
-    // breastplate -- wide at the shoulders, tapering to the waist
     g.beginPath();
-    g.moveTo(-r * 0.6, -r * 0.58 + wobble);
-    g.lineTo(r * 0.6, -r * 0.58 + wobble);
-    g.quadraticCurveTo(r * 0.76, -r * 0.1, r * 0.4, r * 0.48);
-    g.lineTo(-r * 0.4, r * 0.48);
-    g.quadraticCurveTo(-r * 0.76, -r * 0.1, -r * 0.6, -r * 0.58 + wobble);
-    g.closePath();
-    const torsoGrad = g.createLinearGradient(-r * 0.6, -r * 0.5, r * 0.6, r * 0.4);
-    torsoGrad.addColorStop(0, ironMid);
-    torsoGrad.addColorStop(0.5, ironLight);
-    torsoGrad.addColorStop(1, ironDark);
-    g.fillStyle = torsoGrad;
-    g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.55)';
-    g.lineWidth = 2;
-    g.stroke();
-
-    // center spine seam + a couple of riveted horizontal bands
-    g.strokeStyle = 'rgba(0,0,0,0.3)';
+    g.ellipse(0, 0, ex, ey, 0, 0, Math.PI * 2);
+    g.strokeStyle = 'rgba(15,4,4,0.7)';
     g.lineWidth = 1.5;
-    g.beginPath();
-    g.moveTo(0, -r * 0.5 + wobble);
-    g.lineTo(0, r * 0.4);
     g.stroke();
-    if (!boss.defeated) {
-      [-0.12, 0.22].forEach((f) => {
-        const py = f * r + wobble;
-        const bandGrad = g.createLinearGradient(-r * 0.56, py, r * 0.56, py);
-        bandGrad.addColorStop(0, ironDark);
-        bandGrad.addColorStop(0.5, '#7d828c');
-        bandGrad.addColorStop(1, ironDark);
-        g.fillStyle = bandGrad;
-        g.beginPath();
-        g.ellipse(0, py, r * 0.5, r * 0.06, 0, 0, Math.PI * 2);
-        g.fill();
-      });
-    }
-
-    // pauldrons -- round shoulder plates, each with its own gem
-    [-1, 1].forEach((side) => {
-      const px = side * r * 0.66, py = -r * 0.52 + wobble;
-      const pg = g.createRadialGradient(px - side * r * 0.1, py - r * 0.1, 1, px, py, r * 0.3);
-      pg.addColorStop(0, ironLight);
-      pg.addColorStop(1, ironDark);
-      g.beginPath();
-      g.arc(px, py, r * 0.28, 0, Math.PI * 2);
-      g.fillStyle = pg;
-      g.fill();
-      g.strokeStyle = 'rgba(0,0,0,0.55)';
-      g.lineWidth = 1.5;
-      g.stroke();
-      if (!boss.defeated) drawArmorGem(g, px, py, r * 0.065, boss.phase2);
-    });
-
-    // the main crest gem, set in the chest
-    if (!boss.defeated) drawArmorGem(g, 0, -r * 0.02 + wobble, r * 0.13, boss.phase2);
-
-    // a soft highlight along the upper-left of the breastplate
-    g.save();
-    g.beginPath();
-    g.ellipse(-r * 0.25, -r * 0.3, r * 0.3, r * 0.18, -0.5, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.1)';
-    g.fill();
-    g.restore();
   }
 
-  // The helm is two riveted plates (a brow and a jaw guard) with a gap
-  // between them -- the mouth shows through that gap, same "visible mouth,
-  // armored everywhere else" convention the user asked for, in place of
-  // the glowing eye-slit a sighted monster would have instead.
-  function drawKnightHelm(g) {
-    const r = boss.radius;
-    const angle = Math.atan2(boss.lookDir.y, boss.lookDir.x);
-    g.save();
-    g.rotate(angle);
-    g.translate(r * 0.62, 0);
-    const headR = r * 0.34;
-    const ironLight = boss.defeated ? '#4a4640' : '#9aa0aa';
-    const ironDark = boss.defeated ? '#201e1a' : '#3a3d44';
-    const helmGrad = g.createRadialGradient(-headR * 0.3, -headR * 0.4, 1, 0, 0, headR * 1.3);
-    helmGrad.addColorStop(0, ironLight);
-    helmGrad.addColorStop(1, ironDark);
-
-    if (!boss.defeated) {
-      drawMonsterMouth(g, headR * 1.5, { x: 1, y: 0 });
-    } else {
-      g.strokeStyle = 'rgba(20,10,8,0.85)';
-      g.lineWidth = headR * 0.14;
-      g.lineCap = 'round';
-      g.beginPath();
-      g.moveTo(-headR * 0.3, 0);
-      g.lineTo(headR * 0.5, 0);
-      g.stroke();
+  // "Partly frozen": a handful of icicle shards clinging to the lower
+  // half of the body, same tapered-shard technique as every other icicle
+  // on this site -- only the bottom arc, not the whole silhouette, so it
+  // still reads as a mutation that's half-iced-over rather than a
+  // different creature entirely.
+  const FROST_ANCHORS = (() => {
+    const anchors = [];
+    const count = 6;
+    for (let i = 0; i < count; i++) {
+      const a = Math.PI * 0.15 + (i / (count - 1)) * Math.PI * 0.7; // bottom arc only
+      anchors.push({ angle: a, len: 0.3 + (i % 3) * 0.08 });
     }
+    return anchors;
+  })();
 
-    // brow guard (above the mouth)
-    g.beginPath();
-    g.ellipse(-headR * 0.05, -headR * 0.72, headR * 0.98, headR * 0.5, 0, 0, Math.PI * 2);
-    g.fillStyle = helmGrad;
-    g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.6)';
-    g.lineWidth = 1.4;
-    g.stroke();
-    // a small crest nub on top of the brow
-    g.fillStyle = ironDark;
-    g.beginPath();
-    g.ellipse(0, -headR * 1.3, headR * 0.16, headR * 0.35, 0, 0, Math.PI * 2);
-    g.fill();
-
-    // jaw guard (below the mouth)
-    g.beginPath();
-    g.ellipse(headR * 0.05, headR * 0.68, headR * 0.92, headR * 0.44, 0, 0, Math.PI * 2);
-    g.fillStyle = helmGrad;
-    g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.6)';
-    g.lineWidth = 1.4;
-    g.stroke();
-
-    // cheek guards framing the mouth on either side
-    [-1, 1].forEach((side) => {
+  function drawFrostPatches(g, radius) {
+    FROST_ANCHORS.forEach((f) => {
+      const ax = Math.cos(f.angle) * radius * 0.92, ay = Math.sin(f.angle) * radius * 0.92;
+      const len = radius * f.len;
+      const nx = Math.cos(f.angle), ny = Math.sin(f.angle);
+      const px = -ny, py = nx;
       g.beginPath();
-      g.ellipse(side * headR * 0.95, headR * 0.1, headR * 0.3, headR * 0.6, 0, 0, Math.PI * 2);
-      g.fillStyle = helmGrad;
-      g.fill();
-      g.strokeStyle = 'rgba(0,0,0,0.5)';
-      g.lineWidth = 1.2;
-      g.stroke();
-    });
-
-    g.restore();
-  }
-
-  function drawSword(g, angle, hot, length) {
-    g.save();
-    g.rotate(angle);
-    g.strokeStyle = '#3a3d44';
-    g.lineWidth = 9;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(0, 0);
-    g.lineTo(-16, 0);
-    g.stroke();
-
-    g.strokeStyle = hot ? '#ffb43d' : '#8a8f99';
-    g.lineWidth = 7;
-    g.beginPath();
-    g.moveTo(8, -16);
-    g.lineTo(8, 16);
-    g.stroke();
-
-    const grad = g.createLinearGradient(12, 0, length, 0);
-    if (hot) {
-      grad.addColorStop(0, '#ffe38a');
-      grad.addColorStop(0.5, '#ff6a2a');
-      grad.addColorStop(1, '#a3321f');
-    } else {
-      grad.addColorStop(0, '#d8dce2');
-      grad.addColorStop(0.5, '#9fa6b0');
-      grad.addColorStop(1, '#5a5f68');
-    }
-    g.beginPath();
-    g.moveTo(10, -8);
-    g.lineTo(length - 12, -3.5);
-    g.lineTo(length, 0);
-    g.lineTo(length - 12, 3.5);
-    g.lineTo(10, 8);
-    g.closePath();
-    g.fillStyle = grad;
-    if (hot) { g.shadowColor = '#ff6a2a'; g.shadowBlur = 16; }
-    g.fill();
-    g.shadowBlur = 0;
-    g.strokeStyle = 'rgba(0,0,0,0.4)';
-    g.lineWidth = 1;
-    g.stroke();
-
-    // a small gem set in the pommel
-    drawArmorGem(g, -16, 0, 5, boss.phase2);
-    g.restore();
-  }
-
-  // Blue flame licking up off the armor once phase 2 kicks in -- the same
-  // rising-ember trick Level 5's boss used for its own fire, recolored.
-  function drawPhase2Flames(g, t) {
-    const r = boss.radius;
-    for (let i = 0; i < 10; i++) {
-      const seed = boss.seed * 7 + i * 971;
-      const cycle = 2200 + (i % 4) * 400;
-      const phase = ((t + seed) % cycle) / cycle;
-      const ex = Math.sin(seed + phase * 6.2) * r * 0.8;
-      const ey = r * 0.5 - phase * r * 2.2;
-      const alpha = 1 - phase;
-      g.beginPath();
-      g.arc(ex, ey, 2 + (i % 3), 0, Math.PI * 2);
-      g.fillStyle = `rgba(${90 + (i % 3) * 20},${170 + (i % 3) * 20},255,${alpha * 0.85})`;
-      g.fill();
-    }
-    const spots = 4;
-    for (let i = 0; i < spots; i++) {
-      const a = (i / spots) * Math.PI * 2 + boss.seed * 0.1;
-      const bx = Math.cos(a) * r * 0.92;
-      const by = Math.sin(a) * r * 0.92;
-      const flicker = 0.8 + Math.sin(t * 0.02 + i * 3.1 + boss.seed) * 0.2;
-      g.save();
-      g.translate(bx, by);
-      g.rotate(a - Math.PI / 2);
-      const h = r * 0.4 * flicker;
-      g.beginPath();
-      g.moveTo(-r * 0.06, 4);
-      g.quadraticCurveTo(r * 0.04, -h * 0.55, 0, -h);
-      g.quadraticCurveTo(-r * 0.04, -h * 0.55, r * 0.06, 4);
+      g.moveTo(ax + px * radius * 0.08, ay + py * radius * 0.08);
+      g.lineTo(ax - px * radius * 0.08, ay - py * radius * 0.08);
+      g.lineTo(ax + nx * len, ay + ny * len);
       g.closePath();
-      g.fillStyle = '#bfe8ff';
+      const grad = g.createLinearGradient(ax, ay, ax + nx * len, ay + ny * len);
+      grad.addColorStop(0, 'rgba(210,240,255,0.7)');
+      grad.addColorStop(1, 'rgba(170,220,250,0.25)');
+      g.fillStyle = grad;
       g.fill();
+    });
+    g.beginPath();
+    g.ellipse(0, radius * 0.45, radius * 0.85, radius * 0.4, 0, 0, Math.PI);
+    g.fillStyle = 'rgba(200,235,255,0.18)';
+    g.fill();
+  }
+
+  function drawMutationBoss(g, t) {
+    const r = boss.radius;
+    const sideR = r * 0.6;
+    // Bright red once phase 2 starts -- same palette shape (a dark
+    // tentacle tone, a dim side-head tone, a bright core tone) as the
+    // purple it wore all through phase 1, just shifted hue.
+    const tentColor = boss.phase2 ? '#8a1414' : '#4a1a6a';
+    const sideColor = boss.phase2 ? '#b02424' : '#6a2a8a';
+    const coreColor = boss.phase2 ? '#d83a3a' : '#7a3a9a';
+    const shadowColor = boss.phase2 ? '#4a0a0a' : '#3a1452';
+
+    [-1, 1].forEach((side) => {
+      const tx = side * r * 0.9, ty = r * 0.5;
+      const wobble = Math.sin(t * 0.004 + side) * r * 0.1;
+      drawTaperedTentacle(g, tx, ty + wobble, tx * 0.5, (ty + wobble) * 0.5, r * 0.16, tentColor);
+    });
+
+    [-1, 1].forEach((side) => {
+      g.save();
+      g.translate(side * r * 0.7, r * 0.35);
+      drawBlobBody(g, sideR, sideColor, shadowColor, boss.seed + side * 7, t);
       g.restore();
-    }
+    });
+
+    drawBlobBody(g, r, coreColor, shadowColor, boss.seed, t);
+
+    drawMonsterEye(g, boss);
+    g.save();
+    g.translate(-r * 0.7, r * 0.35);
+    drawMonsterEye(g, { radius: sideR, lookDir: boss.lookDir, seed: boss.seed + 3 });
+    g.restore();
+
+    if (!boss.phase2) drawFrostPatches(g, r);
+  }
+
+  function drawExpandHazard(g, t) {
+    if (boss.expandSubPhase !== 'growing' || boss.expandRadius <= 0) return;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 0.006);
+    g.beginPath();
+    g.arc(0, 0, boss.expandRadius, 0, Math.PI * 2);
+    g.fillStyle = `rgba(154,74,201,${0.12 + pulse * 0.08})`;
+    g.fill();
+    g.strokeStyle = `rgba(220,180,255,${0.4 + pulse * 0.3})`;
+    g.lineWidth = 3;
+    g.stroke();
   }
 
   function drawBoss(g, t) {
+    if (boss.phase === 'split') return; // the clones stand in for it
+
     g.save();
     g.translate(boss.x, boss.y);
 
-    if (boss.phase === 'tentaclesweep') drawKnightTentacles(g, t);
+    if (boss.phase === 'expand') drawExpandHazard(g, t);
 
-    drawKnightBody(g, t);
-    drawKnightHelm(g);
-
-    if (!boss.defeated) {
-      let swordAngle = Math.atan2(boss.lookDir.y, boss.lookDir.x);
-      let hot = false;
-      if (boss.phase === 'charge') swordAngle = Math.atan2(boss.chargeDir.y, boss.chargeDir.x);
-      else if (boss.phase === 'swordspin') { swordAngle = boss.swordAngle; hot = true; }
-      drawSword(g, swordAngle, hot, SWORD_LENGTH);
-
-      if (boss.phase2) drawPhase2Flames(g, t);
-    }
-
-    if (gameState === 'freezing') {
-      const freezeT = clamp((t - freezeStartedAt) / FREEZE_CUTSCENE_MS, 0, 1);
-      drawIcicles(g, freezeT, boss.radius);
+    if (!boss.defeated) drawMutationBoss(g, t);
+    else {
+      g.save();
+      g.globalAlpha = 0.6;
+      drawMutationBoss(g, t);
+      g.restore();
     }
 
     if (t < boss.frozenUntil) {
@@ -2273,29 +2334,6 @@
       g.strokeStyle = 'rgba(220,250,255,0.75)';
       g.lineWidth = 2;
       g.stroke();
-    }
-
-    if (boss.phase === 'stunned') {
-      const starCount = 5;
-      for (let i = 0; i < starCount; i++) {
-        const a = (i / starCount) * Math.PI * 2 + t * 0.003;
-        const sx = Math.cos(a) * boss.radius * 0.7;
-        const sy = -boss.radius * 1.15 + Math.sin(a) * boss.radius * 0.18;
-        g.save();
-        g.translate(sx, sy);
-        g.rotate(a * 2);
-        g.beginPath();
-        for (let k = 0; k < 5; k++) {
-          const sa = (k / 5) * Math.PI * 2 - Math.PI / 2;
-          const rr = k % 2 === 0 ? 7 : 3;
-          const px = Math.cos(sa) * rr, py = Math.sin(sa) * rr;
-          if (k === 0) g.moveTo(px, py); else g.lineTo(px, py);
-        }
-        g.closePath();
-        g.fillStyle = '#8fd6ff';
-        g.fill();
-        g.restore();
-      }
     }
 
     g.restore();
@@ -2451,7 +2489,8 @@
   // decorative -- punched generously around each player and the boss
   // itself rather than gating what's explorable the way earlier levels do.
   function buildDarknessMask(camX, camY, now) {
-    const worldToScreen = (wx, wy) => ({ x: (wx - camX) * ZOOM + VIEW_W / 2, y: (wy - camY) * ZOOM + VIEW_H / 2 });
+    const zoom = currentZoom();
+    const worldToScreen = (wx, wy) => ({ x: (wx - camX) * zoom + VIEW_W / 2, y: (wy - camY) * zoom + VIEW_H / 2 });
     const nvgMult = now < nvgUntil ? NVG_RANGE_MULT : 1;
 
     maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
@@ -2461,19 +2500,26 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 140 * ZOOM * nvgMult, 1);
-      punchLight(maskCtx, s.x, s.y, 320 * ZOOM * nvgMult, 0.85);
+      punchLight(maskCtx, s.x, s.y, 140 * zoom * nvgMult, 1);
+      punchLight(maskCtx, s.x, s.y, 320 * zoom * nvgMult, 0.85);
     });
 
     const bs = worldToScreen(boss.x, boss.y);
-    punchLight(maskCtx, bs.x, bs.y, boss.radius * 2.4 * ZOOM, 0.5);
+    punchLight(maskCtx, bs.x, bs.y, boss.radius * 2.4 * zoom, 0.5);
   }
 
   function renderViewport(index, now) {
     const p = players[index];
     const vx = index * VIEW_W;
-    const camX = clamp(p.x, VISIBLE_HALF_W, WORLD_W - VISIBLE_HALF_W);
-    const camY = clamp(p.y, VISIBLE_HALF_H, WORLD_H - VISIBLE_HALF_H);
+    const zoom = currentZoom();
+    const halfW = visibleHalfW(), halfH = visibleHalfH();
+    // Phase 1 clamps against the arena's own height so the camera
+    // collapses to a fixed, whole-arena view the same way it always has;
+    // phase 2 clamps against the full world (arena + hallway) so it
+    // follows the player normally down the corridor.
+    const camWorldH = boss.phase2 ? WORLD_H : LEVEL.arenaRows * TILE;
+    const camX = clamp(p.x, halfW, WORLD_W - halfW);
+    const camY = clamp(p.y, halfH, camWorldH - halfH);
 
     ctx.save();
     ctx.beginPath();
@@ -2484,12 +2530,15 @@
 
     ctx.save();
     ctx.translate(vx + VIEW_W / 2, VIEW_H / 2);
-    ctx.scale(ZOOM, ZOOM);
+    ctx.scale(zoom, zoom);
     ctx.translate(-camX, -camY);
     drawTiles(ctx, camX, camY, now);
     drawSmokeBombs(ctx, now);
-    drawFloorTiles(ctx);
+    drawWallPush(ctx);
+    drawSpikeWall(ctx);
+    drawIcicleProjectiles(ctx);
     drawBoss(ctx, now);
+    drawClones(ctx, now);
     drawPlayers(ctx);
     drawParticles(ctx);
     drawFloatingTexts(ctx);
@@ -2685,10 +2734,14 @@
 
   function updateHud() {
     const hp = `${bossHealth}/${BOSS_MAX_HEALTH}`;
-    hudBossEl.textContent = boss.defeated ? 'Boss: defeated' : boss.phase === 'stunned' ? `Boss: ${hp} HP (stunned)` : `Boss: ${hp} HP${boss.phase2 ? ' — phase 2' : ''}`;
+    hudBossEl.textContent = boss.defeated ? 'Boss: defeated' : `Boss: ${hp} HP`;
     hudBossEl.classList.toggle('done', boss.defeated);
-    hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
-    hudDoorEl.classList.toggle('done', doorUnlocked);
+    hudPhaseEl.textContent = boss.phase2 ? 'Phase: 2 — CHASE' : 'Phase: 1';
+    hudPhaseEl.classList.toggle('done', boss.phase2);
+    if (hudTorchesEl) {
+      hudTorchesEl.textContent = boss.defeated ? 'Torches: --' : `Torches: ${torches.length} live`;
+      hudTorchesEl.classList.toggle('done', torches.length > 0 && !boss.defeated);
+    }
 
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
@@ -2706,16 +2759,17 @@
       updateInputMovement(now, dt);
       updateCrates(now);
       updateSmokeBombs(now);
-      updateDynamite(now);
+      updateTorches(now);
       updateBoss(now, dt);
+      updateSpikeWall(now);
       updateShotgunDefense(now);
       updateCatch(now);
       updateCutscenes(now);
       updateExploration();
       updateAmbientTension();
-    } else if (gameState === 'freezing') {
-      updateSnow(dt);
-      updateFreezeCutscene(now);
+    } else if (gameState === 'drowning') {
+      updateWaterWave(dt);
+      updateWaterCutscene(now);
     }
     updateParticles(dt);
     updateFloatingTexts(dt);
@@ -2725,16 +2779,14 @@
     renderViewport(1, now);
     drawDivider();
 
-    if (gameState === 'freezing') {
-      const freezeT = clamp((now - freezeStartedAt) / FREEZE_CUTSCENE_MS, 0, 1);
-      drawSnow(ctx);
-      ctx.fillStyle = `rgba(220,240,255,${freezeT * 0.75})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      if (freezeT > 0.3) {
+    if (gameState === 'drowning') {
+      const waveT = clamp((now - freezeStartedAt) / WATERWAVE_CUTSCENE_MS, 0, 1);
+      drawWaterWave(ctx, now);
+      if (waveT > 0.3) {
         ctx.font = 'bold 22px monospace';
         ctx.textAlign = 'center';
-        ctx.fillStyle = `rgba(20,40,60,${Math.min(1, (freezeT - 0.3) * 2.5)})`;
-        ctx.fillText('THE COLD TAKES IT...', canvas.width / 2, canvas.height / 2);
+        ctx.fillStyle = `rgba(230,245,255,${Math.min(1, (waveT - 0.3) * 2.5)})`;
+        ctx.fillText('THE CURRENT TAKES IT...', canvas.width / 2, canvas.height / 2);
       }
     }
 
