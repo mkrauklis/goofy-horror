@@ -1485,8 +1485,14 @@
 
   const ALL_ATTACKS = ['spin', 'throw', 'spike', 'charge', 'bombs', 'blink'];
 
+  // Targets only players still in the fight -- a caught player stays
+  // frozen wherever it happened until the whole team wipes, so without
+  // this filter every attack would keep aiming at that fixed spot
+  // instead of whoever's actually still moving.
   function nearestPlayer(x, y) {
-    return players.reduce((a, b) => (Math.hypot(x - a.x, y - a.y) <= Math.hypot(x - b.x, y - b.y) ? a : b));
+    const candidates = players.filter((p) => !p.caught);
+    const pool = candidates.length ? candidates : players;
+    return pool.reduce((a, b) => (Math.hypot(x - a.x, y - a.y) <= Math.hypot(x - b.x, y - b.y) ? a : b));
   }
 
   // Called once an attack has fully played out: every ATTACKS_PER_STUN'th

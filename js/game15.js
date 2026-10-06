@@ -1423,8 +1423,15 @@
   const CLONE_CATCH_RADIUS = SPLIT_CLONE_RADIUS * 1.2;
   let wallPassedPlayers = new Set();
 
+  // Targets only players still in the fight -- a caught player stays
+  // frozen wherever it happened until the whole team wipes, so without
+  // this filter every attack (and the phase-2 chase's own pacing) would
+  // keep aiming at that fixed spot instead of whoever's actually still
+  // moving.
   function nearestPlayer(x, y) {
-    return players.reduce((a, b) => (Math.hypot(x - a.x, y - a.y) <= Math.hypot(x - b.x, y - b.y) ? a : b));
+    const candidates = players.filter((p) => !p.caught);
+    const pool = candidates.length ? candidates : players;
+    return pool.reduce((a, b) => (Math.hypot(x - a.x, y - a.y) <= Math.hypot(x - b.x, y - b.y) ? a : b));
   }
 
   // This boss has no stun window -- its only real damage source is
@@ -1664,8 +1671,13 @@
   }
 
   function allAliveAtBarrier() {
+    // Matches canStandAt's own barrier check -- a player's center can never
+    // reach y >= barrierWorldY() while the barrier is solid, since
+    // canStandAt blocks the moment their southern edge (y + PLAYER_RADIUS)
+    // would cross it. Checking the center against the same line made this
+    // physically unreachable for anyone, not just a lone survivor.
     const alive = players.filter((p) => !p.caught);
-    return alive.length > 0 && alive.every((p) => p.y >= barrierWorldY());
+    return alive.length > 0 && alive.every((p) => p.y + PLAYER_RADIUS >= barrierWorldY());
   }
 
   function hallwayCenterX() {
