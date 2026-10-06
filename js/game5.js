@@ -44,6 +44,17 @@
   const BOSS_LURE_SPEED = PLAYER_SPEED * 0.5;
   const BOSS_CATCH_RADIUS = BOSS_RADIUS * 1.25;
   const REPATH_MS = 500; // only used while lured by a meat item -- see the 'lured' boss state
+  const BOSS_NAME = 'THE BOSS';
+
+  // A short intro cutscene plays every time this level starts (first
+  // load or any retry after a wipe) -- the camera zooms in on the boss
+  // and shakes while its name shows, then play begins. The usual
+  // BOSS_INTRO_GRACE_MS window is re-armed from the moment play actually
+  // starts, not from when the cutscene began, so it still means
+  // something once control is handed back.
+  const BOSS_INTRO_CUTSCENE_MS = 3000;
+  const BOSS_INTRO_ZOOM_MULT = 1.7;
+  const BOSS_INTRO_SHAKE_MAG = 7;
 
   // ---- boss attack cycle ----
   // Five attacks fire in random order for as long as the boss is alive,
@@ -683,7 +694,6 @@
     }
     if (e.key === 'Enter' && (gameState === 'complete' || gameState === 'wiped')) {
       resetLevel();
-      gameState = 'playing';
     }
   });
   window.addEventListener('keyup', (e) => {
@@ -797,7 +807,8 @@
   let bombs = []; // BOMB_LIVE_COUNT live at once: [{x, y, seed}]
   let bossHealth = BOSS_MAX_HEALTH; // BOSS_MAX_HEALTH -> 0 points; see BOMB_DAMAGE_STUNNED/BOMB_DAMAGE_NORMAL
   let doorUnlocked = false;
-  let gameState = 'playing'; // 'playing' | 'collapsing' | 'complete' | 'wiped'
+  let gameState = 'intro'; // 'intro' | 'playing' | 'collapsing' | 'complete' | 'wiped'
+  let introStartedAt = 0;
   let catchFlash = 0;
   const COLLAPSE_DURATION_MS = 3600; // ground giving way before the warp to level 6
   let collapseStartedAt = 0;
@@ -960,6 +971,8 @@
     nvgUntil = 0;
     floatingTexts = [];
     resetExploration();
+    gameState = 'intro';
+    introStartedAt = performance.now();
     runStartTime = performance.now();
     elapsedMs = 0;
     bestRecorded = false;
@@ -2762,8 +2775,12 @@
   function renderViewport(index, now) {
     const p = players[index];
     const vx = index * VIEW_W;
-    const camX = clamp(p.x, VISIBLE_HALF_W, WORLD_W - VISIBLE_HALF_W);
-    const camY = clamp(p.y, VISIBLE_HALF_H, WORLD_H - VISIBLE_HALF_H);
+    const intro = gameState === 'intro';
+    const zoom = intro ? ZOOM * BOSS_INTRO_ZOOM_MULT : ZOOM;
+    const camX = intro ? boss.x : clamp(p.x, VISIBLE_HALF_W, WORLD_W - VISIBLE_HALF_W);
+    const camY = intro ? boss.y : clamp(p.y, VISIBLE_HALF_H, WORLD_H - VISIBLE_HALF_H);
+    const shakeX = intro ? (Math.random() - 0.5) * 2 * BOSS_INTRO_SHAKE_MAG : 0;
+    const shakeY = intro ? (Math.random() - 0.5) * 2 * BOSS_INTRO_SHAKE_MAG : 0;
 
     ctx.save();
     ctx.beginPath();
@@ -2773,8 +2790,8 @@
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
 
     ctx.save();
-    ctx.translate(vx + VIEW_W / 2, VIEW_H / 2);
-    ctx.scale(ZOOM, ZOOM);
+    ctx.translate(vx + VIEW_W / 2 + shakeX, VIEW_H / 2 + shakeY);
+    ctx.scale(zoom, zoom);
     ctx.translate(-camX, -camY);
     drawTiles(ctx, camX, camY, now);
     drawFires(ctx, now);
@@ -2795,16 +2812,39 @@
       ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
     }
 
-    drawBossHealthBar(vx, now);
-    drawProximityWarning(vx, Math.hypot(p.x - boss.x, p.y - boss.y), now);
-    drawRadar(vx, p, now);
-    drawScanner(vx, p, now);
-    drawShotgunHud(vx, p);
-    const minimapH = drawMinimap(vx, now);
-    drawStaminaBar(vx, p, minimapH);
+    if (intro) {
+      drawBossIntroOverlay(vx, now);
+    } else {
+      drawBossHealthBar(vx, now);
+      drawProximityWarning(vx, Math.hypot(p.x - boss.x, p.y - boss.y), now);
+      drawRadar(vx, p, now);
+      drawScanner(vx, p, now);
+      drawShotgunHud(vx, p);
+      const minimapH = drawMinimap(vx, now);
+      drawStaminaBar(vx, p, minimapH);
 
-    if (p.caught) drawCutsceneOverlay(vx, p, now);
+      if (p.caught) drawCutsceneOverlay(vx, p, now);
+    }
 
+    ctx.restore();
+  }
+
+  // The opening cutscene's name card -- a dark letterbox band with the
+  // boss's name, fading in and settling for the last stretch of
+  // BOSS_INTRO_CUTSCENE_MS so it's readable despite the shake.
+  function drawBossIntroOverlay(vx, now) {
+    const t = clamp((now - introStartedAt) / BOSS_INTRO_CUTSCENE_MS, 0, 1);
+    const alpha = t < 0.15 ? t / 0.15 : t > 0.85 ? (1 - t) / 0.15 : 1;
+    ctx.save();
+    ctx.fillStyle = `rgba(5,5,8,${0.55 * alpha})`;
+    ctx.fillRect(vx, VIEW_H / 2 - 34, VIEW_W, 68);
+    ctx.font = 'bold 24px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = `rgba(220,60,60,${alpha})`;
+    ctx.shadowColor = 'rgba(220,60,60,0.8)';
+    ctx.shadowBlur = 10 * alpha;
+    ctx.fillText(BOSS_NAME, vx + VIEW_W / 2, VIEW_H / 2 + 8);
+    ctx.shadowBlur = 0;
     ctx.restore();
   }
 
@@ -2999,6 +3039,18 @@
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
   }
 
+  // The opening cutscene: runs every time this level starts, first load
+  // or any retry after a wipe. Once it's over, play actually begins --
+  // the run timer and the boss's own BOSS_INTRO_GRACE_MS window both
+  // start counting from here, not from whenever the cutscene began.
+  function updateIntroCutscene(now) {
+    if (now - introStartedAt < BOSS_INTRO_CUTSCENE_MS) return;
+    gameState = 'playing';
+    runStartTime = now;
+    elapsedMs = 0;
+    boss.nextIdleUntil = now + BOSS_INTRO_GRACE_MS;
+  }
+
   // Runs while the floor is giving way: records the win the instant the
   // cutscene is over (not before -- elapsedMs is already frozen the moment
   // gameState left 'playing') and warps to the next level.
@@ -3023,7 +3075,9 @@
     const dt = lastFrameTime === null ? 1 / 60 : Math.min((now - lastFrameTime) / 1000, 0.05);
     lastFrameTime = now;
 
-    if (gameState === 'playing') {
+    if (gameState === 'intro') {
+      updateIntroCutscene(now);
+    } else if (gameState === 'playing') {
       elapsedMs = now - runStartTime;
       updateInputMovement(now, dt);
       updateTriggers();
