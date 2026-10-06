@@ -104,6 +104,11 @@ a {
   --chapter-wash: rgba(94, 201, 232, 0.05);
 }
 
+.chapter-4 {
+  --chapter-color: rgba(56, 178, 172, 0.4);
+  --chapter-wash: rgba(56, 178, 172, 0.05);
+}
+
 .chapter-divider {
   margin: 0 0 1.25rem;
   padding: 0;

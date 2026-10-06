@@ -21,6 +21,7 @@
   const broodCtx = ctxFor('monster-canvas-brood');
   const thawSpiderCtx = ctxFor('monster-canvas-thawspider');
   const frozenMutationCtx = ctxFor('monster-canvas-frozenmutation');
+  const eelCtx = ctxFor('monster-canvas-eel');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -1495,6 +1496,108 @@
     g.restore();
   }
 
+  // A single fin: a flat, translucent triangle -- same technique as
+  // game16.js's own drawFin, reused here against this file's plain,
+  // untranslated-per-call context.
+  function drawFin(g, baseX, baseY, tipX, tipY, width, color) {
+    const dx = tipX - baseX, dy = tipY - baseY;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    g.beginPath();
+    g.moveTo(baseX + nx * width, baseY + ny * width);
+    g.lineTo(tipX, tipY);
+    g.lineTo(baseX - nx * width, baseY - ny * width);
+    g.closePath();
+    g.fillStyle = color;
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.35)';
+    g.lineWidth = 0.8;
+    g.stroke();
+  }
+
+  // The Level 16 creature: a long, finned eel with a mouth instead of an
+  // eye, drawn as a wavy segment trail -- same body technique as the Dig
+  // Worm, just slimmer, finned, and recolored a dark teal-green.
+  function drawEel(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const segCount = 11, spacing = 13, baseRadius = 16;
+
+    g.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let i = segCount - 1; i >= 0; i--) {
+      const along = i * spacing;
+      const wob = Math.sin(t * 0.0022 + i * 0.6) * 7;
+      const r = Math.max(3, baseRadius * (1 - i * 0.055));
+      g.beginPath();
+      g.ellipse(-55 + along, wob + r * 0.5, Math.max(2.5, r * 0.85), Math.max(2, r * 0.35), 0, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    for (let i = segCount - 1; i >= 0; i--) {
+      const along = i * spacing;
+      const wob = Math.sin(t * 0.0022 + i * 0.6) * 7;
+      const x = -55 + along;
+      const y = wob;
+      const r = Math.max(3, baseRadius * (1 - i * 0.055));
+      const base = i % 2 === 0 ? '#2e6b63' : '#357a70';
+      g.save();
+      g.translate(x, y);
+
+      if (i % 2 === 0 && i < segCount - 1) {
+        drawFin(g, 0, 0, 0, -r * 1.7, r * 0.5, 'rgba(70,170,150,0.55)');
+      }
+
+      const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
+      grad.addColorStop(0, shade(base, 0.22));
+      grad.addColorStop(0.55, base);
+      grad.addColorStop(1, shade(base, -0.3));
+      g.beginPath();
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.fillStyle = grad;
+      g.shadowColor = '#1a4a44';
+      g.shadowBlur = 5;
+      g.fill();
+      g.shadowBlur = 0;
+
+      g.beginPath();
+      g.ellipse(0, r * 0.35, r * 0.75, r * 0.3, 0, 0, Math.PI);
+      g.fillStyle = 'rgba(210,235,225,0.35)';
+      g.fill();
+      g.restore();
+    }
+
+    g.save();
+    const headY = Math.sin(t * 0.0022) * 7;
+    g.translate(-55 + segCount * spacing, headY);
+    [-1, 1].forEach((side) => {
+      drawFin(g, 0, 0, side * baseRadius * 1.3, baseRadius * 0.9, baseRadius * 0.3, 'rgba(70,170,150,0.6)');
+    });
+    const points = 12;
+    const headPath = [];
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const r = baseRadius + Math.sin(t * 0.008 + i * 1.7) * 2;
+      headPath.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    g.beginPath();
+    headPath.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+    g.closePath();
+    const headGrad = g.createRadialGradient(-baseRadius * 0.3, -baseRadius * 0.35, 1, 0, 0, baseRadius * 1.05);
+    headGrad.addColorStop(0, shade('#357a70', 0.22));
+    headGrad.addColorStop(0.55, '#357a70');
+    headGrad.addColorStop(1, shade('#357a70', -0.3));
+    g.fillStyle = headGrad;
+    g.shadowColor = '#1a4a44';
+    g.shadowBlur = 12;
+    g.fill();
+    g.shadowBlur = 0;
+    const angle = t * 0.0006;
+    drawMonsterTeeth(g, baseRadius, { x: Math.cos(angle), y: Math.sin(angle) * 0.4 });
+    g.restore();
+    g.restore();
+  }
+
   function drawPortraitOrLock(ctx, drawFn, t, phase2) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
@@ -1544,6 +1647,7 @@
       drawPortraitOrLock(wraithCtx, drawWraith, t);
       drawPortraitOrLock(digWormCtx, drawDigWorm, t);
       drawPortraitOrLock(lastKnightCtx, drawLastKnight, t, phase2Shown.has(lastKnightCtx));
+      drawPortraitOrLock(eelCtx, drawEel, t);
     }
     requestAnimationFrame(loop);
   }
