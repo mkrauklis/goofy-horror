@@ -952,6 +952,25 @@
   // own drawKnightBody/drawKnightHelm/drawSword into a single static pose
   // instead of a live attack cycle, since this is a reference gallery, not
   // the fight itself.
+  // A single icicle hanging from a fixed point on the armor, phase 2
+  // only -- ported straight from game10.js's own drawArmorIcicle.
+  function drawLastKnightArmorIcicle(g, x, y, len) {
+    const w = len * 0.22;
+    g.beginPath();
+    g.moveTo(x - w, y);
+    g.lineTo(x + w, y);
+    g.lineTo(x, y + len);
+    g.closePath();
+    const grad = g.createLinearGradient(x, y, x, y + len);
+    grad.addColorStop(0, 'rgba(200,235,255,0.9)');
+    grad.addColorStop(1, 'rgba(140,200,240,0.55)');
+    g.fillStyle = grad;
+    g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.55)';
+    g.lineWidth = 1;
+    g.stroke();
+  }
+
   function drawLastKnightArmorGem(g, x, y, r, phase2) {
     const hi = phase2 ? '#8fd6ff' : '#ff3a4a';
     const lo = phase2 ? '#2a6bd6' : '#8a1620';
@@ -1054,9 +1073,17 @@
       g.lineWidth = 1.5;
       g.stroke();
       drawLastKnightArmorGem(g, px, py, r * 0.065, phase2);
+      if (phase2) {
+        drawLastKnightArmorIcicle(g, px - r * 0.1, py + r * 0.24, r * 0.26);
+        drawLastKnightArmorIcicle(g, px + r * 0.12, py + r * 0.2, r * 0.18);
+      }
     });
 
     drawLastKnightArmorGem(g, 0, -r * 0.02 + wobble, r * 0.13, phase2);
+    if (phase2) {
+      drawLastKnightArmorIcicle(g, -r * 0.3, r * 0.44, r * 0.3);
+      drawLastKnightArmorIcicle(g, r * 0.26, r * 0.4, r * 0.22);
+    }
 
     g.save();
     g.beginPath();

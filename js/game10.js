@@ -2017,6 +2017,28 @@
     g.restore();
   }
 
+  // A single icicle hanging from a fixed point on the armor -- phase 2
+  // only, once the rubies have already turned to sapphires. Same tapered
+  // triangle + linear-gradient shape every icicle on this site uses,
+  // just permanently grown-in rather than animating from nothing the way
+  // the death cutscene's do.
+  function drawArmorIcicle(g, x, y, len) {
+    const w = len * 0.22;
+    g.beginPath();
+    g.moveTo(x - w, y);
+    g.lineTo(x + w, y);
+    g.lineTo(x, y + len);
+    g.closePath();
+    const grad = g.createLinearGradient(x, y, x, y + len);
+    grad.addColorStop(0, 'rgba(200,235,255,0.9)');
+    grad.addColorStop(1, 'rgba(140,200,240,0.55)');
+    g.fillStyle = grad;
+    g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.55)';
+    g.lineWidth = 1;
+    g.stroke();
+  }
+
   // A proper suit of plate rather than the usual blob-with-floating-plates
   // look every other armored creature in this game uses -- a breastplate
   // with a tasset skirt and a pair of pauldrons, each carrying its own
@@ -2111,10 +2133,18 @@
       g.lineWidth = 1.5;
       g.stroke();
       if (!boss.defeated) drawArmorGem(g, px, py, r * 0.065, boss.phase2);
+      if (!boss.defeated && boss.phase2) {
+        drawArmorIcicle(g, px - r * 0.1, py + r * 0.24, r * 0.26);
+        drawArmorIcicle(g, px + r * 0.12, py + r * 0.2, r * 0.18);
+      }
     });
 
     // the main crest gem, set in the chest
     if (!boss.defeated) drawArmorGem(g, 0, -r * 0.02 + wobble, r * 0.13, boss.phase2);
+    if (!boss.defeated && boss.phase2) {
+      drawArmorIcicle(g, -r * 0.3, r * 0.44, r * 0.3);
+      drawArmorIcicle(g, r * 0.26, r * 0.4, r * 0.22);
+    }
 
     // a soft highlight along the upper-left of the breastplate
     g.save();
