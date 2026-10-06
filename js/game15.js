@@ -108,16 +108,15 @@
   const BOSS_MAX_HEALTH = 25;
 
   // Phase 2: at 15 HP the boss stops dead and the gate opens, but it
-  // doesn't give chase yet -- a spike wall starts pushing in from behind
-  // to drive stragglers out of the arena, and a barrier 10 tiles into
-  // the hallway holds everyone in a pen just past the gate. Only once
-  // every player still standing has made it into that pen does the boss
-  // itself appear, right at the hallway's mouth, standing still for
-  // CHASE_INTRO_MS before the chase actually begins and the barrier
-  // drops. Speed then scales with how far ahead or behind the nearest
-  // player is down the corridor -- 1.25x at an even pace, 2x if they've
-  // pulled ahead, 0.8x if they've fallen behind, so neither sprinting
-  // nor dawdling is ever free.
+  // doesn't give chase yet -- a barrier 10 tiles into the hallway holds
+  // everyone in a pen just past the gate, and every player still
+  // standing has to walk all the way up to it. Only once they all have
+  // does the boss itself appear, right at the hallway's mouth, standing
+  // still for CHASE_INTRO_MS before the chase actually begins and the
+  // barrier drops. Speed then scales with how far ahead or behind the
+  // nearest player is down the corridor -- 1.25x at an even pace, 2x if
+  // they've pulled ahead, 0.8x if they've fallen behind, so neither
+  // sprinting ahead nor dawdling is ever free.
   const PHASE2_HEALTH_THRESHOLD = 15;
   const CHASE_INTRO_MS = 2500;
   const CHASE_SPEED_BASE = PLAYER_SPEED * 1.25;
@@ -131,10 +130,6 @@
   // its usual arena-sized self; both its drawn radius and its hit area
   // switch to this, ignoring X entirely, while it's in the hall.
   const HALL_BOSS_RADIUS = 85;
-  // The spike wall that opens phase 2: it doesn't just sit there sealing
-  // the retreat, it actively advances toward the gate, shoving anyone
-  // dawdling near the arena end forward into the hallway.
-  const SPIKEWALL_SPEED = PLAYER_SPEED * 1.3;
   // The freeze item used to stop the boss dead; now it only costs it 20%
   // of its current speed, in or out of the chase.
   const FROZEN_SPEED_MULT = 0.8;
@@ -315,6 +310,23 @@
   ];
   const BOSS_LEAD_PHRASE = [BOSS_NOTE.D2, 0, BOSS_NOTE.A1, 0, BOSS_NOTE.C2, 0, BOSS_NOTE.G1, 0];
 
+  // The chase's own theme -- once phase 2 actually starts moving, the
+  // well-dweller's hollow dripping gives way to something fast and
+  // driving: a kick on nearly every beat, a bass riff that doesn't rest,
+  // and an urgent high lead, still running through the same well-echo
+  // delay so it reads as the same creature, just hunting now instead of
+  // waiting in the dark.
+  const CHASE_NOTE = { D2: 73.42, F2: 87.31, G2: 98.0, A2: 110.0, C3: 130.81, D3: 146.83, F3: 174.61 };
+  const CHASE_BASS_RIFF = [
+    CHASE_NOTE.D2, 0, CHASE_NOTE.D2, 0, CHASE_NOTE.F2, 0, CHASE_NOTE.D2, 0,
+    CHASE_NOTE.A2, 0, CHASE_NOTE.G2, 0, CHASE_NOTE.F2, 0, CHASE_NOTE.D2, CHASE_NOTE.F2,
+  ];
+  const CHASE_LEAD_PHRASE = [
+    CHASE_NOTE.D3, CHASE_NOTE.F3, CHASE_NOTE.D3, CHASE_NOTE.C3,
+    CHASE_NOTE.D3, CHASE_NOTE.F3, CHASE_NOTE.A2, CHASE_NOTE.G2,
+  ];
+  const CHASE_BPM = 150;
+
   function playBossBassNote(freq, t, dur, peak) {
     const osc = audioCtx.createOscillator();
     const env = audioCtx.createGain();
@@ -378,23 +390,32 @@
     if (!audioCtx || !bossBassGain) return;
     if (boss.defeated) { bossPulseTimer = null; return; }
 
-    // Slow and sparse throughout -- a well-dweller doesn't rush, and the
-    // long rests are what let the echo actually be heard between hits.
+    // Slow and sparse everywhere except the chase itself -- a
+    // well-dweller doesn't rush, and the long rests are what let the
+    // echo actually be heard between hits, but once it's actually
+    // hunting down the hallway that patience is gone.
+    const chasing = boss.phase2 && boss.chaseSubPhase === 'moving';
     const healthFrac = bossHealthFrac();
-    const bpm = 58 + (1 - healthFrac) * 18;
+    const bpm = chasing ? CHASE_BPM : 58 + (1 - healthFrac) * 18;
     const stepDur = 60 / bpm / 4;
     const t = audioCtx.currentTime;
     const i = bossStep % 16;
     const bar = Math.floor(bossStep / 16) % 2;
 
-    const bassNote = BOSS_BASS_RIFF[i];
-    if (bassNote) playBossBassNote(bassNote, t, stepDur * 3.2, 0.22 + (1 - healthFrac) * 0.08);
-    if (i === 0 || i === 10) playBossKick(t);
-    if (i === 3 || i === 11 || i === 14) playBossDrip(t, 0.09 + (1 - healthFrac) * 0.04);
+    const bassRiff = chasing ? CHASE_BASS_RIFF : BOSS_BASS_RIFF;
+    const leadPhrase = chasing ? CHASE_LEAD_PHRASE : BOSS_LEAD_PHRASE;
 
-    if (bar === 1) {
-      const leadNote = BOSS_LEAD_PHRASE[i % BOSS_LEAD_PHRASE.length];
-      if (leadNote) playBossLeadNote(leadNote, t, stepDur * 2.4, 0.08);
+    const bassNote = bassRiff[i];
+    if (bassNote) {
+      playBossBassNote(bassNote, t, stepDur * (chasing ? 1.6 : 3.2), chasing ? 0.26 : 0.22 + (1 - healthFrac) * 0.08);
+    }
+    if (chasing ? i % 2 === 0 : (i === 0 || i === 10)) playBossKick(t);
+    if (!chasing && (i === 3 || i === 11 || i === 14)) playBossDrip(t, 0.09 + (1 - healthFrac) * 0.04);
+    if (chasing && i % 4 === 2) playBossDrip(t, 0.13);
+
+    if (bar === 1 || chasing) {
+      const leadNote = leadPhrase[i % leadPhrase.length];
+      if (leadNote) playBossLeadNote(leadNote, t, stepDur * (chasing ? 1.3 : 2.4), chasing ? 0.12 : 0.08);
     }
 
     bossStep++;
@@ -804,17 +825,15 @@
       lookDir: { x: 1, y: 0 },
       defeated: false,
 
-      // Phase 2: once health drops to 15, the gate opens, a spike wall
-      // seals off the retreat, and the boss permanently switches to
-      // 'chase' -- no more picking from the phase-1 attack list.
+      // Phase 2: once health drops to 15, the gate opens and the boss
+      // permanently switches to 'chase' -- no more picking from the
+      // phase-1 attack list.
       phase2: false,
-      // 'holding' (frozen in the arena, waiting for everyone to enter
-      // the hall) | 'intro' (just spawned at the hall's mouth, standing
-      // still) | 'moving' (the actual chase)
+      // 'holding' (frozen in the arena, waiting for everyone to reach
+      // the barrier) | 'intro' (just spawned at the hall's mouth,
+      // standing still) | 'moving' (the actual chase)
       chaseSubPhase: 'holding',
       introStartedAt: 0,
-      spikeWallActive: false,
-      spikeWallY: 0,
 
       frozenUntil: 0,
 
@@ -924,7 +943,6 @@
     boss.phase2 = false;
     boss.chaseSubPhase = 'holding';
     boss.introStartedAt = 0;
-    boss.spikeWallActive = false;
     hallBarrierActive = false;
     boss.phase = 'idle'; boss.phaseStartedAt = 0; boss.nextIdleUntil = performance.now() + BOSS_INTRO_GRACE_MS;
     boss.attackCount = 0; boss.lastAttack = null;
@@ -1601,45 +1619,23 @@
 
   // Phase 2: triggered once, at 15 HP. The boss freezes in place (not
   // 'frozenUntil' frozen -- it just stops acting, see updateBossChase's
-  // 'holding' branch), the gate opens, and a spike wall starts pushing
-  // in from behind wherever it's standing. It locks into 'chase' for
+  // 'holding' branch) and the gate opens. It locks into 'chase' for
   // good -- no more picking from the attack list -- but doesn't actually
-  // move until every player still standing has made it past the gate.
+  // move until every player still standing has walked all the way up to
+  // the barrier.
   function enterPhase2(now) {
     boss.phase2 = true;
     boss.phase = 'chase';
     boss.chaseSubPhase = 'holding';
-    boss.spikeWallActive = true;
-    boss.spikeWallY = boss.y - 60;
     hallBarrierActive = true;
     clones = [];
     spawnFloatingText(boss.x, boss.y, 'IT STOPS DEAD');
     playIceCrack();
   }
 
-  function allAliveInHall() {
-    const hallTopY = LEVEL.hallway.y0 * TILE;
+  function allAliveAtBarrier() {
     const alive = players.filter((p) => !p.caught);
-    return alive.length > 0 && alive.every((p) => p.y >= hallTopY);
-  }
-
-  // The retreat-sealing spike wall: starts just north of wherever the
-  // boss was standing when phase 2 began and advances steadily toward
-  // the gate, damaging anyone it touches -- there's no waiting it out,
-  // only moving with it. It deactivates once it reaches the gate itself,
-  // since by then there's nowhere left behind it for anyone to be.
-  function updateSpikeWall(now, dt) {
-    if (!boss.spikeWallActive) return;
-    boss.spikeWallY += SPIKEWALL_SPEED * dt;
-    if (boss.spikeWallY >= LEVEL.hallway.y0 * TILE) {
-      boss.spikeWallActive = false;
-      return;
-    }
-    const BAND = 16;
-    players.forEach((p) => {
-      if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
-      if (Math.abs(p.y - boss.spikeWallY) < BAND) triggerCaught(p, now);
-    });
+    return alive.length > 0 && alive.every((p) => p.y >= barrierWorldY());
   }
 
   function hallwayCenterX() {
@@ -1647,16 +1643,16 @@
   }
 
   // Phase 2's chase, in three parts. 'holding': the boss stands dead
-  // still in the arena until every player left standing has crossed into
-  // the hallway. 'intro': it's just appeared at the hallway's mouth and
-  // holds still for CHASE_INTRO_MS so the appearance actually reads
-  // before the chase is on. 'moving': the real chase -- falling behind
-  // the nearest player lets it ease off; pulling ahead of it (toward the
-  // exit) makes it put on a burst of speed, so neither sprinting ahead
-  // nor stalling behind is ever free.
+  // still in the arena until every player left standing has walked all
+  // the way up to the barrier. 'intro': it's just appeared at the
+  // hallway's mouth and holds still for CHASE_INTRO_MS so the appearance
+  // actually reads before the chase is on. 'moving': the real chase --
+  // falling behind the nearest player lets it ease off; pulling ahead of
+  // it (toward the exit) makes it put on a burst of speed, so neither
+  // sprinting ahead nor stalling behind is ever free.
   function updateBossChase(now, dt) {
     if (boss.chaseSubPhase === 'holding') {
-      if (!allAliveInHall()) return;
+      if (!allAliveAtBarrier()) return;
       boss.chaseSubPhase = 'intro';
       boss.introStartedAt = now;
       boss.x = hallwayCenterX();
@@ -2190,32 +2186,6 @@
     });
   }
 
-  // The retreat-sealing spike wall: a jagged red-lit line across the
-  // arena, same "rigid, angular" silhouette technique as the wall-push
-  // attack's ice slabs, just a single advancing band instead of a
-  // sweeping pair.
-  function drawSpikeWall(g) {
-    if (!boss.spikeWallActive) return;
-    const y = boss.spikeWallY;
-    const spikeCount = Math.round(WORLD_W / 26);
-    g.save();
-    g.beginPath();
-    g.moveTo(0, y - 10);
-    for (let i = 0; i <= spikeCount; i++) {
-      const x = (i / spikeCount) * WORLD_W;
-      const sy = i % 2 === 0 ? y - 10 : y + 10;
-      g.lineTo(x, sy);
-    }
-    g.lineTo(WORLD_W, y - 10);
-    g.closePath();
-    g.fillStyle = 'rgba(150,20,20,0.75)';
-    g.fill();
-    g.strokeStyle = 'rgba(255,90,70,0.8)';
-    g.lineWidth = 2;
-    g.stroke();
-    g.restore();
-  }
-
   function drawFloatingTexts(g) {
     floatingTexts.forEach((f) => {
       const t = f.life / f.maxLife;
@@ -2712,7 +2682,6 @@
     drawTiles(ctx, camX, camY, now);
     drawSmokeBombs(ctx, now);
     drawWallPush(ctx);
-    drawSpikeWall(ctx);
     drawIcicleProjectiles(ctx);
     drawBoss(ctx, now);
     drawClones(ctx, now);
@@ -2938,7 +2907,6 @@
       updateSmokeBombs(now);
       updateTorches(now);
       updateBoss(now, dt);
-      updateSpikeWall(now, dt);
       updateShotgunDefense(now);
       updateCatch(now);
       updateCutscenes(now);
