@@ -125,6 +125,10 @@
   const BOMB_DAMAGE_NORMAL = 1;
 
   const RADAR_DURATION_MS = 10000;
+  // An energy bar grants infinite stamina (no sprint drain, instant
+  // cure from exhausted) for this long -- same team-wide-buff
+  // convention as radar/scanner/night vision, not tied to one player.
+  const ENERGY_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
   const EAT_DURATION_MS = 3000;
@@ -136,7 +140,7 @@
   const SMOKE_RADIUS = 70;
   const NVG_DURATION_MS = 10000;
   const NVG_RANGE_MULT = 2;
-  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'smoke', 'nightvision', 'shotgun-ammo'];
+  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'smoke', 'nightvision', 'shotgun-ammo', 'energy'];
   const SHOTGUN_STUN_MS = 5000;
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
@@ -914,6 +918,7 @@
   let crates = [];
   let fires = [];
   let radarUntil = 0;
+  let energyUntil = 0;
   let scannerUntil = 0;
   let smokeBombs = [];
   let nvgUntil = 0;
@@ -966,6 +971,7 @@
       x: f.x, y: f.y, seed: i * 1471.7 + Math.random() * 5000,
     }));
     radarUntil = 0;
+    energyUntil = 0;
     scannerUntil = 0;
     smokeBombs = [];
     nvgUntil = 0;
@@ -1016,6 +1022,12 @@
   // (not sprinting, not exhausted) also refills it, just at half the rate
   // the exhausted penalty does.
   function updateStamina(p, now, dt, isMoving) {
+    if (now < energyUntil) {
+      p.moveState = (p.sprintActive && isMoving) ? 'sprinting' : 'normal';
+      p.stamina = STAMINA_MAX;
+      if (!isMoving) p.sprintActive = false;
+      return;
+    }
     if (p.moveState === 'exhausted') {
       p.stamina = Math.min(STAMINA_MAX, p.stamina + EXHAUSTED_REGEN_RATE * dt);
       if (now >= p.exhaustedUntil) p.moveState = 'normal';
@@ -1153,7 +1165,8 @@
     ctx.fillStyle = '#202225';
     ctx.fillRect(bx, by, barW, barH);
     const frac = clamp(p.stamina / STAMINA_MAX, 0, 1);
-    const color = p.moveState === 'exhausted' ? '#c9403a' : p.moveState === 'sprinting' ? '#ffd27a' : '#3ddc84';
+    const color = performance.now() < energyUntil ? '#ffe27a'
+      : p.moveState === 'exhausted' ? '#c9403a' : p.moveState === 'sprinting' ? '#ffd27a' : '#3ddc84';
     ctx.fillStyle = color;
     ctx.fillRect(bx, by, barW * frac, barH);
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
@@ -1277,6 +1290,10 @@
       } else {
         spawnFloatingText(x, y, 'AMMO FULL');
       }
+    } else if (item === 'energy') {
+      energyUntil = now + ENERGY_DURATION_MS;
+      spawnFloatingText(x, y, 'ENERGY');
+      playItemChime(900);
     }
 
   }
