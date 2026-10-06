@@ -64,12 +64,12 @@
   const BOSS_IDLE_MAX_MS = 1400;
 
   // 1. Split: the mutation tears itself into two smaller copies -- one a
-  // slow lumbering 1.2x, the other a fast 1.9x -- that hunt independently
+  // slow lumbering 1.2x, the other a fast 1.6x -- that hunt independently
   // until the attack's timer runs out and they collapse back into one.
   const SPLIT_DURATION_MS = 9000;
   const SPLIT_CLONE_RADIUS = BOSS_RADIUS * 0.72;
   const SPLIT_SLOW_SPEED = PLAYER_SPEED * 1.2;
-  const SPLIT_FAST_SPEED = PLAYER_SPEED * 1.9;
+  const SPLIT_FAST_SPEED = PLAYER_SPEED * 1.6;
 
   // 2. Icicle shower: fires a shard at the nearest player every
   // ICICLE_FIRE_INTERVAL_MS for ICICLESHOOT_DURATION_MS straight, each one
