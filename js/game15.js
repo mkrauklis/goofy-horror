@@ -84,6 +84,19 @@
   const EXPAND_DURATION_MS = 6000;
   const EXPAND_MAX_RADIUS = 350;
 
+  // 5. Orbit: a ring of icicles rises up and starts spinning around the
+  // boss's own body; as they spin, one launches outward along whatever
+  // direction it's currently facing every ORBIT_LAUNCH_INTERVAL_MS,
+  // sweeping shots around the whole arena over the full 10 seconds
+  // rather than aiming at anyone directly. The boss itself stands still
+  // for the whole attack, same as expand.
+  const ORBIT_DURATION_MS = 10000;
+  const ORBIT_ICICLE_COUNT = 6;
+  const ORBIT_RADIUS_MULT = 1.8;
+  const ORBIT_ANGULAR_SPEED = 2.2; // radians/second
+  const ORBIT_LAUNCH_INTERVAL_MS = 650;
+  const ORBIT_ICICLE_SPEED = PLAYER_SPEED * 2.2;
+
   // Torches: the only way to actually hurt this boss. One spawns
   // somewhere on the open floor every TORCH_SPAWN_INTERVAL_MS as long as
   // fewer than TORCH_MAX_LIVE are already down; walking onto one picks it
@@ -94,18 +107,30 @@
   const TORCH_RESPAWN_MS = 8000; // phase 2's hallway points, after a pickup
   const BOSS_MAX_HEALTH = 25;
 
-  // Phase 2: at 15 HP the gate opens, a spike wall seals the retreat, and
-  // the boss permanently switches to chasing. Speed scales with how far
-  // ahead or behind the nearest player is down the corridor -- 1.25x at
-  // an even pace, 2x if they've pulled ahead, 0.8x if they've fallen
-  // behind, so neither sprinting nor dawdling is ever free.
+  // Phase 2: at 15 HP the boss stops dead and the gate opens, but it
+  // doesn't give chase yet -- a spike wall starts pushing in from behind
+  // to drive stragglers out of the arena, and a barrier 10 tiles into
+  // the hallway holds everyone in a pen just past the gate. Only once
+  // every player still standing has made it into that pen does the boss
+  // itself appear, right at the hallway's mouth, standing still for
+  // CHASE_INTRO_MS before the chase actually begins and the barrier
+  // drops. Speed then scales with how far ahead or behind the nearest
+  // player is down the corridor -- 1.25x at an even pace, 2x if they've
+  // pulled ahead, 0.8x if they've fallen behind, so neither sprinting
+  // nor dawdling is ever free.
   const PHASE2_HEALTH_THRESHOLD = 15;
+  const CHASE_INTRO_MS = 2500;
   const CHASE_SPEED_BASE = PLAYER_SPEED * 1.25;
   const CHASE_SPEED_AHEAD = PLAYER_SPEED * 2;
   const CHASE_SPEED_BEHIND = PLAYER_SPEED * 0.8;
   const CHASE_PACE_MARGIN = 40;
   const CHASE_ICICLE_SPEED = PLAYER_SPEED * 2.5;
   const CHASE_ICICLE_INTERVAL_MS = 650;
+  // Once it's spawned into the hallway, the boss reads as filling the
+  // whole corridor (HALL_W=5 tiles -- see gen_level15.py) rather than
+  // its usual arena-sized self; both its drawn radius and its hit area
+  // switch to this, ignoring X entirely, while it's in the hall.
+  const HALL_BOSS_RADIUS = 85;
   // The spike wall that opens phase 2: it doesn't just sit there sealing
   // the retreat, it actively advances toward the gate, shoving anyone
   // dawdling near the arena end forward into the hallway.
@@ -783,6 +808,11 @@
       // seals off the retreat, and the boss permanently switches to
       // 'chase' -- no more picking from the phase-1 attack list.
       phase2: false,
+      // 'holding' (frozen in the arena, waiting for everyone to enter
+      // the hall) | 'intro' (just spawned at the hall's mouth, standing
+      // still) | 'moving' (the actual chase)
+      chaseSubPhase: 'holding',
+      introStartedAt: 0,
       spikeWallActive: false,
       spikeWallY: 0,
 
@@ -810,6 +840,10 @@
       expandSubPhase: 'windup', // 'windup' | 'growing'
       expandStartedAt: 0,
       expandRadius: 0,
+
+      orbitUntil: 0,
+      orbitAngle: 0,
+      nextOrbitLaunchAt: 0,
     };
   }
 
@@ -826,6 +860,15 @@
   let torches = []; // [{x, y, seed}]
   let nextTorchSpawnAt = 0;
   let hallwayTorchState = []; // [{x, y, nextAt}]
+
+  // The holding-pen barrier: a solid line BARRIER_DEPTH_TILES into the
+  // hall, blocking player movement (not the boss, which never needs to
+  // cross it) until the boss has finished spawning in and the chase
+  // actually starts.
+  let hallBarrierActive = false;
+  function barrierWorldY() {
+    return LEVEL.barrier.y * TILE;
+  }
 
   const OPEN_FLOOR_TILES = (() => {
     const list = [];
@@ -879,7 +922,10 @@
     boss.frozenUntil = 0;
     boss.defeated = false;
     boss.phase2 = false;
+    boss.chaseSubPhase = 'holding';
+    boss.introStartedAt = 0;
     boss.spikeWallActive = false;
+    hallBarrierActive = false;
     boss.phase = 'idle'; boss.phaseStartedAt = 0; boss.nextIdleUntil = performance.now() + BOSS_INTRO_GRACE_MS;
     boss.attackCount = 0; boss.lastAttack = null;
     clones = [];
@@ -914,10 +960,10 @@
   // ---- player movement & collision ----
   // 'G' (the phase-2 gate) is a solid wall until the boss drops to 15 HP
   // and the chase begins -- it opens for players and the boss at the
-  // same moment.
+  // same moment. 'C' (a big crate) is always solid.
   function isWallForPlayer(tx, ty) {
     const ch = tileChar(tx, ty);
-    if (ch === '#') return true;
+    if (ch === '#' || ch === 'C') return true;
     if (ch === 'G') return !boss.phase2;
     return false;
   }
@@ -927,6 +973,9 @@
   }
 
   function canStandAt(x, y) {
+    // The holding-pen barrier: a flat line rather than a grid tile, so it
+    // gets its own check instead of going through isWallForPlayer.
+    if (hallBarrierActive && y + PLAYER_RADIUS > barrierWorldY()) return false;
     const r = PLAYER_RADIUS;
     const corners = [
       [x - r, y - r], [x + r, y - r],
@@ -1322,7 +1371,7 @@
     });
   }
 
-  const ALL_ATTACKS = ['split', 'iceshoot', 'wallpush', 'expand'];
+  const ALL_ATTACKS = ['split', 'iceshoot', 'wallpush', 'expand', 'orbit'];
   const CLONE_CATCH_RADIUS = SPLIT_CLONE_RADIUS * 1.2;
   let wallPassedPlayers = new Set();
 
@@ -1391,6 +1440,11 @@
       boss.expandSubPhase = 'windup';
       boss.expandStartedAt = now;
       boss.expandRadius = 0;
+      playBossWindup();
+    } else if (kind === 'orbit') {
+      boss.orbitUntil = now + ORBIT_DURATION_MS;
+      boss.orbitAngle = 0;
+      boss.nextOrbitLaunchAt = now + ORBIT_LAUNCH_INTERVAL_MS;
       playBossWindup();
     }
   }
@@ -1530,18 +1584,43 @@
     }
   }
 
-  // Phase 2: triggered once, at 15 HP. The gate opens, a spike wall
-  // starts pushing in from behind wherever the boss currently is, and it
-  // locks into 'chase' for good -- no more picking from the attack list.
+  // 5. Orbit: the boss stands still while a ring of icicles spins around
+  // it; one launches outward along the spin's current facing every
+  // ORBIT_LAUNCH_INTERVAL_MS, so over the full attack the shots sweep
+  // all the way around the arena instead of ever aiming at a player.
+  function updateBossOrbit(now, dt) {
+    boss.orbitAngle += dt * ORBIT_ANGULAR_SPEED;
+    if (now >= boss.nextOrbitLaunchAt) {
+      const dirX = Math.cos(boss.orbitAngle), dirY = Math.sin(boss.orbitAngle);
+      icicles.push({ x: boss.x, y: boss.y, dirX, dirY, seed: Math.random() * 100, speed: ORBIT_ICICLE_SPEED });
+      boss.nextOrbitLaunchAt = now + ORBIT_LAUNCH_INTERVAL_MS;
+      playTentacleStrike();
+    }
+    if (now >= boss.orbitUntil) finishAttack(now);
+  }
+
+  // Phase 2: triggered once, at 15 HP. The boss freezes in place (not
+  // 'frozenUntil' frozen -- it just stops acting, see updateBossChase's
+  // 'holding' branch), the gate opens, and a spike wall starts pushing
+  // in from behind wherever it's standing. It locks into 'chase' for
+  // good -- no more picking from the attack list -- but doesn't actually
+  // move until every player still standing has made it past the gate.
   function enterPhase2(now) {
     boss.phase2 = true;
     boss.phase = 'chase';
+    boss.chaseSubPhase = 'holding';
     boss.spikeWallActive = true;
     boss.spikeWallY = boss.y - 60;
-    boss.nextIcicleAt = now + CHASE_ICICLE_INTERVAL_MS;
+    hallBarrierActive = true;
     clones = [];
-    spawnFloatingText(boss.x, boss.y, 'IT TEARS THE WALL OPEN');
+    spawnFloatingText(boss.x, boss.y, 'IT STOPS DEAD');
     playIceCrack();
+  }
+
+  function allAliveInHall() {
+    const hallTopY = LEVEL.hallway.y0 * TILE;
+    const alive = players.filter((p) => !p.caught);
+    return alive.length > 0 && alive.every((p) => p.y >= hallTopY);
   }
 
   // The retreat-sealing spike wall: starts just north of wherever the
@@ -1563,11 +1642,39 @@
     });
   }
 
-  // Phase 2's chase: the boss hunts forever, down the corridor's own Y
-  // axis. Falling behind the nearest player lets it ease off; pulling
-  // ahead of it (toward the exit) makes it put on a burst of speed --
-  // neither sprinting ahead nor stalling behind is ever free.
+  function hallwayCenterX() {
+    return ((LEVEL.hallway.x0 + LEVEL.hallway.x1 + 1) / 2) * TILE;
+  }
+
+  // Phase 2's chase, in three parts. 'holding': the boss stands dead
+  // still in the arena until every player left standing has crossed into
+  // the hallway. 'intro': it's just appeared at the hallway's mouth and
+  // holds still for CHASE_INTRO_MS so the appearance actually reads
+  // before the chase is on. 'moving': the real chase -- falling behind
+  // the nearest player lets it ease off; pulling ahead of it (toward the
+  // exit) makes it put on a burst of speed, so neither sprinting ahead
+  // nor stalling behind is ever free.
   function updateBossChase(now, dt) {
+    if (boss.chaseSubPhase === 'holding') {
+      if (!allAliveInHall()) return;
+      boss.chaseSubPhase = 'intro';
+      boss.introStartedAt = now;
+      boss.x = hallwayCenterX();
+      boss.y = LEVEL.hallway.y0 * TILE + 40;
+      boss.lookDir = { x: 0, y: 1 };
+      spawnFloatingText(boss.x, boss.y, 'IT ENTERS THE HALL');
+      playBossWindup();
+      return;
+    }
+
+    if (boss.chaseSubPhase === 'intro') {
+      if (now - boss.introStartedAt < CHASE_INTRO_MS) return;
+      boss.chaseSubPhase = 'moving';
+      hallBarrierActive = false;
+      boss.nextIcicleAt = now + CHASE_ICICLE_INTERVAL_MS;
+      return;
+    }
+
     const target = nearestPlayer(boss.x, boss.y);
     const diff = target.y - boss.y;
     let speed = CHASE_SPEED_BASE;
@@ -1606,6 +1713,7 @@
       case 'iceshoot': updateBossIceshoot(now, dt); break;
       case 'wallpush': updateBossWallpush(now, dt); break;
       case 'expand': updateBossExpand(now, dt); break;
+      case 'orbit': updateBossOrbit(now, dt); break;
       case 'chase': updateBossChase(now, dt); break;
     }
   }
@@ -1627,13 +1735,21 @@
   function updateCatch(now) {
     if (boss.defeated) return;
     // While split, the main body is off-screen and the clones carry their
-    // own contact check inside updateBossSplit.
+    // own contact check inside updateBossSplit. While holding, it hasn't
+    // spawned into the hall yet and isn't a threat.
     if (boss.phase === 'split') return;
+    if (boss.phase2 && boss.chaseSubPhase === 'holding') return;
+    // Once it's in the hall (intro or moving), it fills the whole
+    // corridor width -- X doesn't matter, only how close you are along Y.
+    const inHall = boss.phase2 && boss.chaseSubPhase !== 'holding';
     players.forEach((p) => {
       if (p.caught) return;
       if (now < p.invulnerableUntil) return;
       if (isHidden(p, now)) return;
-      if (Math.hypot(p.x - boss.x, p.y - boss.y) < BOSS_CATCH_RADIUS) triggerCaught(p, now);
+      const caught = inHall
+        ? Math.abs(p.y - boss.y) < HALL_BOSS_RADIUS * 0.9
+        : Math.hypot(p.x - boss.x, p.y - boss.y) < BOSS_CATCH_RADIUS;
+      if (caught) triggerCaught(p, now);
     });
   }
 
@@ -1839,10 +1955,43 @@
       g.strokeRect(gx0 + 3, gy + 3, gx1 - gx0 - 6, TILE - 6);
     }
 
+    // The holding-pen barrier -- a solid-looking amber band across the
+    // hallway, same width as the corridor, visible only while it's
+    // actually blocking anyone.
+    if (hallBarrierActive) {
+      const hx0 = LEVEL.hallway.x0 * TILE, hx1 = (LEVEL.hallway.x1 + 1) * TILE;
+      const by = barrierWorldY();
+      g.fillStyle = 'rgba(255,190,60,0.3)';
+      g.fillRect(hx0, by - 6, hx1 - hx0, 12);
+      g.strokeStyle = 'rgba(255,220,140,0.7)';
+      g.lineWidth = 2;
+      g.strokeRect(hx0, by - 6, hx1 - hx0, 12);
+    }
+
     drawCorpses(g);
     drawBloodSplatters(g);
     drawCrates(g);
+    drawBigCrates(g);
     drawTorches(g, now);
+  }
+
+  // Big 2x2 crates down the hallway -- solid, can't be opened, just cover
+  // to duck behind and break the boss's own straight-line approach.
+  // Anchored at their top-left tile.
+  function drawBigCrates(g) {
+    (LEVEL.bigCrateSpawns || []).forEach((c) => {
+      const px = c.x * TILE, py = c.y * TILE;
+      const w = TILE * 2, h = TILE * 2;
+      g.fillStyle = '#5a4428';
+      g.fillRect(px, py, w, h);
+      g.strokeStyle = '#2a1e14';
+      g.lineWidth = 2;
+      g.strokeRect(px + 1, py + 1, w - 2, h - 2);
+      g.beginPath();
+      g.moveTo(px + 2, py + 2); g.lineTo(px + w - 2, py + h - 2);
+      g.moveTo(px + w - 2, py + 2); g.lineTo(px + 2, py + h - 2);
+      g.stroke();
+    });
   }
 
   function drawCorpses(g) {
@@ -2254,7 +2403,9 @@
   }
 
   function drawMutationBoss(g, t) {
-    const r = boss.radius;
+    // Once it's spawned into the hallway it visually fills the whole
+    // corridor rather than reading at its normal arena size.
+    const r = (boss.phase2 && boss.chaseSubPhase !== 'holding') ? HALL_BOSS_RADIUS : boss.radius;
     const sideR = r * 0.6;
     // Bright red once phase 2 starts -- same palette shape (a dark
     // tentacle tone, a dim side-head tone, a bright core tone) as the
@@ -2300,6 +2451,34 @@
     g.stroke();
   }
 
+  // A ring of small icicle shards spinning around the boss's own body --
+  // same tapered-shard look as every other icicle, just arranged in a
+  // circle and rotating with boss.orbitAngle instead of flying straight.
+  function drawOrbitRing(g) {
+    const radius = boss.radius * ORBIT_RADIUS_MULT;
+    for (let i = 0; i < ORBIT_ICICLE_COUNT; i++) {
+      const a = boss.orbitAngle + (i / ORBIT_ICICLE_COUNT) * Math.PI * 2;
+      const cx = Math.cos(a) * radius, cy = Math.sin(a) * radius;
+      g.save();
+      g.translate(cx, cy);
+      g.rotate(a);
+      g.beginPath();
+      g.moveTo(-9, -4);
+      g.lineTo(-9, 4);
+      g.lineTo(11, 0);
+      g.closePath();
+      const grad = g.createLinearGradient(-9, 0, 11, 0);
+      grad.addColorStop(0, 'rgba(170,230,250,0.6)');
+      grad.addColorStop(1, 'rgba(230,250,255,0.95)');
+      g.fillStyle = grad;
+      g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.6)';
+      g.lineWidth = 0.8;
+      g.stroke();
+      g.restore();
+    }
+  }
+
   function drawBoss(g, t) {
     if (boss.phase === 'split') return; // the clones stand in for it
 
@@ -2307,6 +2486,7 @@
     g.translate(boss.x, boss.y);
 
     if (boss.phase === 'expand') drawExpandHazard(g, t);
+    if (boss.phase === 'orbit') drawOrbitRing(g);
 
     if (!boss.defeated) drawMutationBoss(g, t);
     else {
