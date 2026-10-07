@@ -125,13 +125,16 @@
   // standing has to walk all the way up to it. Only once they all have
   // does the boss itself appear, right at the hallway's mouth, standing
   // still for CHASE_INTRO_MS before the chase actually begins and the
-  // barrier drops. Speed then scales with how far ahead or behind the
-  // nearest player is down the corridor -- 1.25x at an even pace, 2.2x
-  // once they've pulled 25 tiles ahead, 0.8x once they've fallen 10
-  // tiles behind -- except once it's off every player's own screen
-  // entirely, where it jumps to a hard 2.5x regardless of distance and
-  // stays there (ignoring the normal tiers) until it's back in view,
-  // so neither sprinting ahead nor dawdling is ever free.
+  // barrier drops. It stays pinned to the hallway's own center line the
+  // whole time -- only its distance down the corridor ever changes, never
+  // its lane -- and speed scales with how far ahead or behind the nearest
+  // player is -- 1.25x at an even pace, 2.2x once they've pulled 25 tiles
+  // ahead, 0.8x once they've fallen 10 tiles behind -- except once it's
+  // off every player's own screen entirely, where it jumps to a hard 2.5x
+  // regardless of distance and stays there (ignoring the normal tiers)
+  // until it's back in view, so neither sprinting ahead nor dawdling is
+  // ever free. A big crate directly in its path doesn't stop it either --
+  // it smashes straight through (see breakBigCrateAt).
   const PHASE2_HEALTH_THRESHOLD = 15;
   const CHASE_INTRO_MS = 2500;
   const CHASE_SPEED_BASE = PLAYER_SPEED * 1.25;
@@ -140,8 +143,8 @@
   const CHASE_SPEED_OFFCAM = PLAYER_SPEED * 2.5;
   const CHASE_AHEAD_MARGIN = TILE * 25;
   const CHASE_BEHIND_MARGIN = TILE * 10;
-  const CHASE_ICICLE_SPEED = PLAYER_SPEED * 2.5;
-  const CHASE_ICICLE_INTERVAL_MS = 1000;
+  const CHASE_ICICLE_SPEED = PLAYER_SPEED * 3.5;
+  const CHASE_ICICLE_INTERVAL_MS = 3000;
   // Once it's spawned into the hallway, the boss reads as filling the
   // whole corridor (HALL_W=5 tiles -- see gen_level15.py) rather than
   // its usual arena-sized self; both its drawn radius and its hit area
@@ -911,6 +914,10 @@
   let icicles = []; // icicle shower / chase: [{x, y, dirX, dirY, seed, speed}]
   let waterParticles = []; // the drowning cutscene's foam: [{x, y, vx, vy, size, drift}]
   let freezeStartedAt = 0; // kept as the generic cutscene start-time field
+  // Big crates the boss has smashed through during the chase -- stores
+  // every tile of the crate's 2x2 footprint, since isWallForPlayer checks
+  // a single tile at a time. Keyed "tx,ty".
+  let brokenCrateTiles = new Set();
 
   // Torches: the only way to actually hurt this boss. In phase 1 one
   // spawns somewhere on the open floor every TORCH_SPAWN_INTERVAL_MS as
@@ -992,6 +999,7 @@
     icicles = [];
     waterParticles = [];
     freezeStartedAt = 0;
+    brokenCrateTiles = new Set();
 
     bossHealth = BOSS_MAX_HEALTH;
     torches = [];
@@ -1021,14 +1029,40 @@
   resetLevel();
 
   // ---- player movement & collision ----
+  function crateKey(tx, ty) { return tx + ',' + ty; }
+
   // 'G' (the phase-2 gate) is a solid wall until the boss drops to 15 HP
   // and the chase begins -- it opens for players and the boss at the
-  // same moment. 'C' (a big crate) is always solid.
+  // same moment. 'C' (a big crate) is solid until the boss has smashed
+  // through it (see breakBigCrateAt) -- from then on it's rubble, and
+  // stops blocking players and icicles too, not just the boss.
   function isWallForPlayer(tx, ty) {
     const ch = tileChar(tx, ty);
-    if (ch === '#' || ch === 'C') return true;
+    if (ch === '#') return true;
+    if (ch === 'C') return !brokenCrateTiles.has(crateKey(tx, ty));
     if (ch === 'G') return !boss.phase2;
     return false;
+  }
+
+  // Finds the LEVEL.bigCrateSpawns entry (anchored at its top-left tile,
+  // a 2x2 footprint) that covers a given tile, if any.
+  function findBigCrateAt(tx, ty) {
+    return (LEVEL.bigCrateSpawns || []).find((c) => tx >= c.x && tx <= c.x + 1 && ty >= c.y && ty <= c.y + 1);
+  }
+
+  function breakBigCrateAt(tx, ty) {
+    const c = findBigCrateAt(tx, ty);
+    if (!c) return false;
+    const originKey = crateKey(c.x, c.y);
+    if (brokenCrateTiles.has(originKey)) return true;
+    for (let dy = 0; dy < 2; dy++) {
+      for (let dx = 0; dx < 2; dx++) {
+        brokenCrateTiles.add(crateKey(c.x + dx, c.y + dy));
+      }
+    }
+    spawnCrateDebris((c.x + 1) * TILE, (c.y + 1) * TILE);
+    playBombBlast();
+    return true;
   }
 
   function isHidden(p, now) {
@@ -1454,6 +1488,23 @@
     });
   }
 
+  // Same corner check as canBossStandAt, but breaks any big crate found
+  // under one instead of just reporting blocked -- used during the chase,
+  // where the boss smashes through crates rather than stopping at them.
+  function breakCratesBlocking(x, y) {
+    const r = boss.radius * 0.7;
+    const corners = [
+      [x - r, y - r], [x + r, y - r],
+      [x - r, y + r], [x + r, y + r],
+    ];
+    let broke = false;
+    corners.forEach(([cx, cy]) => {
+      const t = worldToTile(cx, cy);
+      if (breakBigCrateAt(t.x, t.y)) broke = true;
+    });
+    return broke;
+  }
+
   const ALL_ATTACKS = ['split', 'iceshoot', 'wallpush', 'expand', 'orbit'];
   const CLONE_CATCH_RADIUS = SPLIT_CLONE_RADIUS * 1.2;
   let wallPassedPlayers = new Set();
@@ -1810,6 +1861,10 @@
       return;
     }
 
+    // Pinned to the hallway's own center line at all times -- only its
+    // distance down the corridor (y) ever changes.
+    boss.x = hallwayCenterX();
+
     const target = nearestPlayer(boss.x, boss.y);
     const diff = target.y - boss.y;
     let speed = CHASE_SPEED_BASE;
@@ -1820,20 +1875,19 @@
 
     const dx = target.x - boss.x, dy = target.y - boss.y;
     const d = Math.hypot(dx, dy);
-    if (d > 1) {
-      const step = speed * dt;
-      const nx = boss.x + (dx / d) * step, ny = boss.y + (dy / d) * step;
-      if (canBossStandAt(nx, boss.y)) boss.x = nx;
+    if (Math.abs(dy) > 1) {
+      const ny = boss.y + (dy > 0 ? 1 : -1) * speed * dt;
+      // A big crate directly ahead doesn't stop it -- smash through and
+      // keep going the same frame, rather than stalling at the obstacle.
+      if (!canBossStandAt(boss.x, ny)) breakCratesBlocking(boss.x, ny);
       if (canBossStandAt(boss.x, ny)) boss.y = ny;
-      boss.lookDir = { x: dx / d, y: dy / d };
+      if (d > 1) boss.lookDir = { x: dx / d, y: dy / d };
     }
 
     if (now >= boss.nextIcicleAt) {
-      players.forEach((p) => {
-        const idx = p.x - boss.x, idy = p.y - boss.y;
-        const id = Math.hypot(idx, idy) || 1;
-        icicles.push({ x: boss.x, y: boss.y, dirX: idx / id, dirY: idy / id, seed: Math.random() * 100, speed: CHASE_ICICLE_SPEED });
-      });
+      const idx = target.x - boss.x, idy = target.y - boss.y;
+      const id = Math.hypot(idx, idy) || 1;
+      icicles.push({ x: boss.x, y: boss.y, dirX: idx / id, dirY: idy / id, seed: Math.random() * 100, speed: CHASE_ICICLE_SPEED });
       boss.nextIcicleAt = now + CHASE_ICICLE_INTERVAL_MS;
       playTentacleStrike();
     }
@@ -2009,6 +2063,24 @@
     }
   }
 
+  // A burst of splintered wood -- the boss smashing through a big crate
+  // during the chase. Same shared pool, tagged 'wood'.
+  function spawnCrateDebris(x, y) {
+    for (let i = 0; i < 14; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 80 + Math.random() * 200;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0,
+        maxLife: 0.3 + Math.random() * 0.35,
+        size: 2 + Math.random() * 3,
+        color: 'wood',
+      });
+    }
+  }
+
   function spawnBloodEffect(x, y) {
     bloodSplatters.push({ x, y, seed: Math.random() * 1000 });
     if (bloodSplatters.length > 24) bloodSplatters.shift();
@@ -2072,7 +2144,9 @@
       const alpha = 1 - pt.life / pt.maxLife;
       g.beginPath();
       g.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
-      g.fillStyle = pt.color === 'ice' ? `rgba(190,230,250,${alpha})` : `rgba(160,15,20,${alpha})`;
+      g.fillStyle = pt.color === 'ice' ? `rgba(190,230,250,${alpha})`
+        : pt.color === 'wood' ? `rgba(122,90,52,${alpha})`
+        : `rgba(160,15,20,${alpha})`;
       g.fill();
     });
   }
@@ -2142,11 +2216,12 @@
     drawTorches(g, now);
   }
 
-  // Big 2x2 crates down the hallway -- solid, can't be opened, just cover
-  // to duck behind and break the boss's own straight-line approach.
-  // Anchored at their top-left tile.
+  // Big 2x2 crates down the hallway -- solid cover to duck behind, until
+  // the boss smashes through one (see breakBigCrateAt), after which it's
+  // gone for good. Anchored at their top-left tile.
   function drawBigCrates(g) {
     (LEVEL.bigCrateSpawns || []).forEach((c) => {
+      if (brokenCrateTiles.has(crateKey(c.x, c.y))) return;
       const px = c.x * TILE, py = c.y * TILE;
       const w = TILE * 2, h = TILE * 2;
       g.fillStyle = '#5a4428';
