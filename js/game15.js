@@ -20,17 +20,15 @@
   const VIEW_W = 460;
   const VIEW_H = 340;
   // Chosen so the WHOLE arena fits on screen at once in phase 1 --
-  // VISIBLE_HALF_W/H (computed from whichever zoom is active -- see
-  // currentZoom()) both end up bigger than half the arena, so the
+  // VISIBLE_HALF_W/H both end up bigger than half the arena, so the
   // clamp() in renderViewport's camera math collapses to a fixed center
-  // point instead of following either player around. Phase 2's chase
-  // hallway switches to CHASE_ZOOM, a normal 1:1 follow-cam, once the
-  // fight leaves the arena -- a zoomed-out view of an 80-tile corridor
-  // would make the chase unreadable.
+  // point instead of following either player around. The same zoom
+  // carries straight into phase 2's chase hallway too -- the camera
+  // still follows along it (see renderViewport's camY clamp), just
+  // zoomed out rather than switching to a tight 1:1 follow-cam.
   const ZOOM = 0.4;
-  const CHASE_ZOOM = 1;
   function currentZoom() {
-    return boss.phase2 ? CHASE_ZOOM : ZOOM;
+    return ZOOM;
   }
   function visibleHalfW() { return (VIEW_W / 2) / currentZoom(); }
   function visibleHalfH() { return (VIEW_H / 2) / currentZoom(); }
@@ -63,9 +61,12 @@
   const BOSS_INTRO_GRACE_MS = 3000;
   const BOSS_IDLE_MAX_MS = 1400;
 
-  // 1. Split: the mutation tears itself into two smaller copies -- one a
-  // slow lumbering 1.2x, the other a fast 1.6x -- that hunt independently
+  // 1. Split: a 2-second windup where the two eventual clones visibly peel
+  // away from the boss's own body before they actually become real, then
+  // the mutation tears itself into two smaller copies -- one a slow
+  // lumbering 1.2x, the other a fast 1.6x -- that hunt independently
   // until the attack's timer runs out and they collapse back into one.
+  const SPLIT_WINDUP_MS = 2000;
   const SPLIT_DURATION_MS = 9000;
   const SPLIT_CLONE_RADIUS = BOSS_RADIUS * 0.72;
   const SPLIT_SLOW_SPEED = PLAYER_SPEED * 1.2;
@@ -860,6 +861,9 @@
       attackCount: 0,
       lastAttack: null,
 
+      splitSubPhase: 'windup', // 'windup' | 'active'
+      splitWindupStartedAt: 0,
+      splitAngle: 0,
       splitUntil: 0,
 
       nextIcicleAt: 0,
@@ -1467,12 +1471,10 @@
     boss.lastAttack = kind;
 
     if (kind === 'split') {
-      boss.splitUntil = now + SPLIT_DURATION_MS;
-      const a = Math.random() * Math.PI * 2;
-      clones = [
-        { x: boss.x, y: boss.y, radius: SPLIT_CLONE_RADIUS, speed: SPLIT_SLOW_SPEED, seed: Math.random() * 100, lookDir: { x: Math.cos(a), y: Math.sin(a) } },
-        { x: boss.x, y: boss.y, radius: SPLIT_CLONE_RADIUS, speed: SPLIT_FAST_SPEED, seed: Math.random() * 100, lookDir: { x: -Math.cos(a), y: -Math.sin(a) } },
-      ];
+      boss.splitSubPhase = 'windup';
+      boss.splitWindupStartedAt = now;
+      boss.splitAngle = Math.random() * Math.PI * 2;
+      clones = [];
       playBossWindup();
     } else if (kind === 'iceshoot') {
       boss.iceshootUntil = now + ICICLESHOOT_DURATION_MS;
@@ -1520,11 +1522,25 @@
     boss.lookDir = { x: dx / d, y: dy / d };
   }
 
-  // 1. Split: two clones hunt independently at their own fixed speeds
-  // until the timer runs out, then collapse back into one boss at their
-  // midpoint. The main boss body isn't drawn and can't be touched while
-  // this is active -- the clones are the only threat.
+  // 1. Split: a 2-second windup first (see drawSplitWindup -- the boss
+  // itself is harmless and doesn't move during it), then two clones hunt
+  // independently at their own fixed speeds until the timer runs out and
+  // they collapse back into one boss at their midpoint. The main boss
+  // body isn't drawn and can't be touched once active -- the clones are
+  // the only threat.
   function updateBossSplit(now, dt) {
+    if (boss.splitSubPhase === 'windup') {
+      if (now - boss.splitWindupStartedAt >= SPLIT_WINDUP_MS) {
+        boss.splitSubPhase = 'active';
+        boss.splitUntil = now + SPLIT_DURATION_MS;
+        const a = boss.splitAngle;
+        clones = [
+          { x: boss.x, y: boss.y, radius: SPLIT_CLONE_RADIUS, speed: SPLIT_SLOW_SPEED, seed: Math.random() * 100, lookDir: { x: Math.cos(a), y: Math.sin(a) } },
+          { x: boss.x, y: boss.y, radius: SPLIT_CLONE_RADIUS, speed: SPLIT_FAST_SPEED, seed: Math.random() * 100, lookDir: { x: -Math.cos(a), y: -Math.sin(a) } },
+        ];
+      }
+      return;
+    }
     if (now >= boss.splitUntil) {
       if (clones.length) {
         boss.x = clones.reduce((s, c) => s + c.x, 0) / clones.length;
@@ -1698,6 +1714,11 @@
       boss.chaseSubPhase = 'intro';
       boss.introStartedAt = now;
       hallBarrierActive = false;
+      // Any icicle still in flight from whatever attack was running right
+      // up until someone reached the barrier (iceshoot, orbit) vanishes
+      // here too -- the chase should open with a clean screen, not a
+      // leftover shot that was never dodgeable in the first place.
+      icicles = [];
       boss.x = hallwayCenterX();
       boss.y = LEVEL.hallway.y0 * TILE + 40;
       boss.lookDir = { x: 0, y: 1 };
@@ -2503,17 +2524,49 @@
     }
   }
 
+  // The split attack's 2-second telegraph: the two eventual clones grow
+  // in and peel away from the boss's own center along the same angle
+  // they'll actually launch on, fully overlapped and invisible at the
+  // start and at full separation and opacity by the time the real
+  // clones take over (see drawBoss's own fade of the main body above
+  // this). Drawn in local (already-translated) boss space, same as
+  // drawMutationBoss.
+  function drawSplitWindup(g, t) {
+    const progress = clamp((t - boss.splitWindupStartedAt) / SPLIT_WINDUP_MS, 0, 1);
+    const sep = boss.radius * 0.9 * progress;
+    const a = boss.splitAngle;
+    [1, -1].forEach((sign) => {
+      g.save();
+      g.translate(Math.cos(a) * sep * sign, Math.sin(a) * sep * sign);
+      g.globalAlpha = progress;
+      drawBlobBody(g, SPLIT_CLONE_RADIUS, '#7a3a9a', '#3a1452', boss.seed + sign * 7, t);
+      g.restore();
+    });
+  }
+
   function drawBoss(g, t) {
-    if (boss.phase === 'split') return; // the clones stand in for it
+    if (boss.phase === 'split' && boss.splitSubPhase === 'active') return; // the clones stand in for it
 
     g.save();
     g.translate(boss.x, boss.y);
 
     if (boss.phase === 'expand') drawExpandHazard(g, t);
     if (boss.phase === 'orbit') drawOrbitRing(g);
+    const splitWindup = boss.phase === 'split' && boss.splitSubPhase === 'windup';
+    if (splitWindup) drawSplitWindup(g, t);
 
-    if (!boss.defeated) drawMutationBoss(g, t);
-    else {
+    if (!boss.defeated) {
+      g.save();
+      if (splitWindup) {
+        // Fades the still-whole body out as the two forming halves (drawn
+        // behind it, above) fade in and pull apart, so the windup reads
+        // as one thing coming apart rather than three things stacked up.
+        const progress = clamp((t - boss.splitWindupStartedAt) / SPLIT_WINDUP_MS, 0, 1);
+        g.globalAlpha = 1 - progress * 0.5;
+      }
+      drawMutationBoss(g, t);
+      g.restore();
+    } else {
       g.save();
       g.globalAlpha = 0.6;
       drawMutationBoss(g, t);
