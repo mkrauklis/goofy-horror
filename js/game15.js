@@ -1686,13 +1686,17 @@
     playIceCrack();
   }
 
+  // movePlayer rejects an entire frame's step outright when the destination
+  // is illegal -- it doesn't clamp to the boundary -- so a player pressed
+  // against the barrier lands wherever their last *accepted* step put them,
+  // which can be short of the true maximum reachable position by up to one
+  // frame's worth of movement (PLAYER_SPEED * SPRINT_SPEED_MULT * the loop's
+  // dt cap of 0.05s = 11.25px while sprinting). Comfortably covers that so
+  // visibly touching the barrier always actually counts as reaching it.
+  const BARRIER_REACH_TOLERANCE = 16;
+
   function anyAliveAtBarrier() {
-    // Matches canStandAt's own barrier check -- a player's center can never
-    // reach y >= barrierWorldY() while the barrier is solid, since
-    // canStandAt blocks the moment their southern edge (y + PLAYER_RADIUS)
-    // would cross it. Checking the center against the same line made this
-    // physically unreachable for anyone, not just a lone survivor.
-    return players.some((p) => !p.caught && p.y + PLAYER_RADIUS >= barrierWorldY());
+    return players.some((p) => !p.caught && p.y + PLAYER_RADIUS + BARRIER_REACH_TOLERANCE >= barrierWorldY());
   }
 
   function hallwayCenterX() {
