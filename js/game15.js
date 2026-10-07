@@ -128,16 +128,20 @@
   // barrier drops. Speed then scales with how far ahead or behind the
   // nearest player is down the corridor -- 1.25x at an even pace, 2.2x
   // once they've pulled 25 tiles ahead, 0.8x once they've fallen 10
-  // tiles behind, so neither sprinting ahead nor dawdling is ever free.
+  // tiles behind -- except once it's off every player's own screen
+  // entirely, where it jumps to a hard 2.5x regardless of distance and
+  // stays there (ignoring the normal tiers) until it's back in view,
+  // so neither sprinting ahead nor dawdling is ever free.
   const PHASE2_HEALTH_THRESHOLD = 15;
   const CHASE_INTRO_MS = 2500;
   const CHASE_SPEED_BASE = PLAYER_SPEED * 1.25;
   const CHASE_SPEED_AHEAD = PLAYER_SPEED * 2.2;
   const CHASE_SPEED_BEHIND = PLAYER_SPEED * 0.8;
+  const CHASE_SPEED_OFFCAM = PLAYER_SPEED * 2.5;
   const CHASE_AHEAD_MARGIN = TILE * 25;
   const CHASE_BEHIND_MARGIN = TILE * 10;
   const CHASE_ICICLE_SPEED = PLAYER_SPEED * 2.5;
-  const CHASE_ICICLE_INTERVAL_MS = 650;
+  const CHASE_ICICLE_INTERVAL_MS = 1000;
   // Once it's spawned into the hallway, the boss reads as filling the
   // whole corridor (HALL_W=5 tiles -- see gen_level15.py) rather than
   // its usual arena-sized self; both its drawn radius and its hit area
@@ -172,6 +176,13 @@
 
   // ---- sprint / stamina ----
   const DOUBLE_TAP_MS = 300;
+  // A real stop (releasing every movement key) cancels an active sprint,
+  // requiring a fresh double-tap to resume it -- but a single stray frame
+  // of net-zero input (switching which direction key is held, two opposite
+  // keys briefly overlapping) used to count as a "stop" too, silently
+  // killing a sprint the player never actually let go of. This grace
+  // window requires the zero-input to hold for real before canceling it.
+  const SPRINT_CANCEL_GRACE_MS = 120;
   const STAMINA_MAX = 15;
   const SPRINT_SPEED_MULT = 2;
   const EXHAUSTED_SPEED_MULT = 0.5;
@@ -829,6 +840,7 @@
       stamina: STAMINA_MAX, moveState: 'normal', exhaustedUntil: 0, sprintActive: false,
       walkPhase: 0,
       shotgunAmmo: 0,
+      stopSince: 0,
     };
   }
 
@@ -962,6 +974,7 @@
       p.exhaustedUntil = 0;
       p.sprintActive = false;
       p.shotgunAmmo = 0;
+      p.stopSince = 0;
     });
 
     const spawn = LEVEL.monsterSpawns[0];
@@ -1043,10 +1056,19 @@
   }
 
   function updateStamina(p, now, dt, isMoving) {
+    if (isMoving) {
+      p.stopSince = 0;
+    } else if (!p.stopSince) {
+      p.stopSince = now;
+    }
+    // Only a stop that's actually held for SPRINT_CANCEL_GRACE_MS counts --
+    // see the constant's own comment.
+    const reallyStopped = !isMoving && now - p.stopSince >= SPRINT_CANCEL_GRACE_MS;
+
     if (now < energyUntil) {
       p.moveState = (p.sprintActive && isMoving) ? 'sprinting' : 'normal';
       p.stamina = STAMINA_MAX;
-      if (!isMoving) p.sprintActive = false;
+      if (reallyStopped) p.sprintActive = false;
       return;
     }
     if (p.moveState === 'exhausted') {
@@ -1064,7 +1086,7 @@
       }
     } else {
       p.moveState = 'normal';
-      if (!isMoving) p.sprintActive = false;
+      if (reallyStopped) p.sprintActive = false;
       p.stamina = Math.min(STAMINA_MAX, p.stamina + NORMAL_REGEN_RATE * dt);
     }
   }
@@ -1587,8 +1609,17 @@
       const ic = icicles[i];
       const nx = ic.x + ic.dirX * ic.speed * dt;
       const ny = ic.y + ic.dirY * ic.speed * dt;
+      if (nx < 0 || ny < 0 || nx > WORLD_W || ny > WORLD_H) {
+        icicles.splice(i, 1);
+        continue;
+      }
+      // 'C' (a big crate) stops an icicle same as a wall does -- it's a
+      // solid object in the hallway, not just scenery to duck behind
+      // visually while shots still sail straight through it.
       const t = worldToTile(nx, ny);
-      if (tileChar(t.x, t.y) === '#' || nx < 0 || ny < 0 || nx > WORLD_W || ny > WORLD_H) {
+      const ch = tileChar(t.x, t.y);
+      if (ch === '#' || ch === 'C') {
+        spawnIceShatter(nx, ny);
         icicles.splice(i, 1);
         continue;
       }
@@ -1684,7 +1715,9 @@
   // 'holding' branch) and the gate opens. It locks into 'chase' for
   // good -- no more picking from the attack list -- but doesn't actually
   // move until every player still standing has walked all the way up to
-  // the barrier.
+  // the barrier. The phase-2 name card doesn't play here -- see
+  // updateBossChase's 'intro'->'moving' transition -- it waits for the
+  // chase to actually be on, not just for health to cross the threshold.
   function enterPhase2(now) {
     boss.phase2 = true;
     boss.phase = 'chase';
@@ -1693,12 +1726,29 @@
     clones = [];
     spawnFloatingText(boss.x, boss.y, 'IT STOPS DEAD');
     playIceCrack();
-    gameState = 'phase2intro';
-    phase2IntroStartedAt = now;
   }
 
   function updatePhase2Cutscene(now) {
     if (now - phase2IntroStartedAt >= PHASE2_CUTSCENE_MS) gameState = 'playing';
+  }
+
+  // Whether the boss sits inside the same rectangle renderViewport would
+  // actually draw for this player right now -- the same camX/camY clamp
+  // and half-extents it uses, just evaluated here instead of at render
+  // time. Caught players don't get a say (their view is frozen on a
+  // cutscene, not actually watching the chase).
+  function bossVisibleToPlayer(p) {
+    const halfW = visibleHalfW(), halfH = visibleHalfH();
+    const camWorldH = boss.phase2 ? WORLD_H : LEVEL.arenaRows * TILE;
+    const camX = clamp(p.x, halfW, WORLD_W - halfW);
+    const camY = clamp(p.y, halfH, camWorldH - halfH);
+    return Math.abs(boss.x - camX) <= halfW && Math.abs(boss.y - camY) <= halfH;
+  }
+
+  function bossOffCamera() {
+    const alive = players.filter((p) => !p.caught);
+    const pool = alive.length ? alive : players;
+    return !pool.some((p) => bossVisibleToPlayer(p));
   }
 
   // movePlayer rejects an entire frame's step outright when the destination
@@ -1751,13 +1801,20 @@
       if (now - boss.introStartedAt < CHASE_INTRO_MS) return;
       boss.chaseSubPhase = 'moving';
       boss.nextIcicleAt = now + CHASE_ICICLE_INTERVAL_MS;
+      // The phase-2 name card plays right here -- the instant it actually
+      // starts moving and chasing, not back when health first crossed the
+      // threshold (which could be well before anyone's even near the
+      // barrier yet).
+      gameState = 'phase2intro';
+      phase2IntroStartedAt = now;
       return;
     }
 
     const target = nearestPlayer(boss.x, boss.y);
     const diff = target.y - boss.y;
     let speed = CHASE_SPEED_BASE;
-    if (diff > CHASE_AHEAD_MARGIN) speed = CHASE_SPEED_AHEAD;
+    if (bossOffCamera()) speed = CHASE_SPEED_OFFCAM;
+    else if (diff > CHASE_AHEAD_MARGIN) speed = CHASE_SPEED_AHEAD;
     else if (diff < -CHASE_BEHIND_MARGIN) speed = CHASE_SPEED_BEHIND;
     speed *= speedMult(now);
 
@@ -1933,6 +1990,25 @@
   let bloodSplatters = [];
   let particles = [];
 
+  // A burst of small, pale-blue fragments -- an icicle hitting a wall or
+  // a big crate, same shared particle pool as the blood splatter above,
+  // just tagged 'ice' so drawParticles colors it differently.
+  function spawnIceShatter(x, y) {
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 60 + Math.random() * 160;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0,
+        maxLife: 0.25 + Math.random() * 0.3,
+        size: 1.5 + Math.random() * 2,
+        color: 'ice',
+      });
+    }
+  }
+
   function spawnBloodEffect(x, y) {
     bloodSplatters.push({ x, y, seed: Math.random() * 1000 });
     if (bloodSplatters.length > 24) bloodSplatters.shift();
@@ -1996,7 +2072,7 @@
       const alpha = 1 - pt.life / pt.maxLife;
       g.beginPath();
       g.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
-      g.fillStyle = `rgba(160,15,20,${alpha})`;
+      g.fillStyle = pt.color === 'ice' ? `rgba(190,230,250,${alpha})` : `rgba(160,15,20,${alpha})`;
       g.fill();
     });
   }
