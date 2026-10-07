@@ -753,8 +753,16 @@
   let dynamiteSticks = []; // DYNAMITE_LIVE_COUNT live at once: [{x, y, seed}]
   let bossHealth = BOSS_MAX_HEALTH;
   let doorUnlocked = false;
-  let gameState = 'intro'; // 'intro' | 'playing' | 'freezing' | 'wiped'
+  let gameState = 'intro'; // 'intro' | 'playing' | 'phase2intro' | 'freezing' | 'wiped'
   let introStartedAt = 0;
+  // A second, shorter name-card cutscene replays the instant phase 2
+  // triggers -- same zoomed-in/shaking treatment as the opening one (see
+  // renderViewport's cutscene handling), just with this boss's own
+  // phase-2 color and a one-word subtitle under its name.
+  const PHASE2_CUTSCENE_MS = 3000;
+  const PHASE2_NAME_COLOR = '#4a90ff';
+  const PHASE2_SUBTITLE = 'FROSTED';
+  let phase2IntroStartedAt = 0;
   let catchFlash = 0;
 
   function bossHealthFrac() {
@@ -1279,6 +1287,8 @@
           boss.phase2 = true;
           spawnFloatingText(boss.x, boss.y, 'PHASE 2');
           playPhaseShift();
+          gameState = 'phase2intro';
+          phase2IntroStartedAt = now;
         }
 
         if (bossHealth <= 0) {
@@ -1618,6 +1628,10 @@
     runStartTime = now;
     elapsedMs = 0;
     boss.nextIdleUntil = now + BOSS_INTRO_GRACE_MS;
+  }
+
+  function updatePhase2Cutscene(now) {
+    if (now - phase2IntroStartedAt >= PHASE2_CUTSCENE_MS) gameState = 'playing';
   }
 
   // Runs while the boss is freezing solid: records the win the instant the
@@ -2551,11 +2565,15 @@
     const p = players[index];
     const vx = index * VIEW_W;
     const intro = gameState === 'intro';
-    const zoom = intro ? ZOOM * BOSS_INTRO_ZOOM_MULT : ZOOM;
-    const camX = intro ? boss.x : clamp(p.x, VISIBLE_HALF_W, WORLD_W - VISIBLE_HALF_W);
-    const camY = intro ? boss.y : clamp(p.y, VISIBLE_HALF_H, WORLD_H - VISIBLE_HALF_H);
-    const shakeX = intro ? (Math.random() - 0.5) * 2 * BOSS_INTRO_SHAKE_MAG : 0;
-    const shakeY = intro ? (Math.random() - 0.5) * 2 * BOSS_INTRO_SHAKE_MAG : 0;
+    const phase2Intro = gameState === 'phase2intro';
+    // The phase-2 cutscene reuses the opening one's zoomed-in, shaking,
+    // boss-centered camera treatment -- same visual beat, just retriggered.
+    const cutscene = intro || phase2Intro;
+    const zoom = cutscene ? ZOOM * BOSS_INTRO_ZOOM_MULT : ZOOM;
+    const camX = cutscene ? boss.x : clamp(p.x, VISIBLE_HALF_W, WORLD_W - VISIBLE_HALF_W);
+    const camY = cutscene ? boss.y : clamp(p.y, VISIBLE_HALF_H, WORLD_H - VISIBLE_HALF_H);
+    const shakeX = cutscene ? (Math.random() - 0.5) * 2 * BOSS_INTRO_SHAKE_MAG : 0;
+    const shakeY = cutscene ? (Math.random() - 0.5) * 2 * BOSS_INTRO_SHAKE_MAG : 0;
 
     ctx.save();
     ctx.beginPath();
@@ -2587,6 +2605,8 @@
 
     if (intro) {
       drawBossIntroOverlay(vx, now);
+    } else if (phase2Intro) {
+      drawPhase2IntroOverlay(vx, now);
     } else {
       drawBossHealthBar(vx, now);
       drawProximityWarning(vx, Math.hypot(p.x - boss.x, p.y - boss.y), now);
@@ -2618,6 +2638,34 @@
     ctx.shadowBlur = 10 * alpha;
     ctx.fillText(BOSS_NAME, vx + VIEW_W / 2, VIEW_H / 2 + 8);
     ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  function hexToRgbTriplet(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+  }
+
+  // Phase 2's own name card -- same dark letterbox band and fade timing as
+  // the opening cutscene, just in this boss's phase-2 color with a
+  // one-word subtitle underneath instead of just the name alone.
+  function drawPhase2IntroOverlay(vx, now) {
+    const t = clamp((now - phase2IntroStartedAt) / PHASE2_CUTSCENE_MS, 0, 1);
+    const alpha = t < 0.15 ? t / 0.15 : t > 0.85 ? (1 - t) / 0.15 : 1;
+    const rgb = hexToRgbTriplet(PHASE2_NAME_COLOR);
+    ctx.save();
+    ctx.fillStyle = `rgba(5,5,8,${0.55 * alpha})`;
+    ctx.fillRect(vx, VIEW_H / 2 - 42, VIEW_W, 84);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 24px monospace';
+    ctx.fillStyle = `rgba(${rgb},${alpha})`;
+    ctx.shadowColor = `rgba(${rgb},0.8)`;
+    ctx.shadowBlur = 10 * alpha;
+    ctx.fillText(BOSS_NAME, vx + VIEW_W / 2, VIEW_H / 2);
+    ctx.shadowBlur = 0;
+    ctx.font = 'bold 15px monospace';
+    ctx.fillStyle = `rgba(${rgb},${alpha * 0.85})`;
+    ctx.fillText(PHASE2_SUBTITLE, vx + VIEW_W / 2, VIEW_H / 2 + 24);
     ctx.restore();
   }
 
@@ -2808,6 +2856,8 @@
 
     if (gameState === 'intro') {
       updateIntroCutscene(now);
+    } else if (gameState === 'phase2intro') {
+      updatePhase2Cutscene(now);
     } else if (gameState === 'playing') {
       elapsedMs = now - runStartTime;
       updateInputMovement(now, dt);
