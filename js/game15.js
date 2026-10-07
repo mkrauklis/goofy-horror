@@ -1658,8 +1658,8 @@
   // 'frozenUntil' frozen -- it just stops acting, see updateBossChase's
   // 'holding' branch) and the gate opens. It locks into 'chase' for
   // good -- no more picking from the attack list -- but doesn't actually
-  // move until every player still standing has walked all the way up to
-  // the barrier.
+  // move until someone still standing has walked all the way up to the
+  // barrier.
   function enterPhase2(now) {
     boss.phase2 = true;
     boss.phase = 'chase';
@@ -1670,14 +1670,13 @@
     playIceCrack();
   }
 
-  function allAliveAtBarrier() {
+  function anyAliveAtBarrier() {
     // Matches canStandAt's own barrier check -- a player's center can never
     // reach y >= barrierWorldY() while the barrier is solid, since
     // canStandAt blocks the moment their southern edge (y + PLAYER_RADIUS)
     // would cross it. Checking the center against the same line made this
     // physically unreachable for anyone, not just a lone survivor.
-    const alive = players.filter((p) => !p.caught);
-    return alive.length > 0 && alive.every((p) => p.y + PLAYER_RADIUS >= barrierWorldY());
+    return players.some((p) => !p.caught && p.y + PLAYER_RADIUS >= barrierWorldY());
   }
 
   function hallwayCenterX() {
@@ -1685,8 +1684,9 @@
   }
 
   // Phase 2's chase, in three parts. 'holding': the boss stands dead
-  // still in the arena until every player left standing has walked all
-  // the way up to the barrier. 'intro': it's just appeared at the
+  // still in the arena until just one player left standing has walked
+  // all the way up to the barrier -- that drops the barrier immediately,
+  // letting everyone else follow in. 'intro': it's just appeared at the
   // hallway's mouth and holds still for CHASE_INTRO_MS so the appearance
   // actually reads before the chase is on. 'moving': the real chase --
   // falling behind the nearest player lets it ease off; pulling ahead of
@@ -1694,9 +1694,10 @@
   // sprinting ahead nor stalling behind is ever free.
   function updateBossChase(now, dt) {
     if (boss.chaseSubPhase === 'holding') {
-      if (!allAliveAtBarrier()) return;
+      if (!anyAliveAtBarrier()) return;
       boss.chaseSubPhase = 'intro';
       boss.introStartedAt = now;
+      hallBarrierActive = false;
       boss.x = hallwayCenterX();
       boss.y = LEVEL.hallway.y0 * TILE + 40;
       boss.lookDir = { x: 0, y: 1 };
@@ -1708,7 +1709,6 @@
     if (boss.chaseSubPhase === 'intro') {
       if (now - boss.introStartedAt < CHASE_INTRO_MS) return;
       boss.chaseSubPhase = 'moving';
-      hallBarrierActive = false;
       boss.nextIcicleAt = now + CHASE_ICICLE_INTERVAL_MS;
       return;
     }
