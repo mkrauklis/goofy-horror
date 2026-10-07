@@ -126,15 +126,16 @@
   // does the boss itself appear, right at the hallway's mouth, standing
   // still for CHASE_INTRO_MS before the chase actually begins and the
   // barrier drops. Speed then scales with how far ahead or behind the
-  // nearest player is down the corridor -- 1.25x at an even pace, 2x if
-  // they've pulled ahead, 0.8x if they've fallen behind, so neither
-  // sprinting ahead nor dawdling is ever free.
+  // nearest player is down the corridor -- 1.25x at an even pace, 2.2x
+  // once they've pulled 25 tiles ahead, 0.8x once they've fallen 10
+  // tiles behind, so neither sprinting ahead nor dawdling is ever free.
   const PHASE2_HEALTH_THRESHOLD = 15;
   const CHASE_INTRO_MS = 2500;
   const CHASE_SPEED_BASE = PLAYER_SPEED * 1.25;
-  const CHASE_SPEED_AHEAD = PLAYER_SPEED * 2;
+  const CHASE_SPEED_AHEAD = PLAYER_SPEED * 2.2;
   const CHASE_SPEED_BEHIND = PLAYER_SPEED * 0.8;
-  const CHASE_PACE_MARGIN = 40;
+  const CHASE_AHEAD_MARGIN = TILE * 25;
+  const CHASE_BEHIND_MARGIN = TILE * 10;
   const CHASE_ICICLE_SPEED = PLAYER_SPEED * 2.5;
   const CHASE_ICICLE_INTERVAL_MS = 650;
   // Once it's spawned into the hallway, the boss reads as filling the
@@ -1682,8 +1683,8 @@
   // 'frozenUntil' frozen -- it just stops acting, see updateBossChase's
   // 'holding' branch) and the gate opens. It locks into 'chase' for
   // good -- no more picking from the attack list -- but doesn't actually
-  // move until someone still standing has walked all the way up to the
-  // barrier.
+  // move until every player still standing has walked all the way up to
+  // the barrier.
   function enterPhase2(now) {
     boss.phase2 = true;
     boss.phase = 'chase';
@@ -1709,8 +1710,9 @@
   // visibly touching the barrier always actually counts as reaching it.
   const BARRIER_REACH_TOLERANCE = 16;
 
-  function anyAliveAtBarrier() {
-    return players.some((p) => !p.caught && p.y + PLAYER_RADIUS + BARRIER_REACH_TOLERANCE >= barrierWorldY());
+  function allAliveAtBarrier() {
+    const alive = players.filter((p) => !p.caught);
+    return alive.length > 0 && alive.every((p) => p.y + PLAYER_RADIUS + BARRIER_REACH_TOLERANCE >= barrierWorldY());
   }
 
   function hallwayCenterX() {
@@ -1718,22 +1720,22 @@
   }
 
   // Phase 2's chase, in three parts. 'holding': the boss stands dead
-  // still in the arena until just one player left standing has walked
-  // all the way up to the barrier -- that drops the barrier immediately,
-  // letting everyone else follow in. 'intro': it's just appeared at the
-  // hallway's mouth and holds still for CHASE_INTRO_MS so the appearance
-  // actually reads before the chase is on. 'moving': the real chase --
-  // falling behind the nearest player lets it ease off; pulling ahead of
-  // it (toward the exit) makes it put on a burst of speed, so neither
+  // still in the arena until every player still standing has walked all
+  // the way up to the barrier -- that drops the barrier immediately.
+  // 'intro': it's just appeared at the hallway's mouth and holds still
+  // for CHASE_INTRO_MS so the appearance actually reads before the
+  // chase is on. 'moving': the real chase -- falling 10 tiles behind
+  // the nearest player lets it ease off; pulling 25 tiles ahead of it
+  // (toward the exit) makes it put on a burst of speed, so neither
   // sprinting ahead nor stalling behind is ever free.
   function updateBossChase(now, dt) {
     if (boss.chaseSubPhase === 'holding') {
-      if (!anyAliveAtBarrier()) return;
+      if (!allAliveAtBarrier()) return;
       boss.chaseSubPhase = 'intro';
       boss.introStartedAt = now;
       hallBarrierActive = false;
       // Any icicle still in flight from whatever attack was running right
-      // up until someone reached the barrier (iceshoot, orbit) vanishes
+      // up until everyone reached the barrier (iceshoot, orbit) vanishes
       // here too -- the chase should open with a clean screen, not a
       // leftover shot that was never dodgeable in the first place.
       icicles = [];
@@ -1755,8 +1757,8 @@
     const target = nearestPlayer(boss.x, boss.y);
     const diff = target.y - boss.y;
     let speed = CHASE_SPEED_BASE;
-    if (diff > CHASE_PACE_MARGIN) speed = CHASE_SPEED_AHEAD;
-    else if (diff < -CHASE_PACE_MARGIN) speed = CHASE_SPEED_BEHIND;
+    if (diff > CHASE_AHEAD_MARGIN) speed = CHASE_SPEED_AHEAD;
+    else if (diff < -CHASE_BEHIND_MARGIN) speed = CHASE_SPEED_BEHIND;
     speed *= speedMult(now);
 
     const dx = target.x - boss.x, dy = target.y - boss.y;
@@ -2044,15 +2046,15 @@
       g.strokeRect(gx0 + 3, gy + 3, gx1 - gx0 - 6, TILE - 6);
     }
 
-    // The holding-pen barrier -- a solid-looking amber band across the
-    // hallway, same width as the corridor, visible only while it's
-    // actually blocking anyone.
+    // The holding-pen barrier -- a faint, almost-invisible blue band
+    // across the hallway, same width as the corridor, visible only while
+    // it's actually blocking anyone.
     if (hallBarrierActive) {
       const hx0 = LEVEL.hallway.x0 * TILE, hx1 = (LEVEL.hallway.x1 + 1) * TILE;
       const by = barrierWorldY();
-      g.fillStyle = 'rgba(255,190,60,0.3)';
+      g.fillStyle = 'rgba(60,140,255,0.06)';
       g.fillRect(hx0, by - 6, hx1 - hx0, 12);
-      g.strokeStyle = 'rgba(255,220,140,0.7)';
+      g.strokeStyle = 'rgba(100,170,255,0.18)';
       g.lineWidth = 2;
       g.strokeRect(hx0, by - 6, hx1 - hx0, 12);
     }
