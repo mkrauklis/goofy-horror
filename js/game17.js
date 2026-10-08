@@ -513,6 +513,53 @@
   let pipesWelded = [];
   let pipeProgress = [];
 
+  // Each pipe sticks out of whichever wall it's actually mounted against --
+  // found by checking its own tile's 4 neighbors for '#' at load time, not
+  // guessed from room geometry, since the level generator itself only
+  // guarantees the tile is wall-adjacent, not which side. The vector points
+  // AWAY from the wall, into the room -- the direction the pipe protrudes.
+  function pipeWallDir(tx, ty) {
+    if (tileChar(tx - 1, ty) === '#') return { x: 1, y: 0 };
+    if (tileChar(tx + 1, ty) === '#') return { x: -1, y: 0 };
+    if (tileChar(tx, ty - 1) === '#') return { x: 0, y: 1 };
+    if (tileChar(tx, ty + 1) === '#') return { x: 0, y: -1 };
+    return { x: 0, y: 1 };
+  }
+  const PIPE_WALL_DIRS = PIPE_POSITIONS.map((p) => pipeWallDir(p.x, p.y));
+
+  // A single conduit strung through open floor tiles connecting all 3
+  // pipes in sequence (reusing the same BFS the eel's own pathfinding
+  // uses), so the 3 fixtures read as one plumbing system instead of three
+  // unrelated pipes that happen to share a name.
+  function buildFloorGraph() {
+    const graph = new Map();
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (LEVEL.grid[y][x] === '#') continue;
+        const list = [];
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) return;
+          if (LEVEL.grid[ny][nx] !== '#') list.push({ x: nx, y: ny });
+        });
+        graph.set(y * COLS + x, list);
+      }
+    }
+    return graph;
+  }
+  const PIPE_CONDUIT_PATH = (() => {
+    if (PIPE_POSITIONS.length < 2) return [];
+    const graph = buildFloorGraph();
+    const tiles = [];
+    for (let i = 0; i < PIPE_POSITIONS.length - 1; i++) {
+      const seg = bfsPath(graph, PIPE_POSITIONS[i], PIPE_POSITIONS[i + 1]);
+      if (!seg) continue;
+      if (tiles.length) seg.shift();
+      tiles.push(...seg);
+    }
+    return tiles.map((t) => tileCenter(t.x, t.y));
+  })();
+
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
     return {
@@ -1000,16 +1047,22 @@
   // over WELD_DURATION_MS; stepping away (or losing the gun to a catch)
   // drains it back at twice that rate, same fill/drain convention as
   // Level 11's own held-plate generators. Welding the third pipe unlocks
-  // the door.
+  // the door. Running the torch also burns through the welder's own
+  // stamina, slowly -- a real (if minor) cost for standing still to weld
+  // instead of swimming, applied after updateInputMovement's own regen so
+  // it nets as a real drain even though the welding player isn't moving.
+  const WELD_STAMINA_DRAIN_RATE = STAMINA_MAX / 20;
   function updateWelding(now, dt) {
     PIPE_POSITIONS.forEach((pipe, i) => {
       if (pipesWelded[i]) return;
-      const welding = players.some((p) => {
+      const welder = players.find((p) => {
         if (p.caught || !p.carryingGun) return false;
         const t = worldToTile(p.x, p.y);
         return t.x === pipe.x && t.y === pipe.y;
       });
+      const welding = !!welder;
       if (welding) {
+        welder.stamina = Math.max(0, welder.stamina - WELD_STAMINA_DRAIN_RATE * dt);
         pipeProgress[i] = Math.min(1, pipeProgress[i] + dt / (WELD_DURATION_MS / 1000));
         if (pipeProgress[i] >= 1) {
           pipesWelded[i] = true;
@@ -1473,6 +1526,25 @@
           }
         }
 
+        // Tiny wave crests riding the current itself -- a small pale
+        // wavelet per flooded tile that scrolls left in a loop at the
+        // same speed the water drags players, so the drift reads as
+        // moving water rather than just a force acting on you.
+        if (ch === '.' || ch === 'G' || ch === 'S' || ch === 'E') {
+          const wh = Math.imul(x, 1274126177) ^ Math.imul(y, 1013904223);
+          const wseed = ((wh ^ (wh >>> 11)) >>> 0) % 1000 / 1000;
+          const scrollPx = (now * CURRENT_SPEED / 1000 + wseed * TILE) % TILE;
+          const waveX = px + TILE - scrollPx;
+          const waveY = py + 7 + wseed * (TILE - 14);
+          g.strokeStyle = 'rgba(210,235,210,0.28)';
+          g.lineWidth = 1;
+          g.beginPath();
+          g.moveTo(waveX - 9, waveY);
+          g.quadraticCurveTo(waveX - 6, waveY - 2.5, waveX - 3, waveY);
+          g.quadraticCurveTo(waveX, waveY + 2.5, waveX + 3, waveY);
+          g.stroke();
+        }
+
         if (ch === 'G') drawSeaweed(g, px, py, x, y, now);
       }
     }
@@ -1503,7 +1575,8 @@
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
 
-    drawPipes(g);
+    drawPipeConduit(g);
+    drawPipes(g, now);
     drawWeldingGunPickup(g, now);
     drawSafeZone(g);
     drawBloodSplatters(g);
@@ -1513,16 +1586,51 @@
     drawFloatingTexts(g);
   }
 
-  // A short pipe segment, rusty and dull until welded -- a glowing
-  // amber progress ring builds above it while someone's actively
-  // welding, and a bright weld seam appears down its middle once done.
-  function drawPipes(g) {
+  // The pipe conduit strung along the floor connecting all 3 fixtures --
+  // drawn first so every pipe's own wall-flange and nozzle render on top
+  // of it at each end, reading as one continuous plumbing run.
+  function drawPipeConduit(g) {
+    if (PIPE_CONDUIT_PATH.length < 2) return;
+    g.save();
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(PIPE_CONDUIT_PATH[0].x, PIPE_CONDUIT_PATH[0].y);
+    for (let i = 1; i < PIPE_CONDUIT_PATH.length; i++) g.lineTo(PIPE_CONDUIT_PATH[i].x, PIPE_CONDUIT_PATH[i].y);
+    g.strokeStyle = '#2a241c';
+    g.lineWidth = 9;
+    g.stroke();
+    g.strokeStyle = '#5a4a38';
+    g.lineWidth = 6;
+    g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,0.1)';
+    g.lineWidth = 2;
+    g.stroke();
+    g.restore();
+  }
+
+  // A pipe stub mounted straight into its wall, rusty and dull until
+  // welded. A bright weld seam appears across the nozzle once done; until
+  // then it hisses green steam out the open end -- same amber progress
+  // ring as before while someone's actively welding it shut.
+  function drawPipes(g, now) {
     PIPE_POSITIONS.forEach((pipe, i) => {
       const center = tileCenter(pipe.x, pipe.y);
+      const dir = PIPE_WALL_DIRS[i];
       const welded = pipesWelded[i];
       const progress = pipeProgress[i];
+      const angle = Math.atan2(dir.y, dir.x);
       g.save();
       g.translate(center.x, center.y);
+      g.rotate(angle);
+
+      // The flange bolting the pipe to the wall it sticks out of, sitting
+      // just inside the wall tile (negative local x, toward the wall).
+      g.fillStyle = '#2a2420';
+      g.fillRect(-11, -9, 5, 18);
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 1;
+      g.strokeRect(-11, -9, 5, 18);
 
       const pipeGrad = g.createLinearGradient(0, -6, 0, 6);
       if (welded) {
@@ -1533,40 +1641,86 @@
         pipeGrad.addColorStop(1, '#4a3c30');
       }
       g.fillStyle = pipeGrad;
-      g.fillRect(-14, -6, 28, 12);
+      g.fillRect(-6, -6, 26, 12);
       g.strokeStyle = 'rgba(0,0,0,0.5)';
       g.lineWidth = 1.5;
-      g.strokeRect(-14, -6, 28, 12);
+      g.strokeRect(-6, -6, 26, 12);
       g.strokeStyle = 'rgba(0,0,0,0.4)';
       g.lineWidth = 1;
-      [-14, 14].forEach((fx) => {
+      [-6, 20].forEach((fx) => {
         g.beginPath();
         g.moveTo(fx, -6);
         g.lineTo(fx, 6);
         g.stroke();
       });
 
+      // The open nozzle at the room-facing tip -- a dark hole while
+      // leaking, sealed flush with a bright weld seam once done.
       if (welded) {
+        g.fillStyle = '#6a6a72';
+        g.fillRect(16, -6, 4, 12);
         g.strokeStyle = 'rgba(255,220,140,0.9)';
         g.lineWidth = 2;
         g.beginPath();
-        g.moveTo(0, -6);
-        g.lineTo(0, 6);
+        g.moveTo(18, -6);
+        g.lineTo(18, 6);
         g.stroke();
-      } else if (progress > 0) {
+      } else {
         g.beginPath();
-        g.arc(0, -16, 7, 0, Math.PI * 2);
+        g.arc(20, 0, 4, 0, Math.PI * 2);
+        g.fillStyle = '#1a1512';
+        g.fill();
+      }
+
+      if (!welded && progress > 0) {
+        g.beginPath();
+        g.arc(6, -16, 7, 0, Math.PI * 2);
         g.strokeStyle = 'rgba(255,255,255,0.3)';
         g.lineWidth = 1;
         g.stroke();
         g.beginPath();
-        g.arc(0, -16, 7, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+        g.arc(6, -16, 7, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
         g.strokeStyle = '#ffb23c';
         g.lineWidth = 3;
         g.stroke();
       }
       g.restore();
+
+      if (!welded) {
+        const tipX = center.x + dir.x * (TILE / 2 + 4);
+        const tipY = center.y + dir.y * (TILE / 2 + 4);
+        drawPipeSteam(g, tipX, tipY, i, now);
+      }
     });
+  }
+
+  // Green steam puffing out of an unwelded pipe's open nozzle -- rises and
+  // fades in a loop computed straight from `now` and a per-pipe seed
+  // (stateless, same "no array to manage" convention as the floor's own
+  // drifting light-caustic streak) rather than a tracked particle array.
+  function drawPipeSteam(g, x, y, seedIndex, now) {
+    g.save();
+    const PUFFS = 5;
+    for (let i = 0; i < PUFFS; i++) {
+      const cycle = 950 + i * 140;
+      const phase = ((now + seedIndex * 310 + i * 190) % cycle) / cycle;
+      const rise = phase * 26;
+      const drift = Math.sin(phase * Math.PI * 2 + seedIndex * 2.1) * 4;
+      const alpha = (1 - phase) * 0.5;
+      const r = 3 + phase * 7;
+      g.beginPath();
+      g.arc(x + drift, y - rise, r, 0, Math.PI * 2);
+      g.fillStyle = `rgba(120,230,130,${alpha})`;
+      g.fill();
+    }
+    const hiss = 0.5 + 0.3 * Math.sin(now * 0.02 + seedIndex);
+    g.beginPath();
+    g.arc(x, y, 3, 0, Math.PI * 2);
+    g.fillStyle = `rgba(170,255,170,${hiss})`;
+    g.shadowColor = '#7aff8a';
+    g.shadowBlur = 6;
+    g.fill();
+    g.restore();
   }
 
   // The welding gun's own pickup sprite -- vanishes the instant it's
