@@ -128,22 +128,24 @@
   // still for CHASE_INTRO_MS before the chase actually begins and the
   // barrier drops. It stays pinned to the hallway's own center line the
   // whole time -- only its distance down the corridor ever changes, never
-  // its lane -- and speed scales with how far ahead or behind the nearest
-  // player is -- 1.25x at an even pace, 2.2x once they've pulled 25 tiles
-  // ahead, 0.8x once they've fallen 10 tiles behind -- except once it's
-  // off every player's own screen entirely, where it jumps to a hard 2.5x
-  // regardless of distance and stays there (ignoring the normal tiers)
-  // until it's back in view, so neither sprinting ahead nor dawdling is
-  // ever free. A big crate directly in its path doesn't stop it either --
-  // it smashes straight through (see breakBigCrateAt).
+  // its lane -- and speed scales with its straight-line distance to the
+  // nearest player: it eases to 0.8x once it's within 6 tiles (so getting
+  // right on top of someone doesn't guarantee a catch), surges to 2.1x
+  // once it's more than 12 tiles off (so it can't just be left behind),
+  // and holds 1.25x in between -- except once it's off every player's own
+  // screen entirely (just past that 12-tile mark, at this zoom), where it
+  // jumps to a hard 2.5x regardless of distance and stays there (ignoring
+  // the normal tiers) until it's back in view. A big crate directly in
+  // its path doesn't stop it either -- it smashes straight through (see
+  // breakBigCrateAt).
   const PHASE2_HEALTH_THRESHOLD = 15;
   const CHASE_INTRO_MS = 2500;
   const CHASE_SPEED_BASE = PLAYER_SPEED * 1.25;
-  const CHASE_SPEED_AHEAD = PLAYER_SPEED * 2.2;
-  const CHASE_SPEED_BEHIND = PLAYER_SPEED * 0.8;
+  const CHASE_SPEED_CLOSE = PLAYER_SPEED * 0.8;
+  const CHASE_SPEED_FAR = PLAYER_SPEED * 2.1;
   const CHASE_SPEED_OFFCAM = PLAYER_SPEED * 2.5;
-  const CHASE_AHEAD_MARGIN = TILE * 25;
-  const CHASE_BEHIND_MARGIN = TILE * 10;
+  const CHASE_CLOSE_DIST = TILE * 6;
+  const CHASE_FAR_DIST = TILE * 12;
   const CHASE_ICICLE_SPEED = PLAYER_SPEED * 2.625;
   const CHASE_ICICLE_INTERVAL_MS = 3000;
   // Once it's spawned into the hallway, the boss reads as filling the
@@ -1927,15 +1929,14 @@
     boss.x = hallwayCenterX();
 
     const target = nearestPlayer(boss.x, boss.y);
-    const diff = target.y - boss.y;
-    let speed = CHASE_SPEED_BASE;
-    if (bossOffCamera()) speed = CHASE_SPEED_OFFCAM;
-    else if (diff > CHASE_AHEAD_MARGIN) speed = CHASE_SPEED_AHEAD;
-    else if (diff < -CHASE_BEHIND_MARGIN) speed = CHASE_SPEED_BEHIND;
-    speed *= speedMult(now);
-
     const dx = target.x - boss.x, dy = target.y - boss.y;
     const d = Math.hypot(dx, dy);
+    let speed = CHASE_SPEED_BASE;
+    if (bossOffCamera()) speed = CHASE_SPEED_OFFCAM;
+    else if (d <= CHASE_CLOSE_DIST) speed = CHASE_SPEED_CLOSE;
+    else if (d >= CHASE_FAR_DIST) speed = CHASE_SPEED_FAR;
+    speed *= speedMult(now);
+
     if (Math.abs(dy) > 1) {
       const ny = boss.y + (dy > 0 ? 1 : -1) * speed * dt;
       // A big crate directly ahead doesn't stop it -- smash through and
