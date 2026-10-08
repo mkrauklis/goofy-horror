@@ -63,14 +63,13 @@
 
   // 1. Split: a 2-second windup where the two eventual clones visibly peel
   // away from the boss's own body before they actually become real, then
-  // the mutation tears itself into two smaller copies -- one a slow
-  // lumbering 1.2x, the other a fast 1.6x -- that hunt independently
-  // until the attack's timer runs out and they collapse back into one.
+  // the mutation tears itself into two identical copies, each hunting
+  // independently at 1.2x your speed, until the attack's timer runs out
+  // and they collapse back into one.
   const SPLIT_WINDUP_MS = 2000;
   const SPLIT_DURATION_MS = 9000;
   const SPLIT_CLONE_RADIUS = BOSS_RADIUS * 0.72;
-  const SPLIT_SLOW_SPEED = PLAYER_SPEED * 1.2;
-  const SPLIT_FAST_SPEED = PLAYER_SPEED * 1.6;
+  const SPLIT_CLONE_SPEED = PLAYER_SPEED * 1.2;
 
   // 2. Icicle shower: fires a shard at the nearest player every
   // ICICLE_FIRE_INTERVAL_MS for ICICLESHOOT_DURATION_MS straight, each one
@@ -80,12 +79,13 @@
   const ICICLE_PROJECTILE_SPEED = PLAYER_SPEED * 2;
   const ICICLE_HIT_RADIUS = 20;
 
-  // 3. Wall push: an ice wall rises along the arena's left edge, one gap
-  // (WALLPUSH_GAP_TILES tall, picked fresh each time) left open, and
-  // sweeps right at 1.5x player speed -- anyone it reaches outside the
-  // gap's row range is crushed.
+  // 3. Wall push: four ice walls rise along all four arena edges at once
+  // and sweep inward at 1.5x player speed, converging on a small lit
+  // pocket at the dead center -- the only safe ground once they're all
+  // closing in. Anyone a wall reaches while they're outside that pocket
+  // is crushed.
   const WALLPUSH_SPEED = PLAYER_SPEED * 1.5;
-  const WALLPUSH_GAP_TILES = 2;
+  const WALLPUSH_SAFE_TILES = 3;
   const WALLPUSH_WARNING_MS = 900;
 
   // 4. Expand: the mutation plants itself at the arena's center and swells
@@ -895,9 +895,10 @@
 
       wallSubPhase: 'warning', // 'warning' | 'sweeping'
       wallStartedAt: 0,
-      wallX: 0,
-      wallGapY0: 0,
-      wallGapY1: 0,
+      wallLeftX: 0,
+      wallRightX: 0,
+      wallTopY: 0,
+      wallBottomY: 0,
 
       expandSubPhase: 'windup', // 'windup' | 'growing'
       expandStartedAt: 0,
@@ -944,6 +945,23 @@
       }
     }
     return list;
+  })();
+
+  // Fixed sconce points ringing the arena's own walls, one tile in from
+  // the border -- lit with blue flame only during the wall-push attack
+  // (see drawWallpushTorches), purely atmospheric.
+  const WALLPUSH_TORCH_POINTS = (() => {
+    const pts = [];
+    const margin = 1, step = 4;
+    for (let x = margin; x < COLS - margin; x += step) {
+      pts.push(tileCenter(x, margin));
+      pts.push(tileCenter(x, LEVEL.arenaRows - 1 - margin));
+    }
+    for (let y = margin; y < LEVEL.arenaRows - margin; y += step) {
+      pts.push(tileCenter(margin, y));
+      pts.push(tileCenter(COLS - 1 - margin, y));
+    }
+    return pts;
   })();
 
   function spawnTorch() {
@@ -1507,7 +1525,25 @@
 
   const ALL_ATTACKS = ['split', 'iceshoot', 'wallpush', 'expand', 'orbit'];
   const CLONE_CATCH_RADIUS = SPLIT_CLONE_RADIUS * 1.2;
-  let wallPassedPlayers = new Set();
+  // One "already checked" set per wall -- a player can only ever be
+  // evaluated once per wall, at the instant its edge reaches them, same
+  // one-shot convention the single-wall version used.
+  let wallPassedLeft = new Set();
+  let wallPassedRight = new Set();
+  let wallPassedTop = new Set();
+  let wallPassedBottom = new Set();
+
+  // The lit pocket at dead arena center every wall converges on -- the
+  // only ground that's ever safe once this attack is sweeping in.
+  function wallSafeBox() {
+    const cx = COLS / 2, cy = LEVEL.arenaRows / 2;
+    const half = (WALLPUSH_SAFE_TILES / 2) * TILE;
+    return { x0: cx * TILE - half, x1: cx * TILE + half, y0: cy * TILE - half, y1: cy * TILE + half };
+  }
+  function inWallSafeBox(x, y) {
+    const b = wallSafeBox();
+    return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1;
+  }
 
   // Targets only players still in the fight -- a caught player stays
   // frozen wherever it happened until the whole team wipes, so without
@@ -1566,12 +1602,14 @@
     } else if (kind === 'wallpush') {
       boss.wallSubPhase = 'warning';
       boss.wallStartedAt = now;
-      boss.wallX = TILE;
-      const gapRows = Math.max(1, LEVEL.arenaRows - 2 - WALLPUSH_GAP_TILES);
-      const gapStart = 1 + Math.floor(Math.random() * gapRows);
-      boss.wallGapY0 = gapStart;
-      boss.wallGapY1 = gapStart + WALLPUSH_GAP_TILES;
-      wallPassedPlayers = new Set();
+      boss.wallLeftX = 0;
+      boss.wallRightX = WORLD_W;
+      boss.wallTopY = 0;
+      boss.wallBottomY = LEVEL.arenaRows * TILE;
+      wallPassedLeft = new Set();
+      wallPassedRight = new Set();
+      wallPassedTop = new Set();
+      wallPassedBottom = new Set();
       playBossWindup();
     } else if (kind === 'expand') {
       boss.x = WORLD_W / 2;
@@ -1617,8 +1655,8 @@
         boss.splitUntil = now + SPLIT_DURATION_MS;
         const a = boss.splitAngle;
         clones = [
-          { x: boss.x, y: boss.y, radius: SPLIT_CLONE_RADIUS, speed: SPLIT_SLOW_SPEED, seed: Math.random() * 100, lookDir: { x: Math.cos(a), y: Math.sin(a) } },
-          { x: boss.x, y: boss.y, radius: SPLIT_CLONE_RADIUS, speed: SPLIT_FAST_SPEED, seed: Math.random() * 100, lookDir: { x: -Math.cos(a), y: -Math.sin(a) } },
+          { x: boss.x, y: boss.y, radius: SPLIT_CLONE_RADIUS, speed: SPLIT_CLONE_SPEED, seed: Math.random() * 100, lookDir: { x: Math.cos(a), y: Math.sin(a) } },
+          { x: boss.x, y: boss.y, radius: SPLIT_CLONE_RADIUS, speed: SPLIT_CLONE_SPEED, seed: Math.random() * 100, lookDir: { x: -Math.cos(a), y: -Math.sin(a) } },
         ];
       }
       return;
@@ -1699,10 +1737,14 @@
     if (now >= boss.iceshootUntil) finishAttack(now);
   }
 
-  // 3. Wall push: a solid line sweeps right from the left wall at 1.5x
-  // player speed. The gap's row range never moves; a player is crushed
-  // the instant the sweeping line reaches their column while they're
-  // outside it.
+  // 3. Wall push: all four walls sweep inward from their own edge at
+  // 1.5x player speed. A player is crushed the instant whichever wall
+  // reaches them does, unless they're standing inside the safe pocket at
+  // dead center -- checked once each, the moment that specific wall's
+  // edge reaches them, same one-shot convention as every other sweep
+  // attack. The attack itself ends once the left and right walls meet in
+  // the middle (the longer of the two axes, so it's always the last pair
+  // to finish).
   function updateBossWallpush(now, dt) {
     if (boss.wallSubPhase === 'warning') {
       if (now - boss.wallStartedAt >= WALLPUSH_WARNING_MS) {
@@ -1710,17 +1752,27 @@
       }
       return;
     }
-    boss.wallX += WALLPUSH_SPEED * speedMult(now) * dt;
-    players.forEach((p) => {
-      if (wallPassedPlayers.has(p) || p.caught || now < p.invulnerableUntil) return;
-      if (boss.wallX < p.x) return;
-      wallPassedPlayers.add(p);
-      const t = worldToTile(p.x, p.y);
-      if (t.y < boss.wallGapY0 || t.y >= boss.wallGapY1) {
-        if (!isHidden(p, now)) triggerCaught(p, now);
-      }
-    });
-    if (boss.wallX > WORLD_W + TILE) finishAttack(now);
+    const step = WALLPUSH_SPEED * speedMult(now) * dt;
+    const arenaBottom = LEVEL.arenaRows * TILE;
+    boss.wallLeftX = Math.min(boss.wallLeftX + step, WORLD_W);
+    boss.wallRightX = Math.max(boss.wallRightX - step, 0);
+    boss.wallTopY = Math.min(boss.wallTopY + step, arenaBottom);
+    boss.wallBottomY = Math.max(boss.wallBottomY - step, 0);
+
+    function checkWall(passed, reached) {
+      players.forEach((p) => {
+        if (passed.has(p) || p.caught || now < p.invulnerableUntil) return;
+        if (!reached(p)) return;
+        passed.add(p);
+        if (!inWallSafeBox(p.x, p.y) && !isHidden(p, now)) triggerCaught(p, now);
+      });
+    }
+    checkWall(wallPassedLeft, (p) => boss.wallLeftX >= p.x);
+    checkWall(wallPassedRight, (p) => boss.wallRightX <= p.x);
+    checkWall(wallPassedTop, (p) => boss.wallTopY >= p.y);
+    checkWall(wallPassedBottom, (p) => boss.wallBottomY <= p.y);
+
+    if (boss.wallLeftX >= boss.wallRightX) finishAttack(now);
   }
 
   // 4. Expand: the boss plants itself at the arena center and a hazard
@@ -2324,13 +2376,13 @@
     });
   }
 
-  // The wall-push attack's ice barrier -- a solid purple-frost slab
-  // sweeping across the arena in world space, with a lit gap punched
-  // through it at the attack's chosen row range.
-  // One jagged slab of the ice wall -- a rigid, angular silhouette (not a
-  // plain rectangle) with a row of icicle shards jutting out of its
-  // leading edge, pointing the way it's travelling.
-  function drawIceWallSlab(g, cx, yTop, yBottom, thickness, warning) {
+  // The wall-push attack's ice barriers -- solid purple-frost slabs
+  // sweeping in from all four arena edges, converging on the lit safe
+  // pocket at dead center (see wallSafeBox/drawWallpushSafeBox).
+  // One jagged vertical slab (a rigid, angular silhouette, not a plain
+  // rectangle) with a row of icicle shards jutting out of its leading
+  // edge -- used for the left and right walls, which sweep along x.
+  function drawIceWallSlabV(g, cx, yTop, yBottom, thickness, warning, spikeDir) {
     if (yBottom <= yTop) return;
     const halfT = thickness / 2;
     const jagCount = Math.max(2, Math.round((yBottom - yTop) / 22));
@@ -2362,15 +2414,16 @@
 
     if (!warning) {
       const spikeCount = Math.max(1, Math.round((yBottom - yTop) / 30));
+      const edgeX = cx + halfT * spikeDir;
       for (let i = 0; i < spikeCount; i++) {
         const sy = yTop + ((i + 0.5) / spikeCount) * (yBottom - yTop);
-        const len = 16 + (i % 3) * 5;
+        const len = (16 + (i % 3) * 5) * spikeDir;
         g.beginPath();
-        g.moveTo(cx + halfT - 2, sy - 6);
-        g.lineTo(cx + halfT - 2, sy + 6);
-        g.lineTo(cx + halfT + len, sy);
+        g.moveTo(edgeX - 2 * spikeDir, sy - 6);
+        g.lineTo(edgeX - 2 * spikeDir, sy + 6);
+        g.lineTo(edgeX + len, sy);
         g.closePath();
-        const sgrad = g.createLinearGradient(cx + halfT, sy, cx + halfT + len, sy);
+        const sgrad = g.createLinearGradient(edgeX, sy, edgeX + len, sy);
         sgrad.addColorStop(0, 'rgba(200,235,255,0.7)');
         sgrad.addColorStop(1, 'rgba(230,248,255,0.3)');
         g.fillStyle = sgrad;
@@ -2379,21 +2432,78 @@
     }
   }
 
+  // Same shape, rotated 90 degrees -- used for the top and bottom walls,
+  // which sweep along y instead.
+  function drawIceWallSlabH(g, cy, xLeft, xRight, thickness, warning, spikeDir) {
+    if (xRight <= xLeft) return;
+    const halfT = thickness / 2;
+    const jagCount = Math.max(2, Math.round((xRight - xLeft) / 22));
+    const jagW = (xRight - xLeft) / jagCount;
+
+    g.beginPath();
+    g.moveTo(xLeft, cy - halfT);
+    for (let i = 0; i <= jagCount; i++) {
+      const x = xLeft + i * jagW;
+      const y = cy + halfT + (i % 2 === 0 ? 4 : -4);
+      g.lineTo(x, y);
+    }
+    g.lineTo(xRight, cy - halfT);
+    g.closePath();
+
+    const grad = g.createLinearGradient(0, cy - halfT, 0, cy + halfT);
+    if (warning) {
+      grad.addColorStop(0, 'rgba(140,195,230,0.3)');
+      grad.addColorStop(1, 'rgba(180,220,245,0.45)');
+    } else {
+      grad.addColorStop(0, 'rgba(120,180,220,0.8)');
+      grad.addColorStop(1, 'rgba(190,230,250,0.95)');
+    }
+    g.fillStyle = grad;
+    g.fill();
+    g.strokeStyle = 'rgba(225,245,255,0.8)';
+    g.lineWidth = 2;
+    g.stroke();
+
+    if (!warning) {
+      const spikeCount = Math.max(1, Math.round((xRight - xLeft) / 30));
+      const edgeY = cy + halfT * spikeDir;
+      for (let i = 0; i < spikeCount; i++) {
+        const sx = xLeft + ((i + 0.5) / spikeCount) * (xRight - xLeft);
+        const len = (16 + (i % 3) * 5) * spikeDir;
+        g.beginPath();
+        g.moveTo(sx - 6, edgeY - 2 * spikeDir);
+        g.lineTo(sx + 6, edgeY - 2 * spikeDir);
+        g.lineTo(sx, edgeY + len);
+        g.closePath();
+        const sgrad = g.createLinearGradient(sx, edgeY, sx, edgeY + len);
+        sgrad.addColorStop(0, 'rgba(200,235,255,0.7)');
+        sgrad.addColorStop(1, 'rgba(230,248,255,0.3)');
+        g.fillStyle = sgrad;
+        g.fill();
+      }
+    }
+  }
+
+  function drawWallpushSafeBox(g) {
+    const b = wallSafeBox();
+    g.strokeStyle = 'rgba(255,230,150,0.8)';
+    g.lineWidth = 3;
+    g.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+  }
+
   function drawWallPush(g) {
     if (boss.phase !== 'wallpush') return;
-    const gapTop = boss.wallGapY0 * TILE;
-    const gapBottom = boss.wallGapY1 * TILE;
     const arenaBottom = LEVEL.arenaRows * TILE;
     const wallThickness = 26;
     const warning = boss.wallSubPhase === 'warning';
     g.save();
-    drawIceWallSlab(g, boss.wallX, 0, gapTop, wallThickness, warning);
-    drawIceWallSlab(g, boss.wallX, gapBottom, arenaBottom, wallThickness, warning);
-    // the gap itself, lit so it reads as the way through rather than a gap
-    // in the rendering
-    g.strokeStyle = 'rgba(255,230,150,0.8)';
-    g.lineWidth = 3;
-    g.strokeRect(boss.wallX - wallThickness / 2, gapTop, wallThickness, gapBottom - gapTop);
+    drawIceWallSlabV(g, boss.wallLeftX, 0, arenaBottom, wallThickness, warning, 1);
+    drawIceWallSlabV(g, boss.wallRightX, 0, arenaBottom, wallThickness, warning, -1);
+    drawIceWallSlabH(g, boss.wallTopY, 0, WORLD_W, wallThickness, warning, 1);
+    drawIceWallSlabH(g, boss.wallBottomY, 0, WORLD_W, wallThickness, warning, -1);
+    // the safe pocket itself, lit so it reads as the way to survive
+    // rather than a gap in the rendering
+    drawWallpushSafeBox(g);
     g.restore();
   }
 
@@ -2426,6 +2536,43 @@
       flame.addColorStop(0, '#ff5a1e');
       flame.addColorStop(0.6, '#ffb23c');
       flame.addColorStop(1, '#fff0a0');
+      g.fillStyle = flame;
+      g.fill();
+      g.restore();
+    });
+  }
+
+  // Blue-flame sconces around the arena's own walls, lit only while the
+  // wall-push attack is active -- same stick-and-flame shape as the real
+  // damage torches, just cold-colored and purely atmospheric (clicking
+  // through them does nothing, they're not pickups).
+  function drawWallpushTorches(g, now) {
+    if (boss.phase !== 'wallpush') return;
+    WALLPUSH_TORCH_POINTS.forEach((pt, i) => {
+      g.save();
+      g.translate(pt.x, pt.y);
+      const flick = 0.75 + Math.sin(now * 0.012 + i) * 0.25;
+      g.fillStyle = '#3a4a5a';
+      g.fillRect(-2.5, -2, 5, 16);
+      g.strokeStyle = '#1a242e';
+      g.lineWidth = 1;
+      g.strokeRect(-2.5, -2, 5, 16);
+      const glow = g.createRadialGradient(0, -14, 1, 0, -14, 14 * flick);
+      glow.addColorStop(0, 'rgba(120,180,255,0.6)');
+      glow.addColorStop(1, 'rgba(60,120,255,0)');
+      g.fillStyle = glow;
+      g.beginPath();
+      g.arc(0, -14, 14 * flick, 0, Math.PI * 2);
+      g.fill();
+      g.beginPath();
+      g.moveTo(-4, -4);
+      g.quadraticCurveTo(-5 * flick, -12, 0, -18 * flick);
+      g.quadraticCurveTo(5 * flick, -12, 4, -4);
+      g.closePath();
+      const flame = g.createLinearGradient(0, -4, 0, -18);
+      flame.addColorStop(0, '#1e5aff');
+      flame.addColorStop(0.6, '#3ca0ff');
+      flame.addColorStop(1, '#a0e0ff');
       g.fillStyle = flame;
       g.fill();
       g.restore();
@@ -2966,6 +3113,7 @@
     ctx.scale(zoom, zoom);
     ctx.translate(-camX, -camY);
     drawTiles(ctx, camX, camY, now);
+    drawWallpushTorches(ctx, now);
     drawSmokeBombs(ctx, now);
     drawWallPush(ctx);
     drawIcicleProjectiles(ctx);
