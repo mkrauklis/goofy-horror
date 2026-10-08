@@ -22,6 +22,7 @@
   const thawSpiderCtx = ctxFor('monster-canvas-thawspider');
   const frozenMutationCtx = ctxFor('monster-canvas-frozenmutation');
   const eelCtx = ctxFor('monster-canvas-eel');
+  const currentEelCtx = ctxFor('monster-canvas-currenteel');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -1598,6 +1599,114 @@
     g.restore();
   }
 
+  // A handful of small raised bumps on a segment's surface -- fixed per
+  // segment (hashed from a seed, not live position) so they read as a
+  // stable body feature rather than swimming around as it moves. Same
+  // technique as game17.js's own drawEelBumps.
+  function drawEelBumps(g, r, seed) {
+    for (let i = 0; i < 3; i++) {
+      const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const a = (u % 360) * Math.PI / 180;
+      const dist = r * (0.25 + (u % 5) * 0.1);
+      const bx = Math.cos(a) * dist, by = Math.sin(a) * dist;
+      const br = Math.max(1, r * (0.12 + (u % 3) * 0.03));
+      g.beginPath();
+      g.arc(bx, by, br, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(190,225,245,0.55)';
+      g.fill();
+      g.beginPath();
+      g.arc(bx - br * 0.3, by - br * 0.3, br * 0.4, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,255,255,0.4)';
+      g.fill();
+    }
+  }
+
+  // The Level 17 creature: a cousin of the Flood Eel, pale sickly blue
+  // instead of dark teal, with raised bumps scattered across its body.
+  function drawCurrentEel(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const segCount = 11, spacing = 13, baseRadius = 16;
+
+    g.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let i = segCount - 1; i >= 0; i--) {
+      const along = i * spacing;
+      const wob = Math.sin(t * 0.0022 + i * 0.6) * 7;
+      const r = Math.max(3, baseRadius * (1 - i * 0.055));
+      g.beginPath();
+      g.ellipse(-55 + along, wob + r * 0.5, Math.max(2.5, r * 0.85), Math.max(2, r * 0.35), 0, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    for (let i = segCount - 1; i >= 0; i--) {
+      const along = i * spacing;
+      const wob = Math.sin(t * 0.0022 + i * 0.6) * 7;
+      const x = -55 + along;
+      const y = wob;
+      const r = Math.max(3, baseRadius * (1 - i * 0.055));
+      const base = i % 2 === 0 ? '#7ab8d9' : '#8ac4e3';
+      g.save();
+      g.translate(x, y);
+
+      if (i % 2 === 0 && i < segCount - 1) {
+        drawFin(g, 0, 0, 0, -r * 1.7, r * 0.5, 'rgba(120,180,220,0.55)');
+      }
+
+      const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
+      grad.addColorStop(0, shade(base, 0.22));
+      grad.addColorStop(0.55, base);
+      grad.addColorStop(1, shade(base, -0.3));
+      g.beginPath();
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.fillStyle = grad;
+      g.shadowColor = '#2a5a75';
+      g.shadowBlur = 5;
+      g.fill();
+      g.shadowBlur = 0;
+
+      drawEelBumps(g, r, i * 13 + 5);
+
+      g.beginPath();
+      g.ellipse(0, r * 0.35, r * 0.75, r * 0.3, 0, 0, Math.PI);
+      g.fillStyle = 'rgba(225,240,245,0.35)';
+      g.fill();
+      g.restore();
+    }
+
+    g.save();
+    const headY = Math.sin(t * 0.0022) * 7;
+    g.translate(-55 + segCount * spacing, headY);
+    [-1, 1].forEach((side) => {
+      drawFin(g, 0, 0, side * baseRadius * 1.3, baseRadius * 0.9, baseRadius * 0.3, 'rgba(120,180,220,0.6)');
+    });
+    const points = 12;
+    const headPath = [];
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const r = baseRadius + Math.sin(t * 0.008 + i * 1.7) * 2;
+      headPath.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    g.beginPath();
+    headPath.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+    g.closePath();
+    const headGrad = g.createRadialGradient(-baseRadius * 0.3, -baseRadius * 0.35, 1, 0, 0, baseRadius * 1.05);
+    headGrad.addColorStop(0, shade('#8ac4e3', 0.22));
+    headGrad.addColorStop(0.55, '#8ac4e3');
+    headGrad.addColorStop(1, shade('#8ac4e3', -0.3));
+    g.fillStyle = headGrad;
+    g.shadowColor = '#2a5a75';
+    g.shadowBlur = 12;
+    g.fill();
+    g.shadowBlur = 0;
+    drawEelBumps(g, baseRadius, 5);
+    const angle = t * 0.0006;
+    drawMonsterTeeth(g, baseRadius, { x: Math.cos(angle), y: Math.sin(angle) * 0.4 });
+    g.restore();
+    g.restore();
+  }
+
   function drawPortraitOrLock(ctx, drawFn, t, phase2) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
@@ -1648,6 +1757,7 @@
       drawPortraitOrLock(digWormCtx, drawDigWorm, t);
       drawPortraitOrLock(lastKnightCtx, drawLastKnight, t, phase2Shown.has(lastKnightCtx));
       drawPortraitOrLock(eelCtx, drawEel, t);
+      drawPortraitOrLock(currentEelCtx, drawCurrentEel, t);
     }
     requestAnimationFrame(loop);
   }

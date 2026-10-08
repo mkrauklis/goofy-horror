@@ -1,7 +1,7 @@
 (function () {
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
-  if (window.GoofyStory && !window.GoofyStory.isUnlocked(16)) {
+  if (window.GoofyStory && !window.GoofyStory.isUnlocked(17)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
@@ -10,7 +10,7 @@
     return;
   }
 
-  const LEVEL = window.LEVEL16;
+  const LEVEL = window.LEVEL17;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
@@ -24,6 +24,12 @@
   // each frame (see `dt` in loop()) rather than a fixed px/frame step.
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
+  // The flooded water itself is moving -- a steady current nudges both
+  // players left at a flat 0.2x player speed, independent of input,
+  // every frame they're not caught. It's a constant drift, not something
+  // that ramps up or can be fought off; swimming against it just costs
+  // you some of your own speed.
+  const CURRENT_SPEED = PLAYER_SPEED * 0.2;
   // The eel roams slower than a player, but charges much faster once it's
   // spotted someone -- a patrol/alert split, same state machine as every
   // other sight-based creature on this site, just with these two speeds.
@@ -34,7 +40,8 @@
   const REPATH_MS = 500;
   const ALERT_GRACE_MS = 3000;
   const DETECT_RADIUS = 130; // open water -- a longer sight line than a cramped hall
-  const WHEELS_NEEDED = 3;
+  const PIPES_NEEDED = 3;
+  const WELD_DURATION_MS = 3000;
   const RADAR_DURATION_MS = 10000;
   const ENERGY_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
@@ -94,7 +101,7 @@
   const EXPLORE_RADIUS = 7;
   const MINIMAP_W = 90;
 
-  const hudWheelsEl = document.getElementById('hud-wheels');
+  const hudPipesEl = document.getElementById('hud-pipes');
   const hudDoorEl = document.getElementById('hud-door');
   const hudTimerEl = document.getElementById('hud-timer');
   const hudBestEl = document.getElementById('hud-best');
@@ -287,36 +294,29 @@
     playTone(880, 0.3, 'triangle', 0.22, 0.24);
   }
 
-  // A wet clunk (a low square thud with a short bubbly chirp riding on
-  // top) for a wheel turning -- deliberately damp-sounding rather than
-  // the dry mechanical click a dry-land lever would make.
-  function playWheelClunk() {
+  // A short buzzy welding-torch crackle (a harsh sawtooth flickering
+  // between frequencies like an unsteady arc) finishing in a clean,
+  // satisfied chime -- the sound of sealing a pipe shut, not a wet
+  // valve-wheel clunk.
+  function playWeldComplete() {
     if (!audioCtx) return;
     const start = audioCtx.currentTime;
-    const thud = audioCtx.createOscillator();
-    const thudGain = audioCtx.createGain();
-    thud.type = 'square';
-    thud.frequency.setValueAtTime(140, start);
-    thud.frequency.exponentialRampToValueAtTime(60, start + 0.2);
-    thudGain.gain.setValueAtTime(0.3, start);
-    thudGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.25);
-    thud.connect(thudGain);
-    thudGain.connect(audioCtx.destination);
-    thud.start(start);
-    thud.stop(start + 0.28);
+    const buzz = audioCtx.createOscillator();
+    const buzzGain = audioCtx.createGain();
+    buzz.type = 'sawtooth';
+    buzzGain.gain.setValueAtTime(0.0001, start);
+    buzzGain.gain.exponentialRampToValueAtTime(0.22, start + 0.03);
+    buzzGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.3);
+    buzz.connect(buzzGain);
+    buzzGain.connect(audioCtx.destination);
+    for (let i = 0; i < 6; i++) {
+      buzz.frequency.setValueAtTime(180 + Math.random() * 220, start + i * 0.045);
+    }
+    buzz.start(start);
+    buzz.stop(start + 0.32);
 
-    const chirp = audioCtx.createOscillator();
-    const chirpGain = audioCtx.createGain();
-    chirp.type = 'sine';
-    chirp.frequency.setValueAtTime(600, start + 0.05);
-    chirp.frequency.exponentialRampToValueAtTime(1400, start + 0.16);
-    chirpGain.gain.setValueAtTime(0.0001, start + 0.05);
-    chirpGain.gain.exponentialRampToValueAtTime(0.12, start + 0.08);
-    chirpGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.2);
-    chirp.connect(chirpGain);
-    chirpGain.connect(audioCtx.destination);
-    chirp.start(start + 0.05);
-    chirp.stop(start + 0.22);
+    playTone(880, 0.2, 'triangle', 0.2, 0.3);
+    playTone(1320, 0.25, 'triangle', 0.18, 0.38);
   }
 
   function playCatchSting() {
@@ -458,10 +458,10 @@
     return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
   }
 
-  // A handful of near-identical teals, picked per-tile by hashing its
-  // coordinates, so the flooded floor reads as moving, uneven water
+  // A handful of near-identical murky greens, picked per-tile by hashing
+  // its coordinates, so the flooded floor reads as moving, uneven water
   // instead of one flat color.
-  const WATER_SHADES = ['#1c4850', '#204f58', '#245660', '#1a4349', '#235058', '#1e4a52'];
+  const WATER_SHADES = ['#1c5020', '#205828', '#1a4a1e', '#225526', '#18421c', '#1f5024'];
   function floorShade(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % WATER_SHADES.length;
@@ -479,7 +479,7 @@
 
   // ---- game state ----
 
-  const BEST_TIME_KEY = 'goofy-horror-best-level16';
+  const BEST_TIME_KEY = 'goofy-horror-best-level17';
   let bestMs = (() => {
     const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
     return Number.isFinite(v) ? v : null;
@@ -498,19 +498,20 @@
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
 
-  // Wheels auto-located from the grid's own 'W' tiles rather than stored
+  // Pipes auto-located from the grid's own 'P' tiles rather than stored
   // separately -- same "computed from the grid" convention as this file's
   // doorBounds box below.
-  const WHEEL_POSITIONS = (() => {
+  const PIPE_POSITIONS = (() => {
     const list = [];
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
-        if (LEVEL.grid[y][x] === 'W') list.push({ x, y });
+        if (LEVEL.grid[y][x] === 'P') list.push({ x, y });
       }
     }
     return list;
   })();
-  let wheelsTurned = [];
+  let pipesWelded = [];
+  let pipeProgress = [];
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
@@ -521,6 +522,7 @@
       walkPhase: 0,
       shotgunAmmo: 0,
       nextRippleAt: 0,
+      carryingGun: false,
     };
   }
 
@@ -584,6 +586,7 @@
       p.sprintActive = false;
       p.shotgunAmmo = 0;
       p.nextRippleAt = 0;
+      p.carryingGun = false;
     });
 
     const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
@@ -593,7 +596,8 @@
     monster.frozenUntil = 0; monster.luredState = 'none'; monster.lureTarget = null; monster.eatingUntil = 0;
     monster.trail = []; monster.segments = []; monster.nextRippleAt = 0;
 
-    wheelsTurned = WHEEL_POSITIONS.map(() => false);
+    pipesWelded = PIPE_POSITIONS.map(() => false);
+    pipeProgress = PIPE_POSITIONS.map(() => 0);
     doorUnlocked = false;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
@@ -675,12 +679,17 @@
 
   function applyMovement(p, ix, iy, dt) {
     if (p.caught) return;
-    if (ix === 0 && iy === 0) return;
-    const len = Math.hypot(ix, iy);
-    const nx = ix / len, ny = iy / len;
-    p.facing = { x: nx, y: ny };
-    const speed = PLAYER_SPEED * speedMultiplierFor(p);
-    movePlayer(p, nx * speed * dt, ny * speed * dt);
+    if (ix !== 0 || iy !== 0) {
+      const len = Math.hypot(ix, iy);
+      const nx = ix / len, ny = iy / len;
+      p.facing = { x: nx, y: ny };
+      const speed = PLAYER_SPEED * speedMultiplierFor(p);
+      movePlayer(p, nx * speed * dt, ny * speed * dt);
+    }
+    // The current pulls left regardless of input -- applied as its own
+    // separate step so standing still still drifts, and swimming right
+    // against it is simply slower than swimming with it.
+    movePlayer(p, -CURRENT_SPEED * dt, 0);
   }
 
   function spawnRipple(x, y) {
@@ -711,14 +720,18 @@
     return tileChar(t.x, t.y) === 'S';
   }
 
-  // The scanner points at the nearest wheel still waiting to be turned --
-  // once all 3 are turned there's nothing left to point at.
+  // The scanner points at the welding gun until someone's carrying it,
+  // then at the nearest pipe still waiting to be welded -- once all 3
+  // are welded there's nothing left to point at.
   function scannerTarget() {
-    if (wheelsTurned.every(Boolean)) return null;
+    if (pipesWelded.every(Boolean)) return null;
     const p = players[0];
+    if (!players.some((pl) => pl.carryingGun)) {
+      return tileCenter(LEVEL.weldingGun.x, LEVEL.weldingGun.y);
+    }
     let best = null, bestD = Infinity;
-    WHEEL_POSITIONS.forEach((w, i) => {
-      if (wheelsTurned[i]) return;
+    PIPE_POSITIONS.forEach((w, i) => {
+      if (pipesWelded[i]) return;
       const center = tileCenter(w.x, w.y);
       const d = Math.hypot(p.x - center.x, p.y - center.y);
       if (d < bestD) { bestD = d; best = center; }
@@ -730,8 +743,9 @@
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
     if (ch === 'S') return '#3ddc84';
-    if (ch === 'W') return '#e8503d';
-    return '#1f4a52';
+    if (ch === 'P') return '#c9a86a';
+    if (ch === 'U') return '#8ac4e3';
+    return '#1f521f';
   }
 
   function updateExploration() {
@@ -965,24 +979,51 @@
     });
   }
 
-  // Walking onto an unturned red wheel turns it -- same instant,
-  // walk-onto-it convention as every other single-step objective pickup
-  // on this site. Turning the third one unlocks the door.
-  function updateWheels(now) {
+  // Walking onto the welding gun picks it up -- same instant, walk-onto-it
+  // convention as every other single-step objective pickup on this site.
+  // Only one exists; once someone's carrying it, it's gone from the floor
+  // for good (no going back for a second one).
+  function updateWeldingGunPickup(now) {
+    if (players.some((p) => p.carryingGun)) return;
     players.forEach((p) => {
+      if (p.caught) return;
       const t = worldToTile(p.x, p.y);
-      WHEEL_POSITIONS.forEach((w, i) => {
-        if (wheelsTurned[i]) return;
-        if (w.x !== t.x || w.y !== t.y) return;
-        wheelsTurned[i] = true;
-        const center = tileCenter(w.x, w.y);
-        spawnFloatingText(center.x, center.y, 'WHEEL TURNED');
-        playWheelClunk();
-        if (wheelsTurned.every(Boolean)) {
-          doorUnlocked = true;
-          playDoorUnlockChime();
-        }
+      if (t.x !== LEVEL.weldingGun.x || t.y !== LEVEL.weldingGun.y) return;
+      p.carryingGun = true;
+      const center = tileCenter(t.x, t.y);
+      spawnFloatingText(center.x, center.y, 'WELDING GUN');
+      playItemChime(760);
+    });
+  }
+
+  // Standing at a pipe while carrying the gun fills its weld progress
+  // over WELD_DURATION_MS; stepping away (or losing the gun to a catch)
+  // drains it back at twice that rate, same fill/drain convention as
+  // Level 11's own held-plate generators. Welding the third pipe unlocks
+  // the door.
+  function updateWelding(now, dt) {
+    PIPE_POSITIONS.forEach((pipe, i) => {
+      if (pipesWelded[i]) return;
+      const welding = players.some((p) => {
+        if (p.caught || !p.carryingGun) return false;
+        const t = worldToTile(p.x, p.y);
+        return t.x === pipe.x && t.y === pipe.y;
       });
+      if (welding) {
+        pipeProgress[i] = Math.min(1, pipeProgress[i] + dt / (WELD_DURATION_MS / 1000));
+        if (pipeProgress[i] >= 1) {
+          pipesWelded[i] = true;
+          const center = tileCenter(pipe.x, pipe.y);
+          spawnFloatingText(center.x, center.y, 'PIPE WELDED');
+          playWeldComplete();
+          if (pipesWelded.every(Boolean)) {
+            doorUnlocked = true;
+            playDoorUnlockChime();
+          }
+        }
+      } else {
+        pipeProgress[i] = Math.max(0, pipeProgress[i] - dt / (WELD_DURATION_MS / 1000 / 2));
+      }
     });
   }
 
@@ -993,8 +1034,7 @@
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
         playWinJingle();
-        if (window.GoofyStory) window.GoofyStory.completeLevel(16);
-        setTimeout(() => { window.location.href = 'level17.html'; }, 2000);
+        if (window.GoofyStory) window.GoofyStory.completeLevel(17);
       }
     });
   }
@@ -1353,7 +1393,7 @@
       const alpha = (1 - t) * 0.35;
       g.beginPath();
       g.arc(r.x, r.y, radius, 0, Math.PI * 2);
-      g.strokeStyle = `rgba(190,230,235,${alpha})`;
+      g.strokeStyle = `rgba(200,235,195,${alpha})`;
       g.lineWidth = 1.4;
       g.stroke();
     });
@@ -1408,8 +1448,8 @@
         switch (ch) {
           case '#': color = '#1a2226'; break;
           case 'S': color = floorShade(x, y); break;
-          case 'E': color = '#1e3a3c'; break;
-          case 'D': color = doorUnlocked ? floorShade(x, y) : '#2a4552'; break;
+          case 'E': color = '#1e3c22'; break;
+          case 'D': color = doorUnlocked ? floorShade(x, y) : '#2a522f'; break;
           default: color = floorShade(x, y);
         }
         g.fillStyle = color;
@@ -1428,7 +1468,7 @@
           const seed = ((h ^ (h >>> 13)) >>> 0) % 1000 / 1000;
           const band = Math.sin(now * 0.0005 + seed * 20 + x * 0.3 + y * 0.2);
           if (band > 0.65) {
-            g.fillStyle = `rgba(210,240,245,${(band - 0.65) * 0.25})`;
+            g.fillStyle = `rgba(215,245,205,${(band - 0.65) * 0.25})`;
             g.fillRect(px, py, TILE, TILE);
           }
         }
@@ -1463,7 +1503,8 @@
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
 
-    drawWheels(g, now);
+    drawPipes(g);
+    drawWeldingGunPickup(g, now);
     drawSafeZone(g);
     drawBloodSplatters(g);
     drawCrates(g);
@@ -1472,47 +1513,82 @@
     drawFloatingTexts(g);
   }
 
-  // A red wheel with spokes -- grey and still once turned, bright red and
-  // very slightly rocking in the current until then.
-  function drawWheels(g, now) {
-    WHEEL_POSITIONS.forEach((w, i) => {
-      const center = tileCenter(w.x, w.y);
-      const turned = wheelsTurned[i];
+  // A short pipe segment, rusty and dull until welded -- a glowing
+  // amber progress ring builds above it while someone's actively
+  // welding, and a bright weld seam appears down its middle once done.
+  function drawPipes(g) {
+    PIPE_POSITIONS.forEach((pipe, i) => {
+      const center = tileCenter(pipe.x, pipe.y);
+      const welded = pipesWelded[i];
+      const progress = pipeProgress[i];
       g.save();
       g.translate(center.x, center.y);
-      g.rotate(turned ? 0.6 : Math.sin(now * 0.0015 + i) * 0.08);
 
-      g.beginPath();
-      g.arc(0, 0, 12, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(0,0,0,0.3)';
-      g.fill();
-
-      const rimGrad = g.createRadialGradient(-3, -3, 1, 0, 0, 11);
-      rimGrad.addColorStop(0, turned ? shade('#6a6a6a', 0.2) : shade('#c9402a', 0.25));
-      rimGrad.addColorStop(1, turned ? shade('#6a6a6a', -0.3) : shade('#c9402a', -0.3));
-      g.beginPath();
-      g.arc(0, 0, 10, 0, Math.PI * 2);
-      g.fillStyle = rimGrad;
-      g.fill();
+      const pipeGrad = g.createLinearGradient(0, -6, 0, 6);
+      if (welded) {
+        pipeGrad.addColorStop(0, '#d8d8de');
+        pipeGrad.addColorStop(1, '#8a8a92');
+      } else {
+        pipeGrad.addColorStop(0, '#8a7560');
+        pipeGrad.addColorStop(1, '#4a3c30');
+      }
+      g.fillStyle = pipeGrad;
+      g.fillRect(-14, -6, 28, 12);
       g.strokeStyle = 'rgba(0,0,0,0.5)';
       g.lineWidth = 1.5;
-      g.stroke();
-
-      g.strokeStyle = turned ? '#3a3a3a' : '#7a2015';
-      g.lineWidth = 2;
-      for (let s = 0; s < 4; s++) {
-        const a = (s / 4) * Math.PI * 2;
+      g.strokeRect(-14, -6, 28, 12);
+      g.strokeStyle = 'rgba(0,0,0,0.4)';
+      g.lineWidth = 1;
+      [-14, 14].forEach((fx) => {
         g.beginPath();
-        g.moveTo(Math.cos(a) * 2, Math.sin(a) * 2);
-        g.lineTo(Math.cos(a) * 9, Math.sin(a) * 9);
+        g.moveTo(fx, -6);
+        g.lineTo(fx, 6);
+        g.stroke();
+      });
+
+      if (welded) {
+        g.strokeStyle = 'rgba(255,220,140,0.9)';
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(0, -6);
+        g.lineTo(0, 6);
+        g.stroke();
+      } else if (progress > 0) {
+        g.beginPath();
+        g.arc(0, -16, 7, 0, Math.PI * 2);
+        g.strokeStyle = 'rgba(255,255,255,0.3)';
+        g.lineWidth = 1;
+        g.stroke();
+        g.beginPath();
+        g.arc(0, -16, 7, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+        g.strokeStyle = '#ffb23c';
+        g.lineWidth = 3;
         g.stroke();
       }
-      g.beginPath();
-      g.arc(0, 0, 2.4, 0, Math.PI * 2);
-      g.fillStyle = turned ? '#2a2a2a' : '#4a140d';
-      g.fill();
       g.restore();
     });
+  }
+
+  // The welding gun's own pickup sprite -- vanishes the instant it's
+  // carried, same convention as every other on-floor pickup here.
+  function drawWeldingGunPickup(g, now) {
+    if (players.some((p) => p.carryingGun)) return;
+    const c = tileCenter(LEVEL.weldingGun.x, LEVEL.weldingGun.y);
+    const flick = 0.7 + Math.sin(now * 0.01) * 0.3;
+    g.save();
+    g.translate(c.x, c.y);
+    g.fillStyle = '#3a3a3e';
+    g.fillRect(-3, -10, 6, 16);
+    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.lineWidth = 1;
+    g.strokeRect(-3, -10, 6, 16);
+    g.fillStyle = '#2a2a2e';
+    g.fillRect(-6, 4, 12, 5);
+    g.beginPath();
+    g.arc(0, -12, 4 * flick, 0, Math.PI * 2);
+    g.fillStyle = `rgba(140,200,255,${0.5 + flick * 0.3})`;
+    g.fill();
+    g.restore();
   }
 
   function drawTable(g, cx, cy) {
@@ -1616,6 +1692,31 @@
     g.stroke();
   }
 
+  // A handful of small raised bumps scattered across a segment's surface
+  // -- fixed per segment (hashed from a seed, not from its live x/y, so
+  // they read as a stable feature of the body rather than swimming
+  // around as it moves), each with a faint highlight to sell the raised
+  // shape instead of a flat dot.
+  function drawEelBumps(g, r, seed) {
+    const count = 3;
+    for (let i = 0; i < count; i++) {
+      const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const a = (u % 360) * Math.PI / 180;
+      const dist = r * (0.25 + (u % 5) * 0.1);
+      const bx = Math.cos(a) * dist, by = Math.sin(a) * dist;
+      const br = Math.max(1, r * (0.12 + (u % 3) * 0.03));
+      g.beginPath();
+      g.arc(bx, by, br, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(190,225,245,0.55)';
+      g.fill();
+      g.beginPath();
+      g.arc(bx - br * 0.3, by - br * 0.3, br * 0.4, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,255,255,0.4)';
+      g.fill();
+    }
+  }
+
   function drawEel(g, t) {
     // Ground shadow trail, drawn first so it sits under every segment.
     g.fillStyle = 'rgba(0,0,0,0.25)';
@@ -1627,13 +1728,14 @@
       g.fill();
     }
 
-    // Body segments, tail first so the head draws on top -- a dark,
-    // slick teal-green instead of the usual loam/bone tones, tapering
-    // to a thin point at the tail.
+    // Body segments, tail first so the head draws on top -- a pale,
+    // sickly blue instead of the usual dark teal-green, tapering to a
+    // thin point at the tail, with a scatter of small raised bumps
+    // across every segment's surface.
     for (let i = monster.segments.length - 1; i >= 0; i--) {
       const seg = monster.segments[i];
       const r = Math.max(2.5, monster.radius * (1 - i * 0.055));
-      const base = i % 2 === 0 ? '#2e6b63' : '#357a70';
+      const base = i % 2 === 0 ? '#7ab8d9' : '#8ac4e3';
       g.save();
       g.translate(seg.x, seg.y);
 
@@ -1642,7 +1744,7 @@
         const next = monster.segments[Math.min(i + 1, monster.segments.length - 1)];
         const dx = seg.x - next.x, dy = seg.y - next.y;
         const ang = Math.atan2(dy, dx) + Math.PI / 2;
-        drawFin(g, 0, 0, Math.cos(ang) * r * 1.6, Math.sin(ang) * r * 1.6, r * 0.5, 'rgba(70,170,150,0.55)');
+        drawFin(g, 0, 0, Math.cos(ang) * r * 1.6, Math.sin(ang) * r * 1.6, r * 0.5, 'rgba(120,180,220,0.55)');
       }
 
       const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
@@ -1652,15 +1754,17 @@
       g.beginPath();
       g.arc(0, 0, r, 0, Math.PI * 2);
       g.fillStyle = grad;
-      g.shadowColor = '#1a4a44';
+      g.shadowColor = '#2a5a75';
       g.shadowBlur = 5;
       g.fill();
       g.shadowBlur = 0;
 
+      drawEelBumps(g, r, monster.seed + i * 13);
+
       // pale underbelly stripe
       g.beginPath();
       g.ellipse(0, r * 0.35, r * 0.75, r * 0.3, 0, 0, Math.PI);
-      g.fillStyle = 'rgba(210,235,225,0.35)';
+      g.fillStyle = 'rgba(225,240,245,0.35)';
       g.fill();
 
       g.restore();
@@ -1692,19 +1796,20 @@
       const backAngle = headAngle + Math.PI + (0.5 * side);
       const tipX = baseX + Math.cos(backAngle) * monster.radius * 1.4;
       const tipY = baseY + Math.sin(backAngle) * monster.radius * 1.4;
-      drawFin(g, baseX, baseY, tipX, tipY, monster.radius * 0.35, 'rgba(70,170,150,0.6)');
+      drawFin(g, baseX, baseY, tipX, tipY, monster.radius * 0.35, 'rgba(120,180,220,0.6)');
     });
 
     trace();
     const headGrad = g.createRadialGradient(-monster.radius * 0.3, -monster.radius * 0.35, 1, 0, 0, monster.radius * 1.05);
-    headGrad.addColorStop(0, shade('#357a70', 0.22));
-    headGrad.addColorStop(0.55, '#357a70');
-    headGrad.addColorStop(1, shade('#357a70', -0.3));
+    headGrad.addColorStop(0, shade('#8ac4e3', 0.22));
+    headGrad.addColorStop(0.55, '#8ac4e3');
+    headGrad.addColorStop(1, shade('#8ac4e3', -0.3));
     g.fillStyle = headGrad;
-    g.shadowColor = '#1a4a44';
+    g.shadowColor = '#2a5a75';
     g.shadowBlur = 10;
     g.fill();
     g.shadowBlur = 0;
+    drawEelBumps(g, monster.radius, monster.seed);
 
     g.save();
     trace();
@@ -2051,6 +2156,7 @@
     drawRadar(vx, p, now);
     drawScanner(vx, p, now);
     drawShotgunHud(vx, p);
+    drawWeldingGunHud(vx, p);
     const minimapH = drawMinimap(vx, now);
     drawStaminaBar(vx, p, minimapH);
 
@@ -2084,6 +2190,37 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffd27a';
     ctx.fillText(`${p.shotgunAmmo}x`, cx + 3, cy + 4);
+    ctx.restore();
+  }
+
+  // A small badge in the corner once this specific player is carrying
+  // the welding gun -- same spot/shape convention as the shotgun badge,
+  // stacked just below it so both can show at once.
+  function drawWeldingGunHud(vx, p) {
+    if (!p.carryingGun) return;
+    const cx = vx + VIEW_W - 34, cy = 96;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(15,25,35,0.75)';
+    ctx.fill();
+    ctx.strokeStyle = '#8ac4e3';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.fillStyle = '#3a3a3e';
+    ctx.fillRect(-2, -8, 4, 11);
+    ctx.fillStyle = '#2a2a2e';
+    ctx.fillRect(-4, 2, 8, 4);
+    ctx.beginPath();
+    ctx.arc(0, -9, 2.6, 0, Math.PI * 2);
+    ctx.fillStyle = '#8ac4e3';
+    ctx.shadowColor = '#8ac4e3';
+    ctx.shadowBlur = 5;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
     ctx.restore();
   }
 
@@ -2217,16 +2354,16 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'THE FLOOD RECEDES &mdash; warping to Level 17&hellip;';
+      messageEl.innerHTML = 'THE LAST PIPE SEALS &mdash; you made it out. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
     } else {
       messageEl.style.display = 'none';
     }
   }
 
   function updateHud() {
-    const turnedCount = wheelsTurned.filter(Boolean).length;
-    hudWheelsEl.textContent = `Wheels: ${turnedCount} / ${WHEELS_NEEDED}`;
-    hudWheelsEl.classList.toggle('done', turnedCount >= WHEELS_NEEDED);
+    const weldedCount = pipesWelded.filter(Boolean).length;
+    hudPipesEl.textContent = `Pipes: ${weldedCount} / ${PIPES_NEEDED}`;
+    hudPipesEl.classList.toggle('done', weldedCount >= PIPES_NEEDED);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'unlocked' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
 
@@ -2236,7 +2373,7 @@
         bestMs = elapsedMs;
         localStorage.setItem(BEST_TIME_KEY, String(bestMs));
       }
-      if (window.GoofyStory) window.GoofyStory.completeLevel(16);
+      if (window.GoofyStory) window.GoofyStory.completeLevel(17);
     }
 
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
@@ -2255,7 +2392,8 @@
       updateInputMovement(now, dt);
       updateTriggers();
       updateCrates(now);
-      updateWheels(now);
+      updateWeldingGunPickup(now);
+      updateWelding(now, dt);
       updateSmokeBombs(now);
       updateDecoy(now, dt);
       updateMonster(now, dt);
