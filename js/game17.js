@@ -381,7 +381,10 @@
 
   function updateAmbientTension() {
     if (!audioCtx) return;
-    const minDist = Math.min(...players.map((p) => Math.hypot(p.x - monster.x, p.y - monster.y)));
+    let minDist = Infinity;
+    players.forEach((p) => monsters.forEach((m) => {
+      minDist = Math.min(minDist, Math.hypot(p.x - m.x, p.y - m.y));
+    }));
     const proximity = clamp(1 - minDist / 380, 0, 1);
     ambientGain.gain.setTargetAtTime(0.05 + proximity * 0.18, audioCtx.currentTime, 0.3);
     ambientSubOsc.frequency.setTargetAtTime(38.5 + proximity * 11, audioCtx.currentTime, 0.3);
@@ -585,28 +588,47 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
-  const monster = {
-    x: 0,
-    y: 0,
-    radius: EEL_RADIUS,
-    seed: Math.random() * 100,
-    path: [],
-    pathIndex: 0,
-    nextRepathAt: 0,
-    lookDir: { x: 1, y: 0 },
-    state: 'patrol', // 'patrol' | 'alert'
-    alertUntil: 0,
-    alertTargetTile: null,
-    patrolIndex: 0,
-    frozenUntil: 0,
-    luredState: 'none', // 'none' | 'lured' | 'eating'
-    lureTarget: null,
-    eatingUntil: 0,
-    trail: [],
-    segments: [],
-    nextRippleAt: 0,
-    visibility: 0.1,
-  };
+  // Three Bogs now, not one -- each an independent patroller with its own
+  // state/path/visibility, spread a third of the patrol route apart (see
+  // the map call below) so they don't all start out in the same room.
+  function makeMonster(startPatrolIndex) {
+    return {
+      x: 0,
+      y: 0,
+      radius: EEL_RADIUS,
+      seed: Math.random() * 100,
+      path: [],
+      pathIndex: 0,
+      nextRepathAt: 0,
+      lookDir: { x: 1, y: 0 },
+      state: 'patrol', // 'patrol' | 'alert'
+      alertUntil: 0,
+      alertTargetTile: null,
+      patrolIndex: startPatrolIndex,
+      startPatrolIndex,
+      frozenUntil: 0,
+      luredState: 'none', // 'none' | 'lured' | 'eating'
+      lureTarget: null,
+      eatingUntil: 0,
+      trail: [],
+      segments: [],
+      nextRippleAt: 0,
+      visibility: 0,
+    };
+  }
+  const monsters = [0, 1, 2].map((i) => makeMonster(Math.floor(i * LEVEL.patrolPoints.length / 3)));
+
+  // Nearest Bog to a point -- used by anything that used to act on "the"
+  // monster (bait, CO2, the decoy, the radar arrow) so each of those still
+  // affects a single, sensible target instead of all three at once.
+  function nearestMonster(x, y) {
+    let best = monsters[0], bestD = Infinity;
+    monsters.forEach((m) => {
+      const d = Math.hypot(m.x - x, m.y - y);
+      if (d < bestD) { bestD = d; best = m; }
+    });
+    return best;
+  }
 
   let crates = [];
   let radarUntil = 0;
@@ -702,13 +724,16 @@
       p.carryingGun = false;
     });
 
-    const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
-    monster.x = m.x; monster.y = m.y;
-    monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
-    monster.state = 'patrol'; monster.alertUntil = 0; monster.alertTargetTile = null; monster.patrolIndex = 0;
-    monster.frozenUntil = 0; monster.luredState = 'none'; monster.lureTarget = null; monster.eatingUntil = 0;
-    monster.trail = []; monster.segments = []; monster.nextRippleAt = 0;
-    monster.visibility = 0.1;
+    monsters.forEach((mon, i) => {
+      const spawnTile = i === 0 ? LEVEL.monsterSpawn : LEVEL.patrolPoints[mon.startPatrolIndex];
+      const c = tileCenter(spawnTile.x, spawnTile.y);
+      mon.x = c.x; mon.y = c.y;
+      mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
+      mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null; mon.patrolIndex = mon.startPatrolIndex;
+      mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.eatingUntil = 0;
+      mon.trail = []; mon.segments = []; mon.nextRippleAt = 0;
+      mon.visibility = 0;
+    });
 
     pipesWelded = PIPE_POSITIONS.map(() => false);
     pipeProgress = PIPE_POSITIONS.map(() => 0);
@@ -895,15 +920,17 @@
     ctx.lineWidth = 1;
     ctx.strokeRect(mx + 0.5, my + 0.5, MINIMAP_W - 1, mh - 1);
     if (now < superRadarUntil) {
-      const px = mx + (monster.x / WORLD_W) * MINIMAP_W;
-      const py = my + (monster.y / WORLD_H) * mh;
-      ctx.beginPath();
-      ctx.arc(px, py, 2.4, 0, Math.PI * 2);
-      ctx.fillStyle = '#ff4d6d';
-      ctx.shadowColor = '#ff4d6d';
-      ctx.shadowBlur = 4;
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      monsters.forEach((mon) => {
+        const px = mx + (mon.x / WORLD_W) * MINIMAP_W;
+        const py = my + (mon.y / WORLD_H) * mh;
+        ctx.beginPath();
+        ctx.arc(px, py, 2.4, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff4d6d';
+        ctx.shadowColor = '#ff4d6d';
+        ctx.shadowBlur = 4;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      });
     }
     players.forEach((pl) => {
       const px = mx + (pl.x / WORLD_W) * MINIMAP_W;
@@ -953,13 +980,16 @@
       spawnFloatingText(x, y, 'RADAR');
       playItemChime(880);
     } else if (item === 'meat') {
-      monster.luredState = 'lured';
-      monster.lureTarget = { x, y };
-      monster.path = []; monster.pathIndex = 0;
+      // Only the nearest Bog takes the bait -- the other two stay on
+      // their own patrol/alert, same as CO2 and the decoy below.
+      const m = nearestMonster(x, y);
+      m.luredState = 'lured';
+      m.lureTarget = { x, y };
+      m.path = []; m.pathIndex = 0;
       spawnFloatingText(x, y, 'BAIT');
       playItemChime(220);
     } else if (item === 'co2') {
-      monster.frozenUntil = now + FREEZE_DURATION_MS;
+      nearestMonster(x, y).frozenUntil = now + FREEZE_DURATION_MS;
       spawnFloatingText(x, y, 'FROZEN');
       playItemChime(1200);
     } else if (item === 'scanner') {
@@ -975,7 +1005,11 @@
       spawnFloatingText(x, y, 'SMOKE BOMB');
       playItemChime(500);
     } else if (item === 'decoy') {
-      decoy = { x, y, angle: Math.random() * Math.PI * 2, turnAt: 0 };
+      // Locked onto whichever Bog is nearest at the moment it's dropped,
+      // not re-picked every frame -- keeps one consistent monster chasing
+      // it instead of the lure target flickering between two equidistant
+      // Bogs.
+      decoy = { x, y, angle: Math.random() * Math.PI * 2, turnAt: 0, monster: nearestMonster(x, y) };
       spawnFloatingText(x, y, 'DECOY');
       playItemChime(340);
     } else if (item === 'nightvision') {
@@ -1012,13 +1046,14 @@
     if (canStandAt(decoy.x + dx, decoy.y)) decoy.x += dx; else decoy.angle = Math.PI - decoy.angle;
     if (canStandAt(decoy.x, decoy.y + dy)) decoy.y += dy; else decoy.angle = -decoy.angle;
 
-    monster.luredState = 'lured';
-    monster.lureTarget = { x: decoy.x, y: decoy.y };
+    const m = decoy.monster;
+    m.luredState = 'lured';
+    m.lureTarget = { x: decoy.x, y: decoy.y };
 
-    if (Math.hypot(monster.x - decoy.x, monster.y - decoy.y) < DECOY_CATCH_RADIUS) {
+    if (Math.hypot(m.x - decoy.x, m.y - decoy.y) < DECOY_CATCH_RADIUS) {
       spawnFloatingText(decoy.x, decoy.y, 'CAUGHT!');
       decoy = null;
-      monster.luredState = 'none'; monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
+      m.luredState = 'none'; m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
     }
   }
 
@@ -1230,21 +1265,21 @@
     return true;
   }
 
-  function updateDetection(now) {
+  function updateDetection(m, now) {
     for (const p of players) {
       if (p.caught || isInSafeZone(p) || isInSmoke(p, now)) continue;
-      const d = Math.hypot(p.x - monster.x, p.y - monster.y);
+      const d = Math.hypot(p.x - m.x, p.y - m.y);
       const spotted = d <= DETECT_RADIUS || d <= FLASHLIGHT_FULL_RADIUS;
-      if (spotted && hasLineOfSight(monster.x, monster.y, p.x, p.y)) {
-        monster.state = 'alert';
-        monster.alertUntil = now + ALERT_GRACE_MS;
-        monster.alertTargetTile = worldToTile(p.x, p.y);
+      if (spotted && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+        m.state = 'alert';
+        m.alertUntil = now + ALERT_GRACE_MS;
+        m.alertTargetTile = worldToTile(p.x, p.y);
       }
     }
-    if (monster.state === 'alert' && now >= monster.alertUntil) {
-      monster.state = 'patrol';
-      monster.path = [];
-      monster.pathIndex = 0;
+    if (m.state === 'alert' && now >= m.alertUntil) {
+      m.state = 'patrol';
+      m.path = [];
+      m.pathIndex = 0;
     }
   }
 
@@ -1293,130 +1328,139 @@
     }
   }
 
-  // Almost invisible in the water until it's actually spotted someone --
-  // 90% transparent at rest, surging to 90% opaque the moment it goes
-  // into its alert/charge state, eased rather than snapped so the change
-  // itself reads as a real "it's noticed you" cue.
+  // Completely invisible in the water at rest -- not just dim, fully
+  // alpha-0 -- surging to 90% opaque the moment it goes into its
+  // alert/charge state, eased rather than snapped so the change itself
+  // reads as a real "it's noticed you" cue. The seaweed draped on its
+  // body is exempt from this (see drawEel): that's the only thing
+  // showing while it's on patrol.
   const EEL_VISIBILITY_RATE = 5;
-  function updateEelVisibility(now, dt) {
-    const target = monster.state === 'alert' ? 0.9 : 0.1;
-    monster.visibility += (target - monster.visibility) * Math.min(1, dt * EEL_VISIBILITY_RATE);
+  function updateEelVisibility(m, now, dt) {
+    const target = m.state === 'alert' ? 0.9 : 0;
+    m.visibility += (target - m.visibility) * Math.min(1, dt * EEL_VISIBILITY_RATE);
   }
 
-  function updateMonster(now, dt) {
-    updateEelVisibility(now, dt);
-    if (now < monster.frozenUntil) { updateEelSegments(monster, now); return; }
+  function updateMonster(m, now, dt) {
+    updateEelVisibility(m, now, dt);
+    if (now < m.frozenUntil) { updateEelSegments(m, now); return; }
 
-    if (monster.luredState === 'eating') {
-      if (now >= monster.eatingUntil) {
-        monster.luredState = 'none';
-        monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
+    if (m.luredState === 'eating') {
+      if (now >= m.eatingUntil) {
+        m.luredState = 'none';
+        m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
       } else {
-        updateEelSegments(monster, now);
+        updateEelSegments(m, now);
         return;
       }
     }
 
-    if (monster.luredState === 'lured') {
-      if (now >= monster.nextRepathAt) {
-        monster.nextRepathAt = now + REPATH_MS;
-        const startTile = worldToTile(monster.x, monster.y);
-        const goalTile = worldToTile(monster.lureTarget.x, monster.lureTarget.y);
+    if (m.luredState === 'lured') {
+      if (now >= m.nextRepathAt) {
+        m.nextRepathAt = now + REPATH_MS;
+        const startTile = worldToTile(m.x, m.y);
+        const goalTile = worldToTile(m.lureTarget.x, m.lureTarget.y);
         const graph = buildMonsterGraph();
         const path = bfsPath(graph, startTile, goalTile);
-        monster.path = path && path.length > 1 ? path.slice(1) : [];
-        monster.pathIndex = 0;
+        m.path = path && path.length > 1 ? path.slice(1) : [];
+        m.pathIndex = 0;
       }
-      if (monster.path && monster.pathIndex < monster.path.length) {
+      if (m.path && m.pathIndex < m.path.length) {
         const step = LURE_SPEED * dt;
-        const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
-        const dx = target.x - monster.x, dy = target.y - monster.y;
+        const target = tileTargetWithOffset(m.path[m.pathIndex]);
+        const dx = target.x - m.x, dy = target.y - m.y;
         const d = Math.hypot(dx, dy);
-        if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
+        if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
         if (d < step) {
-          monster.x = target.x; monster.y = target.y;
-          monster.pathIndex++;
+          m.x = target.x; m.y = target.y;
+          m.pathIndex++;
         } else {
-          monster.x += (dx / d) * step;
-          monster.y += (dy / d) * step;
+          m.x += (dx / d) * step;
+          m.y += (dy / d) * step;
         }
       } else {
-        monster.luredState = 'eating';
-        monster.eatingUntil = now + EAT_DURATION_MS;
+        m.luredState = 'eating';
+        m.eatingUntil = now + EAT_DURATION_MS;
       }
-      updateEelSegments(monster, now);
+      updateEelSegments(m, now);
       return;
     }
 
-    updateDetection(now);
+    updateDetection(m, now);
 
-    if (now >= monster.nextRepathAt) {
-      monster.nextRepathAt = now + REPATH_MS;
-      const startTile = worldToTile(monster.x, monster.y);
-      const goalTile = monster.state === 'alert' ? monster.alertTargetTile : LEVEL.patrolPoints[monster.patrolIndex];
+    if (now >= m.nextRepathAt) {
+      m.nextRepathAt = now + REPATH_MS;
+      const startTile = worldToTile(m.x, m.y);
+      const goalTile = m.state === 'alert' ? m.alertTargetTile : LEVEL.patrolPoints[m.patrolIndex];
       const graph = buildMonsterGraph();
       const path = bfsPath(graph, startTile, goalTile);
       if (path && path.length > 1) {
-        monster.path = path.slice(1);
-        monster.pathIndex = 0;
+        m.path = path.slice(1);
+        m.pathIndex = 0;
       } else {
-        monster.path = [];
-        monster.pathIndex = 0;
-        if (monster.state === 'patrol') {
-          monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        m.path = [];
+        m.pathIndex = 0;
+        if (m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       }
     }
 
-    const speed = monster.state === 'alert' ? EEL_CHARGE_SPEED : EEL_ROAM_SPEED;
-    if (monster.path && monster.pathIndex < monster.path.length) {
+    const speed = m.state === 'alert' ? EEL_CHARGE_SPEED : EEL_ROAM_SPEED;
+    if (m.path && m.pathIndex < m.path.length) {
       const step = speed * dt;
-      const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
-      const dx = target.x - monster.x, dy = target.y - monster.y;
+      const target = tileTargetWithOffset(m.path[m.pathIndex]);
+      const dx = target.x - m.x, dy = target.y - m.y;
       const d = Math.hypot(dx, dy);
-      if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
+      if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
       if (d < step) {
-        monster.x = target.x; monster.y = target.y;
-        monster.pathIndex++;
-        if (monster.pathIndex >= monster.path.length && monster.state === 'patrol') {
-          monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        m.x = target.x; m.y = target.y;
+        m.pathIndex++;
+        if (m.pathIndex >= m.path.length && m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
         }
       } else {
-        monster.x += (dx / d) * step;
-        monster.y += (dy / d) * step;
+        m.x += (dx / d) * step;
+        m.y += (dy / d) * step;
       }
     }
 
-    updateEelSegments(monster, now);
+    updateEelSegments(m, now);
   }
 
   // A last-ditch defense, not a weapon you aim and fire: carrying a shell
   // and getting close to something actively hunting you sets it off
   // automatically. Checked ahead of updateCatch so a stun this same frame
-  // can still save a player who'd otherwise be caught on it.
+  // can still save a player who'd otherwise be caught on it. Checks every
+  // Bog, not just one -- a blast can stun more than one alert Bog at once
+  // if they're both close enough, each costing its own shell.
   function updateShotgunDefense(now) {
     players.forEach((p) => {
       if (p.caught) return;
       if (p.shotgunAmmo <= 0) return;
-      if (now < monster.frozenUntil || monster.state !== 'alert') return;
-      if (Math.hypot(p.x - monster.x, p.y - monster.y) < SHOTGUN_RANGE) {
-        monster.frozenUntil = now + SHOTGUN_STUN_MS;
-        p.shotgunAmmo--;
-        spawnFloatingText(monster.x, monster.y, 'STUNNED!');
-        playShotgunBlast();
-      }
+      monsters.forEach((m) => {
+        if (p.shotgunAmmo <= 0) return;
+        if (now < m.frozenUntil || m.state !== 'alert') return;
+        if (Math.hypot(p.x - m.x, p.y - m.y) < SHOTGUN_RANGE) {
+          m.frozenUntil = now + SHOTGUN_STUN_MS;
+          p.shotgunAmmo--;
+          spawnFloatingText(m.x, m.y, 'STUNNED!');
+          playShotgunBlast();
+        }
+      });
     });
   }
 
   function updateCatch(now) {
-    if (now < monster.frozenUntil) return;
-    if (monster.luredState !== 'none') return;
-    if (monster.state !== 'alert') return;
-    players.forEach((p) => {
-      if (p.caught) return;
-      if (isInSafeZone(p) || isInSmoke(p, now)) return;
-      if (now < p.invulnerableUntil) return;
-      if (Math.hypot(p.x - monster.x, p.y - monster.y) < CATCH_RADIUS) triggerCaught(p, now);
+    monsters.forEach((m) => {
+      if (now < m.frozenUntil) return;
+      if (m.luredState !== 'none') return;
+      if (m.state !== 'alert') return;
+      players.forEach((p) => {
+        if (p.caught) return;
+        if (isInSafeZone(p) || isInSmoke(p, now)) return;
+        if (now < p.invulnerableUntil) return;
+        if (Math.hypot(p.x - m.x, p.y - m.y) < CATCH_RADIUS) triggerCaught(p, now);
+      });
     });
   }
 
@@ -1882,18 +1926,20 @@
   }
 
   function drawMeatLure(g) {
-    if (monster.luredState === 'none' || !monster.lureTarget) return;
-    g.save();
-    g.translate(monster.lureTarget.x, monster.lureTarget.y);
-    g.fillStyle = '#8a2a2a';
-    g.beginPath();
-    g.ellipse(0, 0, 9, 6, 0.3, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = 'rgba(255,255,255,0.25)';
-    g.beginPath();
-    g.ellipse(-2, -1, 3, 1.6, 0.3, 0, Math.PI * 2);
-    g.fill();
-    g.restore();
+    monsters.forEach((m) => {
+      if (m.luredState === 'none' || !m.lureTarget) return;
+      g.save();
+      g.translate(m.lureTarget.x, m.lureTarget.y);
+      g.fillStyle = '#8a2a2a';
+      g.beginPath();
+      g.ellipse(0, 0, 9, 6, 0.3, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.25)';
+      g.beginPath();
+      g.ellipse(-2, -1, 3, 1.6, 0.3, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+    });
   }
 
   function drawFloatingTexts(g) {
@@ -1979,14 +2025,20 @@
     }
   }
 
-  function drawEel(g, t) {
+  // The seaweed draped on the body renders at this fixed, near-full
+  // opacity regardless of the body's own visibility -- the only thing
+  // that gives an unalert Bog away while the rest of it is faded all
+  // the way to invisible (see updateEelVisibility).
+  const EEL_WEED_VISIBILITY = 1;
+
+  function drawEel(g, m, t) {
     g.save();
-    g.globalAlpha = monster.visibility;
+    g.globalAlpha = m.visibility;
     // Ground shadow trail, drawn first so it sits under every segment.
     g.fillStyle = 'rgba(0,0,0,0.25)';
-    for (let i = monster.segments.length - 1; i >= 0; i--) {
-      const seg = monster.segments[i];
-      const r = monster.radius * (1 - i * 0.055);
+    for (let i = m.segments.length - 1; i >= 0; i--) {
+      const seg = m.segments[i];
+      const r = m.radius * (1 - i * 0.055);
       g.beginPath();
       g.ellipse(seg.x, seg.y + r * 0.5, Math.max(3, r * 0.85), Math.max(2, r * 0.35), 0, 0, Math.PI * 2);
       g.fill();
@@ -1996,16 +2048,16 @@
     // weedy green, tapering to a thin point at the tail, with a scatter
     // of small raised bumps and a heavy coat of seaweed across every
     // segment.
-    for (let i = monster.segments.length - 1; i >= 0; i--) {
-      const seg = monster.segments[i];
-      const r = Math.max(2.5, monster.radius * (1 - i * 0.055));
+    for (let i = m.segments.length - 1; i >= 0; i--) {
+      const seg = m.segments[i];
+      const r = Math.max(2.5, m.radius * (1 - i * 0.055));
       const base = i % 2 === 0 ? '#3f8f52' : '#4aa05e';
       g.save();
       g.translate(seg.x, seg.y);
 
       // a dorsal fin along the spine, present on most body segments
-      if (i % 2 === 0 && i < monster.segments.length - 2) {
-        const next = monster.segments[Math.min(i + 1, monster.segments.length - 1)];
+      if (i % 2 === 0 && i < m.segments.length - 2) {
+        const next = m.segments[Math.min(i + 1, m.segments.length - 1)];
         const dx = seg.x - next.x, dy = seg.y - next.y;
         const ang = Math.atan2(dy, dx) + Math.PI / 2;
         drawFin(g, 0, 0, Math.cos(ang) * r * 1.6, Math.sin(ang) * r * 1.6, r * 0.5, 'rgba(70,140,85,0.55)');
@@ -2023,9 +2075,12 @@
       g.fill();
       g.shadowBlur = 0;
 
-      drawEelBumps(g, r, monster.seed + i * 13);
-      drawEelWeed(g, r, monster.seed + i * 13, t);
-      drawEelWeed(g, r, monster.seed + i * 13 + 6.5, t);
+      drawEelBumps(g, r, m.seed + i * 13);
+      g.save();
+      g.globalAlpha = EEL_WEED_VISIBILITY;
+      drawEelWeed(g, r, m.seed + i * 13, t);
+      drawEelWeed(g, r, m.seed + i * 13 + 6.5, t);
+      g.restore();
 
       // pale underbelly stripe
       g.beginPath();
@@ -2037,15 +2092,15 @@
     }
 
     g.save();
-    g.translate(monster.x, monster.y);
+    g.translate(m.x, m.y);
 
     const points = 12;
     const path = [];
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
-      const r = monster.radius
-        + Math.sin(t * 0.006 + i * 1.7 + monster.seed) * 2
-        + Math.sin(t * 0.0021 + i * 3.1 + monster.seed) * 1;
+      const r = m.radius
+        + Math.sin(t * 0.006 + i * 1.7 + m.seed) * 2
+        + Math.sin(t * 0.0021 + i * 3.1 + m.seed) * 1;
       path.push([Math.cos(a) * r, Math.sin(a) * r]);
     }
     const trace = () => {
@@ -2055,18 +2110,18 @@
     };
 
     // a pair of side fins at the head, swept back along lookDir
-    const headAngle = Math.atan2(monster.lookDir.y, monster.lookDir.x);
+    const headAngle = Math.atan2(m.lookDir.y, m.lookDir.x);
     [-1, 1].forEach((side) => {
       const perp = headAngle + (Math.PI / 2) * side;
-      const baseX = Math.cos(perp) * monster.radius * 0.5, baseY = Math.sin(perp) * monster.radius * 0.5;
+      const baseX = Math.cos(perp) * m.radius * 0.5, baseY = Math.sin(perp) * m.radius * 0.5;
       const backAngle = headAngle + Math.PI + (0.5 * side);
-      const tipX = baseX + Math.cos(backAngle) * monster.radius * 1.4;
-      const tipY = baseY + Math.sin(backAngle) * monster.radius * 1.4;
-      drawFin(g, baseX, baseY, tipX, tipY, monster.radius * 0.35, 'rgba(70,140,85,0.6)');
+      const tipX = baseX + Math.cos(backAngle) * m.radius * 1.4;
+      const tipY = baseY + Math.sin(backAngle) * m.radius * 1.4;
+      drawFin(g, baseX, baseY, tipX, tipY, m.radius * 0.35, 'rgba(70,140,85,0.6)');
     });
 
     trace();
-    const headGrad = g.createRadialGradient(-monster.radius * 0.3, -monster.radius * 0.35, 1, 0, 0, monster.radius * 1.05);
+    const headGrad = g.createRadialGradient(-m.radius * 0.3, -m.radius * 0.35, 1, 0, 0, m.radius * 1.05);
     headGrad.addColorStop(0, shade('#4aa05e', 0.22));
     headGrad.addColorStop(0.55, '#4aa05e');
     headGrad.addColorStop(1, shade('#4aa05e', -0.3));
@@ -2075,27 +2130,30 @@
     g.shadowBlur = 10;
     g.fill();
     g.shadowBlur = 0;
-    drawEelBumps(g, monster.radius, monster.seed);
-    drawEelWeed(g, monster.radius, monster.seed, t);
-    drawEelWeed(g, monster.radius, monster.seed + 6.5, t);
+    drawEelBumps(g, m.radius, m.seed);
+    g.save();
+    g.globalAlpha = EEL_WEED_VISIBILITY;
+    drawEelWeed(g, m.radius, m.seed, t);
+    drawEelWeed(g, m.radius, m.seed + 6.5, t);
+    g.restore();
 
     g.save();
     trace();
     g.clip();
     g.beginPath();
-    g.ellipse(-monster.radius * 0.3, -monster.radius * 0.35, monster.radius * 0.5, monster.radius * 0.3, -0.5, 0, Math.PI * 2);
+    g.ellipse(-m.radius * 0.3, -m.radius * 0.35, m.radius * 0.5, m.radius * 0.3, -0.5, 0, Math.PI * 2);
     g.fillStyle = 'rgba(255,255,255,0.1)';
     g.fill();
     g.restore();
 
     // mouth instead of an eye, same convention as the Dig Worm
-    drawMonsterMouth(g, monster.radius, monster.lookDir);
+    drawMonsterMouth(g, m.radius, m.lookDir);
 
-    if (t < monster.frozenUntil) {
+    if (t < m.frozenUntil) {
       g.beginPath();
       for (let i = 0; i <= points; i++) {
         const a = (i / points) * Math.PI * 2;
-        const r = monster.radius + 3;
+        const r = m.radius + 3;
         const px = Math.cos(a) * r, py = Math.sin(a) * r;
         if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
       }
@@ -2409,7 +2467,7 @@
     drawFish(ctx);
     drawSmokeBombs(ctx, now);
     drawDecoy(ctx, now);
-    drawEel(ctx, now);
+    monsters.forEach((m) => drawEel(ctx, m, now));
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
@@ -2422,8 +2480,10 @@
       ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
     }
 
-    if (monster.state === 'alert') {
-      drawProximityWarning(vx, Math.hypot(p.x - monster.x, p.y - monster.y), now);
+    const alertMonsters = monsters.filter((m) => m.state === 'alert');
+    if (alertMonsters.length) {
+      const nearestDist = Math.min(...alertMonsters.map((m) => Math.hypot(p.x - m.x, p.y - m.y)));
+      drawProximityWarning(vx, nearestDist, now);
     }
     drawRadar(vx, p, now);
     drawScanner(vx, p, now);
@@ -2507,7 +2567,8 @@
     ctx.strokeStyle = '#3ddc84';
     ctx.lineWidth = 2;
     ctx.stroke();
-    const angle = Math.atan2(monster.y - p.y, monster.x - p.x);
+    const nearest = nearestMonster(p.x, p.y);
+    const angle = Math.atan2(nearest.y - p.y, nearest.x - p.x);
     ctx.translate(cx, cy);
     ctx.rotate(angle);
     ctx.beginPath();
@@ -2669,7 +2730,7 @@
       updateSmokeBombs(now);
       updateDecoy(now, dt);
       updateFish(now, dt);
-      updateMonster(now, dt);
+      monsters.forEach((m) => updateMonster(m, now, dt));
       updateShotgunDefense(now);
       updateCatch(now);
       updateCutscenes(now);
