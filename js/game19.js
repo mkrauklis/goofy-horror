@@ -1,7 +1,7 @@
 (function () {
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
-  if (window.GoofyStory && !window.GoofyStory.isUnlocked(18)) {
+  if (window.GoofyStory && !window.GoofyStory.isUnlocked(19)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
@@ -10,7 +10,7 @@
     return;
   }
 
-  const LEVEL = window.LEVEL18;
+  const LEVEL = window.LEVEL19;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
@@ -24,33 +24,31 @@
   // each frame (see `dt` in loop()) rather than a fixed px/frame step.
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  // The eel roams slower than a player, but charges much faster once it's
-  // spotted someone -- a patrol/alert split, same state machine as every
-  // other sight-based creature on this site, just with these two speeds.
-  const EEL_ROAM_SPEED = PLAYER_SPEED * 0.6;
-  const EEL_CHARGE_SPEED = PLAYER_SPEED * 1.8;
-  const LURE_SPEED = PLAYER_SPEED * 0.6;
-  const CATCH_RADIUS = 22;
+  // 10 tiny eels, not one patient stalker -- no patrol/detection stealth
+  // at all, just a flat, constant speed straight toward whichever living
+  // player (not hidden in the safe zone or smoke) is nearest. The swarm
+  // itself is the threat, not a single creature's AI.
+  const EEL_COUNT = 10;
+  const EEL_SPEED = PLAYER_SPEED * 1.2;
+  const CATCH_RADIUS = 16;
   const REPATH_MS = 500;
-  const ALERT_GRACE_MS = 3000;
-  const DETECT_RADIUS = 130; // open water -- a longer sight line than a cramped hall
-  const WHEEL_HOLD_MS = 10000;
+  const DRAIN_DURATION_MS = 5000;
   const RADAR_DURATION_MS = 10000;
   const ENERGY_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
-  const EAT_DURATION_MS = 3000;
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
   const SUPER_RADAR_DURATION_MS = 10000;
   const SMOKE_FUSE_MS = 3000;
   const SMOKE_DURATION_MS = 10000;
   const SMOKE_RADIUS = 70;
-  const DECOY_SPEED = PLAYER_SPEED * 0.8;
-  const DECOY_CATCH_RADIUS = 24;
   const NVG_DURATION_MS = 10000;
   const NVG_RANGE_MULT = 2;
-  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke', 'decoy', 'nightvision', 'shotgun-ammo', 'energy'];
+  // No meat lure or decoy here -- the swarm has no single-target detection
+  // state for either to hook into (every eel just always beelines for the
+  // nearest player), so those two item types are dropped for this level.
+  const CRATE_ITEMS = ['radar', 'co2', 'scanner', 'super-radar', 'smoke', 'nightvision', 'shotgun-ammo', 'energy'];
   const SHOTGUN_STUN_MS = 5000;
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
@@ -65,11 +63,12 @@
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking
   const WALK_CYCLE_SPEED = 9; // radians/second the walk-cycle phase advances at 1x speed
-  // The eel's body: a long, slim trail of segments tapering to a point,
-  // slimmer than the armored caterpillars elsewhere on this site.
-  const EEL_SEGMENT_COUNT = 16;
-  const EEL_SEGMENT_SPACING = 24;
-  const EEL_RADIUS = 15;
+  // A tiny eel's body -- a third the radius of the standard Flood Eel
+  // (15px), scaled down the same way everywhere else on this site scales
+  // a body: fewer, closer-together segments too, not just a smaller head.
+  const EEL_SEGMENT_COUNT = 8;
+  const EEL_SEGMENT_SPACING = 10;
+  const EEL_RADIUS = 5;
 
   // Ripples spawn at a moving player's feet and expand outward, fading as
   // they go -- purely cosmetic, reused for the eel's own wake too.
@@ -94,7 +93,7 @@
   const EXPLORE_RADIUS = 7;
   const MINIMAP_W = 90;
 
-  const hudWheelEl = document.getElementById('hud-wheel');
+  const hudDrainsEl = document.getElementById('hud-drains');
   const hudDoorEl = document.getElementById('hud-door');
   const hudTimerEl = document.getElementById('hud-timer');
   const hudBestEl = document.getElementById('hud-best');
@@ -367,7 +366,7 @@
 
   function updateAmbientTension() {
     if (!audioCtx) return;
-    const minDist = Math.min(...players.map((p) => Math.hypot(p.x - monster.x, p.y - monster.y)));
+    const minDist = Math.min(...players.flatMap((p) => monsters.map((m) => Math.hypot(p.x - m.x, p.y - m.y))));
     const proximity = clamp(1 - minDist / 380, 0, 1);
     ambientGain.gain.setTargetAtTime(0.05 + proximity * 0.18, audioCtx.currentTime, 0.3);
     ambientSubOsc.frequency.setTargetAtTime(38.5 + proximity * 11, audioCtx.currentTime, 0.3);
@@ -473,7 +472,7 @@
 
   // ---- game state ----
 
-  const BEST_TIME_KEY = 'goofy-horror-best-level18';
+  const BEST_TIME_KEY = 'goofy-horror-best-level19';
   let bestMs = (() => {
     const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
     return Number.isFinite(v) ? v : null;
@@ -493,44 +492,12 @@
   let catchFlash = 0;
 
   // The two pressure plates and the giant wheel they turn, straight from
-  // the level data rather than scanned off the grid -- unlike the pipes
-  // on Level 17, a plate's own tile char doesn't need to be unique per
-  // instance since there are only ever exactly 2 of them.
-  const PLATE_POSITIONS = LEVEL.pressurePlates;
-  let wheelHeldMs = 0;
-  let wheelSolved = false;
-
-  // A pipe mounted to a wall points away from whichever side it's
-  // actually flush against -- found by checking its own tile's 4
-  // neighbors for '#', not guessed from room geometry.
-  function pipeWallDir(tx, ty) {
-    if (tileChar(tx - 1, ty) === '#') return { x: 1, y: 0 };
-    if (tileChar(tx + 1, ty) === '#') return { x: -1, y: 0 };
-    if (tileChar(tx, ty - 1) === '#') return { x: 0, y: 1 };
-    if (tileChar(tx, ty + 1) === '#') return { x: 0, y: -1 };
-    return { x: 0, y: 1 };
-  }
-
-  // Purely decorative pipes ringing the giant pipe room's own walls --
-  // every few tiles around its interior perimeter, each oriented away
-  // from whichever wall it's actually mounted on.
-  const HUB_WALL_PIPES = (() => {
-    const hb = LEVEL.hubBounds;
-    const spots = [];
-    const addIfFloor = (x, y) => {
-      if (tileChar(x, y) === '#') return;
-      spots.push({ x, y, dir: pipeWallDir(x, y) });
-    };
-    for (let x = hb.x0 + 1; x < hb.x1; x += 3) {
-      addIfFloor(x, hb.y0);
-      addIfFloor(x, hb.y1);
-    }
-    for (let y = hb.y0 + 1; y < hb.y1; y += 3) {
-      addIfFloor(hb.x0, y);
-      addIfFloor(hb.x1, y);
-    }
-    return spots;
-  })();
+  // 3 storm drains, auto-located from the level data -- same "computed
+  // list, plus per-item progress arrays" convention as every other
+  // hold-to-fill objective on this site.
+  const DRAIN_POSITIONS = LEVEL.drains;
+  let drainsOpen = [];
+  let drainProgress = [];
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
@@ -549,27 +516,26 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
-  const monster = {
-    x: 0,
-    y: 0,
-    radius: EEL_RADIUS,
-    seed: Math.random() * 100,
-    path: [],
-    pathIndex: 0,
-    nextRepathAt: 0,
-    lookDir: { x: 1, y: 0 },
-    state: 'patrol', // 'patrol' | 'alert'
-    alertUntil: 0,
-    alertTargetTile: null,
-    patrolIndex: 0,
-    frozenUntil: 0,
-    luredState: 'none', // 'none' | 'lured' | 'eating'
-    lureTarget: null,
-    eatingUntil: 0,
-    trail: [],
-    segments: [],
-    nextRippleAt: 0,
-  };
+  // 10 tiny eels instead of one patient stalker. Each is its own
+  // self-contained creature (own trail/segments/path/frozen state) --
+  // no shared "the monster" singleton anywhere below.
+  function makeEel(spawn) {
+    return {
+      x: 0, y: 0,
+      spawn,
+      radius: EEL_RADIUS,
+      seed: Math.random() * 100,
+      path: [],
+      pathIndex: 0,
+      nextRepathAt: 0,
+      lookDir: { x: 1, y: 0 },
+      frozenUntil: 0,
+      trail: [],
+      segments: [],
+      nextRippleAt: 0,
+    };
+  }
+  const monsters = LEVEL.monsterSpawns.map(makeEel);
 
   let crates = [];
   let radarUntil = 0;
@@ -577,7 +543,6 @@
   let scannerUntil = 0;
   let superRadarUntil = 0;
   let smokeBombs = [];
-  let decoy = null; // { x, y, angle, turnAt }
   let nvgUntil = 0;
   let floatingTexts = [];
   let waterRipples = []; // { x, y, bornAt }
@@ -664,15 +629,16 @@
       p.nextRippleAt = 0;
     });
 
-    const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
-    monster.x = m.x; monster.y = m.y;
-    monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
-    monster.state = 'patrol'; monster.alertUntil = 0; monster.alertTargetTile = null; monster.patrolIndex = 0;
-    monster.frozenUntil = 0; monster.luredState = 'none'; monster.lureTarget = null; monster.eatingUntil = 0;
-    monster.trail = []; monster.segments = []; monster.nextRippleAt = 0;
+    monsters.forEach((eel) => {
+      const m = tileCenter(eel.spawn.x, eel.spawn.y);
+      eel.x = m.x; eel.y = m.y;
+      eel.path = []; eel.pathIndex = 0; eel.nextRepathAt = 0;
+      eel.frozenUntil = 0;
+      eel.trail = []; eel.segments = []; eel.nextRippleAt = 0;
+    });
 
-    wheelHeldMs = 0;
-    wheelSolved = false;
+    drainsOpen = DRAIN_POSITIONS.map(() => false);
+    drainProgress = DRAIN_POSITIONS.map(() => 0);
     doorUnlocked = false;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
@@ -683,7 +649,6 @@
     scannerUntil = 0;
     superRadarUntil = 0;
     smokeBombs = [];
-    decoy = null;
     nvgUntil = 0;
     floatingTexts = [];
     waterRipples = [];
@@ -792,18 +757,26 @@
     return tileChar(t.x, t.y) === 'S';
   }
 
-  // The scanner just points at the giant wheel itself -- once it's
-  // solved there's nothing left to point at.
+  // The scanner points at the nearest drain still waiting to be opened
+  // -- once all 3 are open there's nothing left to point at.
   function scannerTarget() {
-    if (wheelSolved) return null;
-    return tileCenter(LEVEL.wheel.x, LEVEL.wheel.y);
+    if (drainsOpen.every(Boolean)) return null;
+    const p = players[0];
+    let best = null, bestD = Infinity;
+    DRAIN_POSITIONS.forEach((d, i) => {
+      if (drainsOpen[i]) return;
+      const center = tileCenter(d.x, d.y);
+      const dist = Math.hypot(p.x - center.x, p.y - center.y);
+      if (dist < bestD) { bestD = dist; best = center; }
+    });
+    return best;
   }
 
   function minimapColorFor(ch) {
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
     if (ch === 'S') return '#3ddc84';
-    if (ch === 'Q') return '#ffb347';
+    if (ch === 'V') return '#ffb347';
     return '#163a56';
   }
 
@@ -839,15 +812,17 @@
     ctx.lineWidth = 1;
     ctx.strokeRect(mx + 0.5, my + 0.5, MINIMAP_W - 1, mh - 1);
     if (now < superRadarUntil) {
-      const px = mx + (monster.x / WORLD_W) * MINIMAP_W;
-      const py = my + (monster.y / WORLD_H) * mh;
-      ctx.beginPath();
-      ctx.arc(px, py, 2.4, 0, Math.PI * 2);
-      ctx.fillStyle = '#ff4d6d';
-      ctx.shadowColor = '#ff4d6d';
-      ctx.shadowBlur = 4;
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      monsters.forEach((m) => {
+        const px = mx + (m.x / WORLD_W) * MINIMAP_W;
+        const py = my + (m.y / WORLD_H) * mh;
+        ctx.beginPath();
+        ctx.arc(px, py, 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff4d6d';
+        ctx.shadowColor = '#ff4d6d';
+        ctx.shadowBlur = 3;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      });
     }
     players.forEach((pl) => {
       const px = mx + (pl.x / WORLD_W) * MINIMAP_W;
@@ -896,14 +871,8 @@
       radarUntil = now + RADAR_DURATION_MS;
       spawnFloatingText(x, y, 'RADAR');
       playItemChime(880);
-    } else if (item === 'meat') {
-      monster.luredState = 'lured';
-      monster.lureTarget = { x, y };
-      monster.path = []; monster.pathIndex = 0;
-      spawnFloatingText(x, y, 'BAIT');
-      playItemChime(220);
     } else if (item === 'co2') {
-      monster.frozenUntil = now + FREEZE_DURATION_MS;
+      monsters.forEach((m) => { m.frozenUntil = now + FREEZE_DURATION_MS; });
       spawnFloatingText(x, y, 'FROZEN');
       playItemChime(1200);
     } else if (item === 'scanner') {
@@ -918,10 +887,6 @@
       smokeBombs.push({ x, y, armAt: now + SMOKE_FUSE_MS, exploded: false, endsAt: 0 });
       spawnFloatingText(x, y, 'SMOKE BOMB');
       playItemChime(500);
-    } else if (item === 'decoy') {
-      decoy = { x, y, angle: Math.random() * Math.PI * 2, turnAt: 0 };
-      spawnFloatingText(x, y, 'DECOY');
-      playItemChime(340);
     } else if (item === 'nightvision') {
       nvgUntil = now + NVG_DURATION_MS;
       spawnFloatingText(x, y, 'NIGHT VISION');
@@ -943,27 +908,6 @@
 
   function isInSmoke(p, now) {
     return smokeBombs.some((b) => b.exploded && now < b.endsAt && Math.hypot(p.x - b.x, p.y - b.y) < SMOKE_RADIUS);
-  }
-
-  function updateDecoy(now, dt) {
-    if (!decoy) return;
-    if (now > decoy.turnAt) {
-      decoy.angle += (Math.random() - 0.5) * 2.2;
-      decoy.turnAt = now + 500 + Math.random() * 900;
-    }
-    const step = DECOY_SPEED * dt;
-    const dx = Math.cos(decoy.angle) * step, dy = Math.sin(decoy.angle) * step;
-    if (canStandAt(decoy.x + dx, decoy.y)) decoy.x += dx; else decoy.angle = Math.PI - decoy.angle;
-    if (canStandAt(decoy.x, decoy.y + dy)) decoy.y += dy; else decoy.angle = -decoy.angle;
-
-    monster.luredState = 'lured';
-    monster.lureTarget = { x: decoy.x, y: decoy.y };
-
-    if (Math.hypot(monster.x - decoy.x, monster.y - decoy.y) < DECOY_CATCH_RADIUS) {
-      spawnFloatingText(decoy.x, decoy.y, 'CAUGHT!');
-      decoy = null;
-      monster.luredState = 'none'; monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
-    }
   }
 
   function updateSmokeBombs(now) {
@@ -999,25 +943,6 @@
     });
   }
 
-  function drawDecoy(g, now) {
-    if (!decoy) return;
-    const pulse = 0.6 + 0.4 * Math.sin(now / 130);
-    g.save();
-    g.translate(decoy.x, decoy.y);
-    g.beginPath();
-    g.arc(0, 0, 10 + pulse * 2, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,220,80,0.35)';
-    g.fill();
-    g.beginPath();
-    g.arc(0, 0, 6, 0, Math.PI * 2);
-    g.fillStyle = '#ffd84d';
-    g.shadowColor = '#ffd84d';
-    g.shadowBlur = 8;
-    g.fill();
-    g.shadowBlur = 0;
-    g.restore();
-  }
-
   function updateCrates(now) {
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
@@ -1038,32 +963,35 @@
     });
   }
 
-  // Both players have to stand on their own pressure plate -- two
-  // separate tiles, far enough apart that one player physically can't
-  // cover both -- at the same time to hold the giant wheel turning.
-  // Either one stepping off (or getting caught) drains the held time
-  // back down at twice the fill rate, same fill/drain convention as
-  // every other hold-mechanic on this site, so a quick tag-team shuffle
-  // between the two plates doesn't work -- it has to be held together.
-  function updateWheel(now, dt) {
-    if (wheelSolved) return;
-    const bothHolding = PLATE_POSITIONS.every((plate) => players.some((p) => {
-      if (p.caught) return false;
-      const t = worldToTile(p.x, p.y);
-      return t.x === plate.x && t.y === plate.y;
-    }));
-    if (bothHolding) {
-      wheelHeldMs = Math.min(WHEEL_HOLD_MS, wheelHeldMs + dt * 1000);
-      if (wheelHeldMs >= WHEEL_HOLD_MS) {
-        wheelSolved = true;
-        doorUnlocked = true;
-        playDoorUnlockChime();
-        const c = tileCenter(LEVEL.wheel.x, LEVEL.wheel.y);
-        spawnFloatingText(c.x, c.y, 'WHEEL TURNED');
+  // Standing on a drain holds it open, filling its progress over
+  // DRAIN_DURATION_MS; stepping away drains it back down at twice that
+  // rate, same fill/drain convention as every other hold-to-fill
+  // objective on this site. No carried item needed -- either player can
+  // work any drain. Opening the third one unlocks the door.
+  function updateDrains(now, dt) {
+    DRAIN_POSITIONS.forEach((drain, i) => {
+      if (drainsOpen[i]) return;
+      const holding = players.some((p) => {
+        if (p.caught) return false;
+        const t = worldToTile(p.x, p.y);
+        return t.x === drain.x && t.y === drain.y;
+      });
+      if (holding) {
+        drainProgress[i] = Math.min(1, drainProgress[i] + dt / (DRAIN_DURATION_MS / 1000));
+        if (drainProgress[i] >= 1) {
+          drainsOpen[i] = true;
+          const c = tileCenter(drain.x, drain.y);
+          spawnFloatingText(c.x, c.y, 'DRAIN OPEN');
+          playWeldComplete();
+          if (drainsOpen.every(Boolean)) {
+            doorUnlocked = true;
+            playDoorUnlockChime();
+          }
+        }
+      } else {
+        drainProgress[i] = Math.max(0, drainProgress[i] - dt / (DRAIN_DURATION_MS / 1000 / 2));
       }
-    } else {
-      wheelHeldMs = Math.max(0, wheelHeldMs - dt * 1000 * 2);
-    }
+    });
   }
 
   function updateTriggers() {
@@ -1073,8 +1001,7 @@
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
         playWinJingle();
-        if (window.GoofyStory) window.GoofyStory.completeLevel(18);
-        setTimeout(() => { window.location.href = 'level19.html'; }, 2000);
+        if (window.GoofyStory) window.GoofyStory.completeLevel(19);
       }
     });
   }
@@ -1148,21 +1075,18 @@
     return true;
   }
 
-  function updateDetection(now) {
-    for (const p of players) {
-      if (p.caught || isInSafeZone(p) || isInSmoke(p, now)) continue;
-      const d = Math.hypot(p.x - monster.x, p.y - monster.y);
-      if (d <= DETECT_RADIUS && hasLineOfSight(monster.x, monster.y, p.x, p.y)) {
-        monster.state = 'alert';
-        monster.alertUntil = now + ALERT_GRACE_MS;
-        monster.alertTargetTile = worldToTile(p.x, p.y);
-      }
-    }
-    if (monster.state === 'alert' && now >= monster.alertUntil) {
-      monster.state = 'patrol';
-      monster.path = [];
-      monster.pathIndex = 0;
-    }
+  // The nearest player this eel will chase -- caught, safe-zoned, or
+  // smoked-out players are invisible to it, same exclusion every other
+  // creature's detection uses, just without a distance/line-of-sight
+  // gate on top: a tiny eel has no stealth phase, it's always hunting.
+  function nearestTargetFor(eel, now) {
+    let best = null, bestD = Infinity;
+    players.forEach((p) => {
+      if (p.caught || isInSafeZone(p) || isInSmoke(p, now)) return;
+      const d = Math.hypot(p.x - eel.x, p.y - eel.y);
+      if (d < bestD) { bestD = d; best = p; }
+    });
+    return best;
   }
 
   function wallOffsetDir(tx, ty) {
@@ -1210,119 +1134,74 @@
     }
   }
 
-  function updateMonster(now, dt) {
-    if (now < monster.frozenUntil) { updateEelSegments(monster, now); return; }
+  // A single tiny eel: no patrol/alert state machine at all, just a
+  // constant beeline for whichever player is nearest right now,
+  // re-pathed every REPATH_MS the same way every other pathfinding
+  // creature on this site re-paths.
+  function updateEel(eel, now, dt) {
+    if (now < eel.frozenUntil) { updateEelSegments(eel, now); return; }
 
-    if (monster.luredState === 'eating') {
-      if (now >= monster.eatingUntil) {
-        monster.luredState = 'none';
-        monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
-      } else {
-        updateEelSegments(monster, now);
-        return;
-      }
-    }
+    const target = nearestTargetFor(eel, now);
+    if (!target) { updateEelSegments(eel, now); return; }
 
-    if (monster.luredState === 'lured') {
-      if (now >= monster.nextRepathAt) {
-        monster.nextRepathAt = now + REPATH_MS;
-        const startTile = worldToTile(monster.x, monster.y);
-        const goalTile = worldToTile(monster.lureTarget.x, monster.lureTarget.y);
-        const graph = buildMonsterGraph();
-        const path = bfsPath(graph, startTile, goalTile);
-        monster.path = path && path.length > 1 ? path.slice(1) : [];
-        monster.pathIndex = 0;
-      }
-      if (monster.path && monster.pathIndex < monster.path.length) {
-        const step = LURE_SPEED * dt;
-        const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
-        const dx = target.x - monster.x, dy = target.y - monster.y;
-        const d = Math.hypot(dx, dy);
-        if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
-        if (d < step) {
-          monster.x = target.x; monster.y = target.y;
-          monster.pathIndex++;
-        } else {
-          monster.x += (dx / d) * step;
-          monster.y += (dy / d) * step;
-        }
-      } else {
-        monster.luredState = 'eating';
-        monster.eatingUntil = now + EAT_DURATION_MS;
-      }
-      updateEelSegments(monster, now);
-      return;
-    }
-
-    updateDetection(now);
-
-    if (now >= monster.nextRepathAt) {
-      monster.nextRepathAt = now + REPATH_MS;
-      const startTile = worldToTile(monster.x, monster.y);
-      const goalTile = monster.state === 'alert' ? monster.alertTargetTile : LEVEL.patrolPoints[monster.patrolIndex];
+    if (now >= eel.nextRepathAt) {
+      eel.nextRepathAt = now + REPATH_MS;
+      const startTile = worldToTile(eel.x, eel.y);
+      const goalTile = worldToTile(target.x, target.y);
       const graph = buildMonsterGraph();
       const path = bfsPath(graph, startTile, goalTile);
-      if (path && path.length > 1) {
-        monster.path = path.slice(1);
-        monster.pathIndex = 0;
-      } else {
-        monster.path = [];
-        monster.pathIndex = 0;
-        if (monster.state === 'patrol') {
-          monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
-        }
-      }
+      eel.path = path && path.length > 1 ? path.slice(1) : [];
+      eel.pathIndex = 0;
     }
 
-    const speed = monster.state === 'alert' ? EEL_CHARGE_SPEED : EEL_ROAM_SPEED;
-    if (monster.path && monster.pathIndex < monster.path.length) {
-      const step = speed * dt;
-      const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
-      const dx = target.x - monster.x, dy = target.y - monster.y;
+    if (eel.path && eel.pathIndex < eel.path.length) {
+      const step = EEL_SPEED * dt;
+      const pt = tileTargetWithOffset(eel.path[eel.pathIndex]);
+      const dx = pt.x - eel.x, dy = pt.y - eel.y;
       const d = Math.hypot(dx, dy);
-      if (d > 0.001) monster.lookDir = { x: dx / d, y: dy / d };
+      if (d > 0.001) eel.lookDir = { x: dx / d, y: dy / d };
       if (d < step) {
-        monster.x = target.x; monster.y = target.y;
-        monster.pathIndex++;
-        if (monster.pathIndex >= monster.path.length && monster.state === 'patrol') {
-          monster.patrolIndex = (monster.patrolIndex + 1) % LEVEL.patrolPoints.length;
-        }
+        eel.x = pt.x; eel.y = pt.y;
+        eel.pathIndex++;
       } else {
-        monster.x += (dx / d) * step;
-        monster.y += (dy / d) * step;
+        eel.x += (dx / d) * step;
+        eel.y += (dy / d) * step;
       }
     }
 
-    updateEelSegments(monster, now);
+    updateEelSegments(eel, now);
+  }
+
+  function updateMonsters(now, dt) {
+    monsters.forEach((eel) => updateEel(eel, now, dt));
   }
 
   // A last-ditch defense, not a weapon you aim and fire: carrying a shell
-  // and getting close to something actively hunting you sets it off
-  // automatically. Checked ahead of updateCatch so a stun this same frame
-  // can still save a player who'd otherwise be caught on it.
+  // and getting close to something hunting you sets it off automatically
+  // -- whichever eel is actually in range, not the whole swarm. Checked
+  // ahead of updateCatch so a stun this same frame can still save a
+  // player who'd otherwise be caught on it.
   function updateShotgunDefense(now) {
     players.forEach((p) => {
       if (p.caught) return;
       if (p.shotgunAmmo <= 0) return;
-      if (now < monster.frozenUntil || monster.state !== 'alert') return;
-      if (Math.hypot(p.x - monster.x, p.y - monster.y) < SHOTGUN_RANGE) {
-        monster.frozenUntil = now + SHOTGUN_STUN_MS;
+      const eel = monsters.find((m) => now >= m.frozenUntil && Math.hypot(p.x - m.x, p.y - m.y) < SHOTGUN_RANGE);
+      if (eel) {
+        eel.frozenUntil = now + SHOTGUN_STUN_MS;
         p.shotgunAmmo--;
-        spawnFloatingText(monster.x, monster.y, 'STUNNED!');
+        spawnFloatingText(eel.x, eel.y, 'STUNNED!');
         playShotgunBlast();
       }
     });
   }
 
   function updateCatch(now) {
-    if (now < monster.frozenUntil) return;
-    if (monster.luredState !== 'none') return;
-    if (monster.state !== 'alert') return;
     players.forEach((p) => {
       if (p.caught) return;
       if (isInSafeZone(p) || isInSmoke(p, now)) return;
       if (now < p.invulnerableUntil) return;
-      if (Math.hypot(p.x - monster.x, p.y - monster.y) < CATCH_RADIUS) triggerCaught(p, now);
+      const caughtBy = monsters.find((m) => now >= m.frozenUntil && Math.hypot(p.x - m.x, p.y - m.y) < CATCH_RADIUS);
+      if (caughtBy) triggerCaught(p, now);
     });
   }
 
@@ -1552,119 +1431,63 @@
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
 
-    drawDecorPipes(g);
-    drawGiantWheel(g, now);
-    drawPressurePlates(g, now);
+    drawDrains(g);
     drawSafeZone(g);
     drawBloodSplatters(g);
     drawCrates(g);
-    drawMeatLure(g);
     drawWaterRipples(g, now);
     drawFloatingTexts(g);
   }
 
-  // Decorative pipes ringing the giant pipe room's walls -- permanently
-  // rusty, no weld state or leak; pure set-dressing so the room reads as
-  // "pipes all over the walls."
-  function drawDecorPipes(g) {
-    HUB_WALL_PIPES.forEach((spot) => {
-      const center = tileCenter(spot.x, spot.y);
-      const angle = Math.atan2(spot.dir.y, spot.dir.x);
+  // A short pipe stub sticking out of the floor, rusty and dull until
+  // opened -- a glowing amber progress ring builds above it while
+  // someone's actively holding it, and a bright steam puff marks it
+  // open for good.
+  function drawDrains(g) {
+    DRAIN_POSITIONS.forEach((drain, i) => {
+      const center = tileCenter(drain.x, drain.y);
+      const open = drainsOpen[i];
+      const progress = drainProgress[i];
       g.save();
       g.translate(center.x, center.y);
-      g.rotate(angle);
-      g.fillStyle = '#2a2420';
-      g.fillRect(-11, -8, 5, 16);
+
+      g.beginPath();
+      g.arc(0, 0, 11, 0, Math.PI * 2);
+      g.fillStyle = open ? '#4a4a52' : '#2a2420';
+      g.fill();
       g.strokeStyle = 'rgba(0,0,0,0.5)';
-      g.lineWidth = 1;
-      g.strokeRect(-11, -8, 5, 16);
-      const grad = g.createLinearGradient(0, -5, 0, 5);
-      grad.addColorStop(0, '#8a7560');
-      grad.addColorStop(1, '#4a3c30');
-      g.fillStyle = grad;
-      g.fillRect(-6, -5, 22, 10);
-      g.strokeStyle = 'rgba(0,0,0,0.5)';
-      g.lineWidth = 1.2;
-      g.strokeRect(-6, -5, 22, 10);
+      g.lineWidth = 2;
+      g.stroke();
+
+      g.beginPath();
+      g.arc(0, 0, 7, 0, Math.PI * 2);
+      g.fillStyle = open ? '#7ad67a' : '#161414';
+      g.fill();
+
+      if (open) {
+        for (let k = 0; k < 4; k++) {
+          const a = (k / 4) * Math.PI * 2;
+          g.beginPath();
+          g.moveTo(Math.cos(a) * 3, Math.sin(a) * 3);
+          g.lineTo(Math.cos(a) * 9, Math.sin(a) * 9);
+          g.strokeStyle = 'rgba(122,214,122,0.6)';
+          g.lineWidth = 1.5;
+          g.stroke();
+        }
+      } else if (progress > 0) {
+        g.beginPath();
+        g.arc(0, -18, 7, 0, Math.PI * 2);
+        g.strokeStyle = 'rgba(255,255,255,0.3)';
+        g.lineWidth = 1;
+        g.stroke();
+        g.beginPath();
+        g.arc(0, -18, 7, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+        g.strokeStyle = '#ffb23c';
+        g.lineWidth = 3;
+        g.stroke();
+      }
       g.restore();
     });
-  }
-
-  // Two pressure plates flanking the giant wheel, far enough apart that
-  // one player can't straddle both -- lit amber while someone's actually
-  // standing on them, dull rust otherwise.
-  function drawPressurePlates(g, now) {
-    PLATE_POSITIONS.forEach((plate) => {
-      const center = tileCenter(plate.x, plate.y);
-      const held = players.some((p) => {
-        if (p.caught) return false;
-        const t = worldToTile(p.x, p.y);
-        return t.x === plate.x && t.y === plate.y;
-      });
-      g.save();
-      g.translate(center.x, center.y);
-      g.fillStyle = held ? '#6a4a1a' : '#3a2e22';
-      g.fillRect(-13, -13, 26, 26);
-      g.strokeStyle = held ? '#ffb347' : 'rgba(0,0,0,0.5)';
-      g.lineWidth = held ? 2.5 : 1.5;
-      if (held) { g.shadowColor = '#ffb347'; g.shadowBlur = 8; }
-      g.strokeRect(-11, -11, 22, 22);
-      g.shadowBlur = 0;
-      g.restore();
-    });
-  }
-
-  // The giant wheel at the hub's center -- its spokes creak slowly around
-  // while both plates are held down, locking into a turned pose (and a
-  // green glow) the instant it's solved. A progress ring above it tracks
-  // the current hold, same convention as every other hold-to-fill gauge
-  // on this site.
-  function drawGiantWheel(g, now) {
-    const c = tileCenter(LEVEL.wheel.x, LEVEL.wheel.y);
-    const heldFrac = clamp(wheelHeldMs / WHEEL_HOLD_MS, 0, 1);
-    const angle = wheelSolved ? Math.PI / 6 : (now * 0.0003 * heldFrac) % (Math.PI * 2);
-    g.save();
-    g.translate(c.x, c.y);
-    g.beginPath();
-    g.arc(0, 0, 30, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(20,15,10,0.5)';
-    g.fill();
-    g.rotate(angle);
-    g.strokeStyle = wheelSolved ? '#7ad67a' : '#8a7560';
-    g.lineWidth = 5;
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      g.beginPath();
-      g.moveTo(0, 0);
-      g.lineTo(Math.cos(a) * 24, Math.sin(a) * 24);
-      g.stroke();
-    }
-    g.beginPath();
-    g.arc(0, 0, 26, 0, Math.PI * 2);
-    g.lineWidth = 4;
-    g.strokeStyle = wheelSolved ? '#7ad67a' : '#5a4a38';
-    g.stroke();
-    g.beginPath();
-    g.arc(0, 0, 7, 0, Math.PI * 2);
-    g.fillStyle = '#2a2420';
-    g.fill();
-    g.restore();
-
-    if (!wheelSolved && heldFrac > 0) {
-      g.save();
-      g.translate(c.x, c.y);
-      g.beginPath();
-      g.arc(0, -42, 8, 0, Math.PI * 2);
-      g.strokeStyle = 'rgba(255,255,255,0.3)';
-      g.lineWidth = 1.5;
-      g.stroke();
-      g.beginPath();
-      g.arc(0, -42, 8, -Math.PI / 2, -Math.PI / 2 + heldFrac * Math.PI * 2);
-      g.strokeStyle = '#ffb23c';
-      g.lineWidth = 3;
-      g.stroke();
-      g.restore();
-    }
   }
 
   function drawTable(g, cx, cy) {
@@ -1722,21 +1545,6 @@
     });
   }
 
-  function drawMeatLure(g) {
-    if (monster.luredState === 'none' || !monster.lureTarget) return;
-    g.save();
-    g.translate(monster.lureTarget.x, monster.lureTarget.y);
-    g.fillStyle = '#8a2a2a';
-    g.beginPath();
-    g.ellipse(0, 0, 9, 6, 0.3, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = 'rgba(255,255,255,0.25)';
-    g.beginPath();
-    g.ellipse(-2, -1, 3, 1.6, 0.3, 0, Math.PI * 2);
-    g.fill();
-    g.restore();
-  }
-
   function drawFloatingTexts(g) {
     floatingTexts.forEach((f) => {
       const t = f.life / f.maxLife;
@@ -1768,60 +1576,54 @@
     g.stroke();
   }
 
-  // A handful of small raised bumps scattered across a segment's surface
-  // -- fixed per segment (hashed from a seed, not from its live x/y, so
-  // they read as a stable feature of the body rather than swimming
-  // around as it moves), each with a faint highlight to sell the raised
-  // shape instead of a flat dot.
-  function drawEelBumps(g, r, seed) {
-    const count = 3;
+  // A single tiny coral nub, in a random spot per segment (hashed from a
+  // seed, not live position, so it reads as a stable growth rather than
+  // something drifting around) -- same CORAL_PALETTE as the floor's own
+  // coral, just shrunk down to fit a body a third the usual eel's size.
+  function drawEelCoral(g, r, seed) {
+    const count = 2;
     for (let i = 0; i < count; i++) {
       const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
       const u = (h ^ (h >>> 15)) >>> 0;
       const a = (u % 360) * Math.PI / 180;
-      const dist = r * (0.25 + (u % 5) * 0.1);
+      const dist = r * (0.3 + (u % 5) * 0.1);
       const bx = Math.cos(a) * dist, by = Math.sin(a) * dist;
-      const br = Math.max(1, r * (0.12 + (u % 3) * 0.03));
+      const color = CORAL_PALETTE[u % CORAL_PALETTE.length];
+      const tipLen = Math.max(1.2, r * 0.3);
+      g.strokeStyle = color;
+      g.lineWidth = Math.max(0.8, r * 0.16);
+      g.lineCap = 'round';
       g.beginPath();
-      g.arc(bx, by, br, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(190,225,245,0.55)';
-      g.fill();
+      g.moveTo(bx, by);
+      g.lineTo(bx + Math.cos(a) * tipLen, by + Math.sin(a) * tipLen);
+      g.stroke();
       g.beginPath();
-      g.arc(bx - br * 0.3, by - br * 0.3, br * 0.4, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(255,255,255,0.4)';
+      g.arc(bx + Math.cos(a) * tipLen, by + Math.sin(a) * tipLen, Math.max(0.8, r * 0.14), 0, Math.PI * 2);
+      g.fillStyle = color;
       g.fill();
     }
   }
 
-  function drawEel(g, t) {
+  function drawEel(g, m, t) {
     // Ground shadow trail, drawn first so it sits under every segment.
     g.fillStyle = 'rgba(0,0,0,0.25)';
-    for (let i = monster.segments.length - 1; i >= 0; i--) {
-      const seg = monster.segments[i];
-      const r = monster.radius * (1 - i * 0.055);
+    for (let i = m.segments.length - 1; i >= 0; i--) {
+      const seg = m.segments[i];
+      const r = m.radius * (1 - i * 0.055);
       g.beginPath();
-      g.ellipse(seg.x, seg.y + r * 0.5, Math.max(3, r * 0.85), Math.max(2, r * 0.35), 0, 0, Math.PI * 2);
+      g.ellipse(seg.x, seg.y + r * 0.5, Math.max(1.5, r * 0.85), Math.max(1, r * 0.35), 0, 0, Math.PI * 2);
       g.fill();
     }
 
-    // Body segments, tail first so the head draws on top -- a pale,
-    // sickly blue instead of the usual dark teal-green, tapering to a
-    // thin point at the tail, with a scatter of small raised bumps
-    // across every segment's surface.
-    for (let i = monster.segments.length - 1; i >= 0; i--) {
-      const seg = monster.segments[i];
-      const r = Math.max(2.5, monster.radius * (1 - i * 0.055));
-      const base = i % 2 === 0 ? '#7ab8d9' : '#8ac4e3';
+    // Body segments, tail first so the head draws on top -- a muted
+    // blue-grey, tapering to a thin point at the tail, with a couple of
+    // tiny coral nubs growing out of each segment.
+    for (let i = m.segments.length - 1; i >= 0; i--) {
+      const seg = m.segments[i];
+      const r = Math.max(1.2, m.radius * (1 - i * 0.055));
+      const base = i % 2 === 0 ? '#6a7a85' : '#7a8a95';
       g.save();
       g.translate(seg.x, seg.y);
-
-      // a dorsal fin along the spine, present on most body segments
-      if (i % 2 === 0 && i < monster.segments.length - 2) {
-        const next = monster.segments[Math.min(i + 1, monster.segments.length - 1)];
-        const dx = seg.x - next.x, dy = seg.y - next.y;
-        const ang = Math.atan2(dy, dx) + Math.PI / 2;
-        drawFin(g, 0, 0, Math.cos(ang) * r * 1.6, Math.sin(ang) * r * 1.6, r * 0.5, 'rgba(120,180,220,0.55)');
-      }
 
       const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
       grad.addColorStop(0, shade(base, 0.22));
@@ -1830,32 +1632,26 @@
       g.beginPath();
       g.arc(0, 0, r, 0, Math.PI * 2);
       g.fillStyle = grad;
-      g.shadowColor = '#2a5a75';
-      g.shadowBlur = 5;
+      g.shadowColor = '#1c2630';
+      g.shadowBlur = 3;
       g.fill();
       g.shadowBlur = 0;
 
-      drawEelBumps(g, r, monster.seed + i * 13);
-
-      // pale underbelly stripe
-      g.beginPath();
-      g.ellipse(0, r * 0.35, r * 0.75, r * 0.3, 0, 0, Math.PI);
-      g.fillStyle = 'rgba(225,240,245,0.35)';
-      g.fill();
+      drawEelCoral(g, r, m.seed + i * 13);
 
       g.restore();
     }
 
     g.save();
-    g.translate(monster.x, monster.y);
+    g.translate(m.x, m.y);
 
-    const points = 12;
+    const points = 10;
     const path = [];
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
-      const r = monster.radius
-        + Math.sin(t * 0.006 + i * 1.7 + monster.seed) * 2
-        + Math.sin(t * 0.0021 + i * 3.1 + monster.seed) * 1;
+      const r = m.radius
+        + Math.sin(t * 0.006 + i * 1.7 + m.seed) * 0.7
+        + Math.sin(t * 0.0021 + i * 3.1 + m.seed) * 0.4;
       path.push([Math.cos(a) * r, Math.sin(a) * r]);
     }
     const trace = () => {
@@ -1864,46 +1660,26 @@
       g.closePath();
     };
 
-    // a pair of side fins at the head, swept back along lookDir
-    const headAngle = Math.atan2(monster.lookDir.y, monster.lookDir.x);
-    [-1, 1].forEach((side) => {
-      const perp = headAngle + (Math.PI / 2) * side;
-      const baseX = Math.cos(perp) * monster.radius * 0.5, baseY = Math.sin(perp) * monster.radius * 0.5;
-      const backAngle = headAngle + Math.PI + (0.5 * side);
-      const tipX = baseX + Math.cos(backAngle) * monster.radius * 1.4;
-      const tipY = baseY + Math.sin(backAngle) * monster.radius * 1.4;
-      drawFin(g, baseX, baseY, tipX, tipY, monster.radius * 0.35, 'rgba(120,180,220,0.6)');
-    });
-
     trace();
-    const headGrad = g.createRadialGradient(-monster.radius * 0.3, -monster.radius * 0.35, 1, 0, 0, monster.radius * 1.05);
-    headGrad.addColorStop(0, shade('#8ac4e3', 0.22));
-    headGrad.addColorStop(0.55, '#8ac4e3');
-    headGrad.addColorStop(1, shade('#8ac4e3', -0.3));
+    const headGrad = g.createRadialGradient(-m.radius * 0.3, -m.radius * 0.35, 1, 0, 0, m.radius * 1.05);
+    headGrad.addColorStop(0, shade('#7a8a95', 0.22));
+    headGrad.addColorStop(0.55, '#7a8a95');
+    headGrad.addColorStop(1, shade('#7a8a95', -0.3));
     g.fillStyle = headGrad;
-    g.shadowColor = '#2a5a75';
-    g.shadowBlur = 10;
+    g.shadowColor = '#1c2630';
+    g.shadowBlur = 5;
     g.fill();
     g.shadowBlur = 0;
-    drawEelBumps(g, monster.radius, monster.seed);
-
-    g.save();
-    trace();
-    g.clip();
-    g.beginPath();
-    g.ellipse(-monster.radius * 0.3, -monster.radius * 0.35, monster.radius * 0.5, monster.radius * 0.3, -0.5, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.1)';
-    g.fill();
-    g.restore();
+    drawEelCoral(g, m.radius, m.seed);
 
     // mouth instead of an eye, same convention as the Dig Worm
-    drawMonsterMouth(g, monster.radius, monster.lookDir);
+    drawMonsterMouth(g, m.radius, m.lookDir);
 
-    if (t < monster.frozenUntil) {
+    if (t < m.frozenUntil) {
       g.beginPath();
       for (let i = 0; i <= points; i++) {
         const a = (i / points) * Math.PI * 2;
-        const r = monster.radius + 3;
+        const r = m.radius + 2;
         const px = Math.cos(a) * r, py = Math.sin(a) * r;
         if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
       }
@@ -1911,11 +1687,15 @@
       g.fillStyle = 'rgba(140,220,255,0.45)';
       g.fill();
       g.strokeStyle = 'rgba(220,250,255,0.8)';
-      g.lineWidth = 1.5;
+      g.lineWidth = 1;
       g.stroke();
     }
 
     g.restore();
+  }
+
+  function drawEels(g, t) {
+    monsters.forEach((m) => drawEel(g, m, t));
   }
 
   // No eye on this one -- a mouth instead, same convention as the Dig
@@ -2215,8 +1995,7 @@
     drawTiles(ctx, camX, camY, now);
     drawFish(ctx);
     drawSmokeBombs(ctx, now);
-    drawDecoy(ctx, now);
-    drawEel(ctx, now);
+    drawEels(ctx, now);
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
@@ -2229,7 +2008,8 @@
       ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
     }
 
-    drawProximityWarning(vx, Math.hypot(p.x - monster.x, p.y - monster.y), now);
+    const nearestDist = Math.min(...monsters.map((m) => Math.hypot(p.x - m.x, p.y - m.y)));
+    drawProximityWarning(vx, nearestDist, now);
     drawRadar(vx, p, now);
     drawScanner(vx, p, now);
     drawShotgunHud(vx, p);
@@ -2280,7 +2060,8 @@
     ctx.strokeStyle = '#3ddc84';
     ctx.lineWidth = 2;
     ctx.stroke();
-    const angle = Math.atan2(monster.y - p.y, monster.x - p.x);
+    const nearest = monsters.reduce((a, b) => (Math.hypot(p.x - a.x, p.y - a.y) <= Math.hypot(p.x - b.x, p.y - b.y) ? a : b));
+    const angle = Math.atan2(nearest.y - p.y, nearest.x - p.x);
     ctx.translate(cx, cy);
     ctx.rotate(angle);
     ctx.beginPath();
@@ -2399,19 +2180,16 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'THE GREAT WHEEL TURNS &mdash; warping to Level 19&hellip;';
+      messageEl.innerHTML = 'THE DRAINS RUN DRY &mdash; you made it out. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
     } else {
       messageEl.style.display = 'none';
     }
   }
 
   function updateHud() {
-    if (wheelSolved) {
-      hudWheelEl.textContent = 'Wheel: turned';
-    } else {
-      hudWheelEl.textContent = `Wheel: ${(wheelHeldMs / 1000).toFixed(1)}s / ${(WHEEL_HOLD_MS / 1000).toFixed(0)}s`;
-    }
-    hudWheelEl.classList.toggle('done', wheelSolved);
+    const openCount = drainsOpen.filter(Boolean).length;
+    hudDrainsEl.textContent = `Drains: ${openCount} / ${DRAIN_POSITIONS.length}`;
+    hudDrainsEl.classList.toggle('done', openCount >= DRAIN_POSITIONS.length);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'unlocked' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
 
@@ -2421,7 +2199,7 @@
         bestMs = elapsedMs;
         localStorage.setItem(BEST_TIME_KEY, String(bestMs));
       }
-      if (window.GoofyStory) window.GoofyStory.completeLevel(18);
+      if (window.GoofyStory) window.GoofyStory.completeLevel(19);
     }
 
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
@@ -2440,11 +2218,10 @@
       updateInputMovement(now, dt);
       updateTriggers();
       updateCrates(now);
-      updateWheel(now, dt);
+      updateDrains(now, dt);
       updateSmokeBombs(now);
-      updateDecoy(now, dt);
       updateFish(now, dt);
-      updateMonster(now, dt);
+      updateMonsters(now, dt);
       updateShotgunDefense(now);
       updateCatch(now);
       updateCutscenes(now);

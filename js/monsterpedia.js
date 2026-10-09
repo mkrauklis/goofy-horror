@@ -24,6 +24,7 @@
   const eelCtx = ctxFor('monster-canvas-eel');
   const currentEelCtx = ctxFor('monster-canvas-currenteel');
   const greatEelCtx = ctxFor('monster-canvas-greateel');
+  const tinyEelsCtx = ctxFor('monster-canvas-tinyeels');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -1823,6 +1824,81 @@
     g.restore();
   }
 
+  // The Level 19 creature: not one eel but a swarm of ten tiny ones, a
+  // third the size of the Flood Eel, each grown over with its own patch
+  // of coral. The portrait shows three of them at once rather than a
+  // single body, to read as "a swarm," not "a small eel."
+  const TINY_CORAL_PALETTE = ['#ff8a5c', '#ff6fa5', '#b985ff', '#ffb347'];
+  function drawTinyEelCoral(g, r, seed) {
+    for (let i = 0; i < 2; i++) {
+      const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const a = (u % 360) * Math.PI / 180;
+      const dist = r * (0.3 + (u % 5) * 0.1);
+      const bx = Math.cos(a) * dist, by = Math.sin(a) * dist;
+      const color = TINY_CORAL_PALETTE[u % TINY_CORAL_PALETTE.length];
+      const tipLen = Math.max(1.2, r * 0.3);
+      g.strokeStyle = color;
+      g.lineWidth = Math.max(0.8, r * 0.16);
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(bx, by);
+      g.lineTo(bx + Math.cos(a) * tipLen, by + Math.sin(a) * tipLen);
+      g.stroke();
+      g.beginPath();
+      g.arc(bx + Math.cos(a) * tipLen, by + Math.sin(a) * tipLen, Math.max(0.8, r * 0.14), 0, Math.PI * 2);
+      g.fillStyle = color;
+      g.fill();
+    }
+  }
+
+  function drawOneTinyEel(g, cx, cy, seed, t) {
+    const segCount = 6, spacing = 6, baseRadius = 6.5;
+    g.save();
+    g.translate(cx, cy);
+    for (let i = segCount - 1; i >= 0; i--) {
+      const along = i * spacing;
+      const wob = Math.sin(t * 0.004 + seed + i * 0.6) * 3;
+      const x = -(segCount - 1) * spacing / 2 + along;
+      const y = wob;
+      const r = Math.max(1, baseRadius * (1 - i * 0.1));
+      const base = i % 2 === 0 ? '#6a7a85' : '#7a8a95';
+      g.save();
+      g.translate(x, y);
+      const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
+      grad.addColorStop(0, shade(base, 0.22));
+      grad.addColorStop(0.55, base);
+      grad.addColorStop(1, shade(base, -0.3));
+      g.beginPath();
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.fillStyle = grad;
+      g.fill();
+      drawTinyEelCoral(g, r, seed + i * 13);
+      g.restore();
+    }
+    const headX = -(segCount - 1) * spacing / 2 + segCount * spacing;
+    const headY = Math.sin(t * 0.004 + seed) * 3;
+    g.translate(headX, headY);
+    g.beginPath();
+    g.arc(0, 0, baseRadius, 0, Math.PI * 2);
+    const headGrad = g.createRadialGradient(-baseRadius * 0.3, -baseRadius * 0.35, 1, 0, 0, baseRadius * 1.05);
+    headGrad.addColorStop(0, shade('#7a8a95', 0.22));
+    headGrad.addColorStop(0.55, '#7a8a95');
+    headGrad.addColorStop(1, shade('#7a8a95', -0.3));
+    g.fillStyle = headGrad;
+    g.fill();
+    drawTinyEelCoral(g, baseRadius, seed);
+    drawMonsterTeeth(g, baseRadius, { x: 1, y: 0 });
+    g.restore();
+  }
+
+  function drawTinyEels(g, w, h, t) {
+    clear(g, w, h);
+    drawOneTinyEel(g, w * 0.3, h * 0.32, 2, t);
+    drawOneTinyEel(g, w * 0.62, h * 0.55, 9, t);
+    drawOneTinyEel(g, w * 0.4, h * 0.75, 16, t);
+  }
+
   function drawPortraitOrLock(ctx, drawFn, t, phase2) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
@@ -1875,6 +1951,7 @@
       drawPortraitOrLock(eelCtx, drawEel, t);
       drawPortraitOrLock(currentEelCtx, drawCurrentEel, t);
       drawPortraitOrLock(greatEelCtx, drawGreatEel, t);
+      drawPortraitOrLock(tinyEelsCtx, drawTinyEels, t);
     }
     requestAnimationFrame(loop);
   }
