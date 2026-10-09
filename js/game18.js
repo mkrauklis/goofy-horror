@@ -1,7 +1,7 @@
 (function () {
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
-  if (window.GoofyStory && !window.GoofyStory.isUnlocked(17)) {
+  if (window.GoofyStory && !window.GoofyStory.isUnlocked(18)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
@@ -10,7 +10,7 @@
     return;
   }
 
-  const LEVEL = window.LEVEL17;
+  const LEVEL = window.LEVEL18;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
@@ -24,24 +24,18 @@
   // each frame (see `dt` in loop()) rather than a fixed px/frame step.
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  // The flooded water itself is moving -- a steady current nudges both
-  // players left at a flat 0.2x player speed, independent of input,
-  // every frame they're not caught. It's a constant drift, not something
-  // that ramps up or can be fought off; swimming against it just costs
-  // you some of your own speed.
-  const CURRENT_SPEED = PLAYER_SPEED * 0.2;
-  // The eel roams slower than a player, but charges much faster once it's
-  // spotted someone -- a patrol/alert split, same state machine as every
-  // other sight-based creature on this site, just with these two speeds.
-  const EEL_ROAM_SPEED = PLAYER_SPEED * 0.6;
-  const EEL_CHARGE_SPEED = PLAYER_SPEED * 1.8;
+  // The giant eel roams at a full 1x player speed -- noticeably faster
+  // than the smaller flood/current eels -- and triples that the instant
+  // it spots someone, but its own vision is short, so it's a real threat
+  // only once you're already close.
+  const EEL_ROAM_SPEED = PLAYER_SPEED * 1.0;
+  const EEL_CHARGE_SPEED = PLAYER_SPEED * 3.0;
   const LURE_SPEED = PLAYER_SPEED * 0.6;
-  const CATCH_RADIUS = 22;
+  const CATCH_RADIUS = 26; // a bigger creature, a bigger bite radius
   const REPATH_MS = 500;
   const ALERT_GRACE_MS = 3000;
-  const DETECT_RADIUS = 130; // open water -- a longer sight line than a cramped hall
-  const PIPES_NEEDED = 3;
-  const WELD_DURATION_MS = 3000;
+  const DETECT_RADIUS = 70; // short vision -- it has to be genuinely close to notice you
+  const WHEEL_HOLD_MS = 10000;
   const RADAR_DURATION_MS = 10000;
   const ENERGY_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
@@ -72,11 +66,12 @@
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking
   const WALK_CYCLE_SPEED = 9; // radians/second the walk-cycle phase advances at 1x speed
-  // The eel's body: a long, slim trail of segments tapering to a point,
-  // slimmer than the armored caterpillars elsewhere on this site.
-  const EEL_SEGMENT_COUNT = 16;
-  const EEL_SEGMENT_SPACING = 24;
-  const EEL_RADIUS = 15;
+  // The eel's body: a long, slim trail of segments tapering to a point.
+  // This one is the giant of the three eels on this site -- longer,
+  // thicker, and spaced out further than the flood/current eels.
+  const EEL_SEGMENT_COUNT = 22;
+  const EEL_SEGMENT_SPACING = 30;
+  const EEL_RADIUS = 21;
 
   // Ripples spawn at a moving player's feet and expand outward, fading as
   // they go -- purely cosmetic, reused for the eel's own wake too.
@@ -101,7 +96,7 @@
   const EXPLORE_RADIUS = 7;
   const MINIMAP_W = 90;
 
-  const hudPipesEl = document.getElementById('hud-pipes');
+  const hudWheelEl = document.getElementById('hud-wheel');
   const hudDoorEl = document.getElementById('hud-door');
   const hudTimerEl = document.getElementById('hud-timer');
   const hudBestEl = document.getElementById('hud-best');
@@ -458,10 +453,11 @@
     return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
   }
 
-  // A handful of near-identical murky greens, picked per-tile by hashing
+  // A handful of near-identical deep blues, picked per-tile by hashing
   // its coordinates, so the flooded floor reads as moving, uneven water
-  // instead of one flat color.
-  const WATER_SHADES = ['#1c5020', '#205828', '#1a4a1e', '#225526', '#18421c', '#1f5024'];
+  // instead of one flat color -- a clear blue, unlike the sickly greens
+  // of the other two flood levels.
+  const WATER_SHADES = ['#143c5c', '#184468', '#123354', '#1a4a70', '#0f3050', '#164060'];
   function floorShade(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % WATER_SHADES.length;
@@ -479,7 +475,7 @@
 
   // ---- game state ----
 
-  const BEST_TIME_KEY = 'goofy-horror-best-level17';
+  const BEST_TIME_KEY = 'goofy-horror-best-level18';
   let bestMs = (() => {
     const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
     return Number.isFinite(v) ? v : null;
@@ -498,26 +494,17 @@
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
 
-  // Pipes auto-located from the grid's own 'P' tiles rather than stored
-  // separately -- same "computed from the grid" convention as this file's
-  // doorBounds box below.
-  const PIPE_POSITIONS = (() => {
-    const list = [];
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        if (LEVEL.grid[y][x] === 'P') list.push({ x, y });
-      }
-    }
-    return list;
-  })();
-  let pipesWelded = [];
-  let pipeProgress = [];
+  // The two pressure plates and the giant wheel they turn, straight from
+  // the level data rather than scanned off the grid -- unlike the pipes
+  // on Level 17, a plate's own tile char doesn't need to be unique per
+  // instance since there are only ever exactly 2 of them.
+  const PLATE_POSITIONS = LEVEL.pressurePlates;
+  let wheelHeldMs = 0;
+  let wheelSolved = false;
 
-  // Each pipe sticks out of whichever wall it's actually mounted against --
-  // found by checking its own tile's 4 neighbors for '#' at load time, not
-  // guessed from room geometry, since the level generator itself only
-  // guarantees the tile is wall-adjacent, not which side. The vector points
-  // AWAY from the wall, into the room -- the direction the pipe protrudes.
+  // A pipe mounted to a wall points away from whichever side it's
+  // actually flush against -- found by checking its own tile's 4
+  // neighbors for '#', not guessed from room geometry.
   function pipeWallDir(tx, ty) {
     if (tileChar(tx - 1, ty) === '#') return { x: 1, y: 0 };
     if (tileChar(tx + 1, ty) === '#') return { x: -1, y: 0 };
@@ -525,39 +512,26 @@
     if (tileChar(tx, ty + 1) === '#') return { x: 0, y: -1 };
     return { x: 0, y: 1 };
   }
-  const PIPE_WALL_DIRS = PIPE_POSITIONS.map((p) => pipeWallDir(p.x, p.y));
 
-  // A single conduit strung through open floor tiles connecting all 3
-  // pipes in sequence (reusing the same BFS the eel's own pathfinding
-  // uses), so the 3 fixtures read as one plumbing system instead of three
-  // unrelated pipes that happen to share a name.
-  function buildFloorGraph() {
-    const graph = new Map();
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        if (LEVEL.grid[y][x] === '#') continue;
-        const list = [];
-        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) return;
-          if (LEVEL.grid[ny][nx] !== '#') list.push({ x: nx, y: ny });
-        });
-        graph.set(y * COLS + x, list);
-      }
+  // Purely decorative pipes ringing the giant pipe room's own walls --
+  // every few tiles around its interior perimeter, each oriented away
+  // from whichever wall it's actually mounted on.
+  const HUB_WALL_PIPES = (() => {
+    const hb = LEVEL.hubBounds;
+    const spots = [];
+    const addIfFloor = (x, y) => {
+      if (tileChar(x, y) === '#') return;
+      spots.push({ x, y, dir: pipeWallDir(x, y) });
+    };
+    for (let x = hb.x0 + 1; x < hb.x1; x += 3) {
+      addIfFloor(x, hb.y0);
+      addIfFloor(x, hb.y1);
     }
-    return graph;
-  }
-  const PIPE_CONDUIT_PATH = (() => {
-    if (PIPE_POSITIONS.length < 2) return [];
-    const graph = buildFloorGraph();
-    const tiles = [];
-    for (let i = 0; i < PIPE_POSITIONS.length - 1; i++) {
-      const seg = bfsPath(graph, PIPE_POSITIONS[i], PIPE_POSITIONS[i + 1]);
-      if (!seg) continue;
-      if (tiles.length) seg.shift();
-      tiles.push(...seg);
+    for (let y = hb.y0 + 1; y < hb.y1; y += 3) {
+      addIfFloor(hb.x0, y);
+      addIfFloor(hb.x1, y);
     }
-    return tiles.map((t) => tileCenter(t.x, t.y));
+    return spots;
   })();
 
   function makePlayer(spawn, color) {
@@ -569,7 +543,6 @@
       walkPhase: 0,
       shotgunAmmo: 0,
       nextRippleAt: 0,
-      carryingGun: false,
     };
   }
 
@@ -633,7 +606,6 @@
       p.sprintActive = false;
       p.shotgunAmmo = 0;
       p.nextRippleAt = 0;
-      p.carryingGun = false;
     });
 
     const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
@@ -643,8 +615,8 @@
     monster.frozenUntil = 0; monster.luredState = 'none'; monster.lureTarget = null; monster.eatingUntil = 0;
     monster.trail = []; monster.segments = []; monster.nextRippleAt = 0;
 
-    pipesWelded = PIPE_POSITIONS.map(() => false);
-    pipeProgress = PIPE_POSITIONS.map(() => 0);
+    wheelHeldMs = 0;
+    wheelSolved = false;
     doorUnlocked = false;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
@@ -733,10 +705,6 @@
       const speed = PLAYER_SPEED * speedMultiplierFor(p);
       movePlayer(p, nx * speed * dt, ny * speed * dt);
     }
-    // The current pulls left regardless of input -- applied as its own
-    // separate step so standing still still drifts, and swimming right
-    // against it is simply slower than swimming with it.
-    movePlayer(p, -CURRENT_SPEED * dt, 0);
   }
 
   function spawnRipple(x, y) {
@@ -767,32 +735,19 @@
     return tileChar(t.x, t.y) === 'S';
   }
 
-  // The scanner points at the welding gun until someone's carrying it,
-  // then at the nearest pipe still waiting to be welded -- once all 3
-  // are welded there's nothing left to point at.
+  // The scanner just points at the giant wheel itself -- once it's
+  // solved there's nothing left to point at.
   function scannerTarget() {
-    if (pipesWelded.every(Boolean)) return null;
-    const p = players[0];
-    if (!players.some((pl) => pl.carryingGun)) {
-      return tileCenter(LEVEL.weldingGun.x, LEVEL.weldingGun.y);
-    }
-    let best = null, bestD = Infinity;
-    PIPE_POSITIONS.forEach((w, i) => {
-      if (pipesWelded[i]) return;
-      const center = tileCenter(w.x, w.y);
-      const d = Math.hypot(p.x - center.x, p.y - center.y);
-      if (d < bestD) { bestD = d; best = center; }
-    });
-    return best;
+    if (wheelSolved) return null;
+    return tileCenter(LEVEL.wheel.x, LEVEL.wheel.y);
   }
 
   function minimapColorFor(ch) {
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
     if (ch === 'S') return '#3ddc84';
-    if (ch === 'P') return '#c9a86a';
-    if (ch === 'U') return '#8ac4e3';
-    return '#1f521f';
+    if (ch === 'Q') return '#ffb347';
+    return '#163a56';
   }
 
   function updateExploration() {
@@ -1026,58 +981,32 @@
     });
   }
 
-  // Walking onto the welding gun picks it up -- same instant, walk-onto-it
-  // convention as every other single-step objective pickup on this site.
-  // Only one exists; once someone's carrying it, it's gone from the floor
-  // for good (no going back for a second one).
-  function updateWeldingGunPickup(now) {
-    if (players.some((p) => p.carryingGun)) return;
-    players.forEach((p) => {
-      if (p.caught) return;
+  // Both players have to stand on their own pressure plate -- two
+  // separate tiles, far enough apart that one player physically can't
+  // cover both -- at the same time to hold the giant wheel turning.
+  // Either one stepping off (or getting caught) drains the held time
+  // back down at twice the fill rate, same fill/drain convention as
+  // every other hold-mechanic on this site, so a quick tag-team shuffle
+  // between the two plates doesn't work -- it has to be held together.
+  function updateWheel(now, dt) {
+    if (wheelSolved) return;
+    const bothHolding = PLATE_POSITIONS.every((plate) => players.some((p) => {
+      if (p.caught) return false;
       const t = worldToTile(p.x, p.y);
-      if (t.x !== LEVEL.weldingGun.x || t.y !== LEVEL.weldingGun.y) return;
-      p.carryingGun = true;
-      const center = tileCenter(t.x, t.y);
-      spawnFloatingText(center.x, center.y, 'WELDING GUN');
-      playItemChime(760);
-    });
-  }
-
-  // Standing at a pipe while carrying the gun fills its weld progress
-  // over WELD_DURATION_MS; stepping away (or losing the gun to a catch)
-  // drains it back at twice that rate, same fill/drain convention as
-  // Level 11's own held-plate generators. Welding the third pipe unlocks
-  // the door. Running the torch also burns through the welder's own
-  // stamina, slowly -- a real (if minor) cost for standing still to weld
-  // instead of swimming, applied after updateInputMovement's own regen so
-  // it nets as a real drain even though the welding player isn't moving.
-  const WELD_STAMINA_DRAIN_RATE = STAMINA_MAX / 20;
-  function updateWelding(now, dt) {
-    PIPE_POSITIONS.forEach((pipe, i) => {
-      if (pipesWelded[i]) return;
-      const welder = players.find((p) => {
-        if (p.caught || !p.carryingGun) return false;
-        const t = worldToTile(p.x, p.y);
-        return t.x === pipe.x && t.y === pipe.y;
-      });
-      const welding = !!welder;
-      if (welding) {
-        welder.stamina = Math.max(0, welder.stamina - WELD_STAMINA_DRAIN_RATE * dt);
-        pipeProgress[i] = Math.min(1, pipeProgress[i] + dt / (WELD_DURATION_MS / 1000));
-        if (pipeProgress[i] >= 1) {
-          pipesWelded[i] = true;
-          const center = tileCenter(pipe.x, pipe.y);
-          spawnFloatingText(center.x, center.y, 'PIPE WELDED');
-          playWeldComplete();
-          if (pipesWelded.every(Boolean)) {
-            doorUnlocked = true;
-            playDoorUnlockChime();
-          }
-        }
-      } else {
-        pipeProgress[i] = Math.max(0, pipeProgress[i] - dt / (WELD_DURATION_MS / 1000 / 2));
+      return t.x === plate.x && t.y === plate.y;
+    }));
+    if (bothHolding) {
+      wheelHeldMs = Math.min(WHEEL_HOLD_MS, wheelHeldMs + dt * 1000);
+      if (wheelHeldMs >= WHEEL_HOLD_MS) {
+        wheelSolved = true;
+        doorUnlocked = true;
+        playDoorUnlockChime();
+        const c = tileCenter(LEVEL.wheel.x, LEVEL.wheel.y);
+        spawnFloatingText(c.x, c.y, 'WHEEL TURNED');
       }
-    });
+    } else {
+      wheelHeldMs = Math.max(0, wheelHeldMs - dt * 1000 * 2);
+    }
   }
 
   function updateTriggers() {
@@ -1087,8 +1016,7 @@
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
         playWinJingle();
-        if (window.GoofyStory) window.GoofyStory.completeLevel(17);
-        setTimeout(() => { window.location.href = 'level18.html'; }, 2000);
+        if (window.GoofyStory) window.GoofyStory.completeLevel(18);
       }
     });
   }
@@ -1467,25 +1395,34 @@
     return { x0, y0, x1, y1 };
   })();
 
-  // A swaying clump of 3-4 seaweed strands -- a fixed base position per
-  // tile (hashed, like the floor shading) with each strand's sway phase
-  // offset so the clump doesn't move as one rigid unit.
-  function drawSeaweed(g, px, py, x, y, t) {
+  // A small branching coral clump -- a fixed base position per tile
+  // (hashed, like the floor shading), 2-4 colorful branches radiating
+  // up from it with a soft sway, each tipped with a small round polyp.
+  const CORAL_PALETTE = ['#ff8a5c', '#ff6fa5', '#b985ff', '#ffb347'];
+  function drawCoral(g, px, py, x, y, t) {
     const h = Math.imul(x, 2654435761) ^ Math.imul(y, 40503);
     const u = (h ^ (h >>> 15)) >>> 0;
-    const strands = 3 + (u % 2);
-    for (let i = 0; i < strands; i++) {
-      const baseX = px + 6 + ((u >> (i * 4)) % 20);
-      const height = 14 + ((u >> (i * 3 + 2)) % 10);
-      const phase = (u % 100) / 100 * Math.PI * 2 + i * 1.7;
-      const sway = Math.sin(t * 0.0022 + phase) * 5;
-      g.strokeStyle = i % 2 === 0 ? '#2f6b4a' : '#3a7d55';
-      g.lineWidth = 2.2;
+    const branches = 2 + (u % 3);
+    const baseX = px + 8 + (u % 16);
+    const baseY = py + TILE - 3;
+    for (let i = 0; i < branches; i++) {
+      const color = CORAL_PALETTE[(u >> (i * 3)) % CORAL_PALETTE.length];
+      const len = 9 + ((u >> (i * 5 + 1)) % 9);
+      const angle = -Math.PI / 2 + (((u >> (i * 7 + 2)) % 100) / 100 - 0.5) * 1.3 + (i - branches / 2) * 0.45;
+      const sway = Math.sin(t * 0.0015 + i + (u % 10)) * 2;
+      const tipX = baseX + Math.cos(angle) * len + sway;
+      const tipY = baseY + Math.sin(angle) * len;
+      g.strokeStyle = color;
+      g.lineWidth = 3;
       g.lineCap = 'round';
       g.beginPath();
-      g.moveTo(baseX, py + TILE - 2);
-      g.quadraticCurveTo(baseX + sway * 0.6, py + TILE - height * 0.6, baseX + sway, py + TILE - height);
+      g.moveTo(baseX, baseY);
+      g.quadraticCurveTo((baseX + tipX) / 2 + sway * 0.5, (baseY + tipY) / 2, tipX, tipY);
       g.stroke();
+      g.beginPath();
+      g.arc(tipX, tipY, 2.4, 0, Math.PI * 2);
+      g.fillStyle = color;
+      g.fill();
     }
   }
 
@@ -1502,8 +1439,8 @@
         switch (ch) {
           case '#': color = '#1a2226'; break;
           case 'S': color = floorShade(x, y); break;
-          case 'E': color = '#1e3c22'; break;
-          case 'D': color = doorUnlocked ? floorShade(x, y) : '#2a522f'; break;
+          case 'E': color = '#15283c'; break;
+          case 'D': color = doorUnlocked ? floorShade(x, y) : '#1e3a50'; break;
           default: color = floorShade(x, y);
         }
         g.fillStyle = color;
@@ -1515,38 +1452,19 @@
         }
 
         // A faint drifting light-caustic streak across every bit of open
-        // water, not just the 'G' seaweed tiles -- a subtle moving band
+        // water, not just the 'R' coral tiles -- a subtle moving band
         // instead of a static floor texture.
-        if (ch === '.' || ch === 'G' || ch === 'S' || ch === 'E') {
+        if (ch === '.' || ch === 'R' || ch === 'S' || ch === 'E') {
           const h = Math.imul(x, 668265263) ^ Math.imul(y, 2246822519);
           const seed = ((h ^ (h >>> 13)) >>> 0) % 1000 / 1000;
           const band = Math.sin(now * 0.0005 + seed * 20 + x * 0.3 + y * 0.2);
           if (band > 0.65) {
-            g.fillStyle = `rgba(215,245,205,${(band - 0.65) * 0.25})`;
+            g.fillStyle = `rgba(205,230,255,${(band - 0.65) * 0.25})`;
             g.fillRect(px, py, TILE, TILE);
           }
         }
 
-        // Tiny wave crests riding the current itself -- a small pale
-        // wavelet per flooded tile that scrolls left in a loop at the
-        // same speed the water drags players, so the drift reads as
-        // moving water rather than just a force acting on you.
-        if (ch === '.' || ch === 'G' || ch === 'S' || ch === 'E') {
-          const wh = Math.imul(x, 1274126177) ^ Math.imul(y, 1013904223);
-          const wseed = ((wh ^ (wh >>> 11)) >>> 0) % 1000 / 1000;
-          const scrollPx = (now * CURRENT_SPEED / 1000 + wseed * TILE) % TILE;
-          const waveX = px + TILE - scrollPx;
-          const waveY = py + 7 + wseed * (TILE - 14);
-          g.strokeStyle = 'rgba(210,235,210,0.28)';
-          g.lineWidth = 1;
-          g.beginPath();
-          g.moveTo(waveX - 9, waveY);
-          g.quadraticCurveTo(waveX - 6, waveY - 2.5, waveX - 3, waveY);
-          g.quadraticCurveTo(waveX, waveY + 2.5, waveX + 3, waveY);
-          g.stroke();
-        }
-
-        if (ch === 'G') drawSeaweed(g, px, py, x, y, now);
+        if (ch === 'R') drawCoral(g, px, py, x, y, now);
       }
     }
 
@@ -1576,9 +1494,9 @@
     g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
     g.fill();
 
-    drawPipeConduit(g);
-    drawPipes(g, now);
-    drawWeldingGunPickup(g, now);
+    drawDecorPipes(g);
+    drawGiantWheel(g, now);
+    drawPressurePlates(g, now);
     drawSafeZone(g);
     drawBloodSplatters(g);
     drawCrates(g);
@@ -1587,163 +1505,108 @@
     drawFloatingTexts(g);
   }
 
-  // The pipe conduit strung along the floor connecting all 3 fixtures --
-  // drawn first so every pipe's own wall-flange and nozzle render on top
-  // of it at each end, reading as one continuous plumbing run.
-  function drawPipeConduit(g) {
-    if (PIPE_CONDUIT_PATH.length < 2) return;
-    g.save();
-    g.lineJoin = 'round';
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(PIPE_CONDUIT_PATH[0].x, PIPE_CONDUIT_PATH[0].y);
-    for (let i = 1; i < PIPE_CONDUIT_PATH.length; i++) g.lineTo(PIPE_CONDUIT_PATH[i].x, PIPE_CONDUIT_PATH[i].y);
-    g.strokeStyle = '#2a241c';
-    g.lineWidth = 9;
-    g.stroke();
-    g.strokeStyle = '#5a4a38';
-    g.lineWidth = 6;
-    g.stroke();
-    g.strokeStyle = 'rgba(255,255,255,0.1)';
-    g.lineWidth = 2;
-    g.stroke();
-    g.restore();
-  }
-
-  // A pipe stub mounted straight into its wall, rusty and dull until
-  // welded. A bright weld seam appears across the nozzle once done; until
-  // then it hisses green steam out the open end -- same amber progress
-  // ring as before while someone's actively welding it shut.
-  function drawPipes(g, now) {
-    PIPE_POSITIONS.forEach((pipe, i) => {
-      const center = tileCenter(pipe.x, pipe.y);
-      const dir = PIPE_WALL_DIRS[i];
-      const welded = pipesWelded[i];
-      const progress = pipeProgress[i];
-      const angle = Math.atan2(dir.y, dir.x);
+  // Decorative pipes ringing the giant pipe room's walls -- permanently
+  // rusty, no weld state or leak; pure set-dressing so the room reads as
+  // "pipes all over the walls."
+  function drawDecorPipes(g) {
+    HUB_WALL_PIPES.forEach((spot) => {
+      const center = tileCenter(spot.x, spot.y);
+      const angle = Math.atan2(spot.dir.y, spot.dir.x);
       g.save();
       g.translate(center.x, center.y);
       g.rotate(angle);
-
-      // The flange bolting the pipe to the wall it sticks out of, sitting
-      // just inside the wall tile (negative local x, toward the wall).
       g.fillStyle = '#2a2420';
-      g.fillRect(-11, -9, 5, 18);
+      g.fillRect(-11, -8, 5, 16);
       g.strokeStyle = 'rgba(0,0,0,0.5)';
       g.lineWidth = 1;
-      g.strokeRect(-11, -9, 5, 18);
-
-      const pipeGrad = g.createLinearGradient(0, -6, 0, 6);
-      if (welded) {
-        pipeGrad.addColorStop(0, '#d8d8de');
-        pipeGrad.addColorStop(1, '#8a8a92');
-      } else {
-        pipeGrad.addColorStop(0, '#8a7560');
-        pipeGrad.addColorStop(1, '#4a3c30');
-      }
-      g.fillStyle = pipeGrad;
-      g.fillRect(-6, -6, 26, 12);
+      g.strokeRect(-11, -8, 5, 16);
+      const grad = g.createLinearGradient(0, -5, 0, 5);
+      grad.addColorStop(0, '#8a7560');
+      grad.addColorStop(1, '#4a3c30');
+      g.fillStyle = grad;
+      g.fillRect(-6, -5, 22, 10);
       g.strokeStyle = 'rgba(0,0,0,0.5)';
-      g.lineWidth = 1.5;
-      g.strokeRect(-6, -6, 26, 12);
-      g.strokeStyle = 'rgba(0,0,0,0.4)';
-      g.lineWidth = 1;
-      [-6, 20].forEach((fx) => {
-        g.beginPath();
-        g.moveTo(fx, -6);
-        g.lineTo(fx, 6);
-        g.stroke();
-      });
-
-      // The open nozzle at the room-facing tip -- a dark hole while
-      // leaking, sealed flush with a bright weld seam once done.
-      if (welded) {
-        g.fillStyle = '#6a6a72';
-        g.fillRect(16, -6, 4, 12);
-        g.strokeStyle = 'rgba(255,220,140,0.9)';
-        g.lineWidth = 2;
-        g.beginPath();
-        g.moveTo(18, -6);
-        g.lineTo(18, 6);
-        g.stroke();
-      } else {
-        g.beginPath();
-        g.arc(20, 0, 4, 0, Math.PI * 2);
-        g.fillStyle = '#1a1512';
-        g.fill();
-      }
-
-      if (!welded && progress > 0) {
-        g.beginPath();
-        g.arc(6, -16, 7, 0, Math.PI * 2);
-        g.strokeStyle = 'rgba(255,255,255,0.3)';
-        g.lineWidth = 1;
-        g.stroke();
-        g.beginPath();
-        g.arc(6, -16, 7, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-        g.strokeStyle = '#ffb23c';
-        g.lineWidth = 3;
-        g.stroke();
-      }
+      g.lineWidth = 1.2;
+      g.strokeRect(-6, -5, 22, 10);
       g.restore();
-
-      if (!welded) {
-        const tipX = center.x + dir.x * (TILE / 2 + 4);
-        const tipY = center.y + dir.y * (TILE / 2 + 4);
-        drawPipeSteam(g, tipX, tipY, i, now);
-      }
     });
   }
 
-  // Green steam puffing out of an unwelded pipe's open nozzle -- rises and
-  // fades in a loop computed straight from `now` and a per-pipe seed
-  // (stateless, same "no array to manage" convention as the floor's own
-  // drifting light-caustic streak) rather than a tracked particle array.
-  function drawPipeSteam(g, x, y, seedIndex, now) {
-    g.save();
-    const PUFFS = 5;
-    for (let i = 0; i < PUFFS; i++) {
-      const cycle = 950 + i * 140;
-      const phase = ((now + seedIndex * 310 + i * 190) % cycle) / cycle;
-      const rise = phase * 26;
-      const drift = Math.sin(phase * Math.PI * 2 + seedIndex * 2.1) * 4;
-      const alpha = (1 - phase) * 0.5;
-      const r = 3 + phase * 7;
-      g.beginPath();
-      g.arc(x + drift, y - rise, r, 0, Math.PI * 2);
-      g.fillStyle = `rgba(120,230,130,${alpha})`;
-      g.fill();
-    }
-    const hiss = 0.5 + 0.3 * Math.sin(now * 0.02 + seedIndex);
-    g.beginPath();
-    g.arc(x, y, 3, 0, Math.PI * 2);
-    g.fillStyle = `rgba(170,255,170,${hiss})`;
-    g.shadowColor = '#7aff8a';
-    g.shadowBlur = 6;
-    g.fill();
-    g.restore();
+  // Two pressure plates flanking the giant wheel, far enough apart that
+  // one player can't straddle both -- lit amber while someone's actually
+  // standing on them, dull rust otherwise.
+  function drawPressurePlates(g, now) {
+    PLATE_POSITIONS.forEach((plate) => {
+      const center = tileCenter(plate.x, plate.y);
+      const held = players.some((p) => {
+        if (p.caught) return false;
+        const t = worldToTile(p.x, p.y);
+        return t.x === plate.x && t.y === plate.y;
+      });
+      g.save();
+      g.translate(center.x, center.y);
+      g.fillStyle = held ? '#6a4a1a' : '#3a2e22';
+      g.fillRect(-13, -13, 26, 26);
+      g.strokeStyle = held ? '#ffb347' : 'rgba(0,0,0,0.5)';
+      g.lineWidth = held ? 2.5 : 1.5;
+      if (held) { g.shadowColor = '#ffb347'; g.shadowBlur = 8; }
+      g.strokeRect(-11, -11, 22, 22);
+      g.shadowBlur = 0;
+      g.restore();
+    });
   }
 
-  // The welding gun's own pickup sprite -- vanishes the instant it's
-  // carried, same convention as every other on-floor pickup here.
-  function drawWeldingGunPickup(g, now) {
-    if (players.some((p) => p.carryingGun)) return;
-    const c = tileCenter(LEVEL.weldingGun.x, LEVEL.weldingGun.y);
-    const flick = 0.7 + Math.sin(now * 0.01) * 0.3;
+  // The giant wheel at the hub's center -- its spokes creak slowly around
+  // while both plates are held down, locking into a turned pose (and a
+  // green glow) the instant it's solved. A progress ring above it tracks
+  // the current hold, same convention as every other hold-to-fill gauge
+  // on this site.
+  function drawGiantWheel(g, now) {
+    const c = tileCenter(LEVEL.wheel.x, LEVEL.wheel.y);
+    const heldFrac = clamp(wheelHeldMs / WHEEL_HOLD_MS, 0, 1);
+    const angle = wheelSolved ? Math.PI / 6 : (now * 0.0003 * heldFrac) % (Math.PI * 2);
     g.save();
     g.translate(c.x, c.y);
-    g.fillStyle = '#3a3a3e';
-    g.fillRect(-3, -10, 6, 16);
-    g.strokeStyle = 'rgba(0,0,0,0.5)';
-    g.lineWidth = 1;
-    g.strokeRect(-3, -10, 6, 16);
-    g.fillStyle = '#2a2a2e';
-    g.fillRect(-6, 4, 12, 5);
     g.beginPath();
-    g.arc(0, -12, 4 * flick, 0, Math.PI * 2);
-    g.fillStyle = `rgba(140,200,255,${0.5 + flick * 0.3})`;
+    g.arc(0, 0, 30, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(20,15,10,0.5)';
+    g.fill();
+    g.rotate(angle);
+    g.strokeStyle = wheelSolved ? '#7ad67a' : '#8a7560';
+    g.lineWidth = 5;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.lineTo(Math.cos(a) * 24, Math.sin(a) * 24);
+      g.stroke();
+    }
+    g.beginPath();
+    g.arc(0, 0, 26, 0, Math.PI * 2);
+    g.lineWidth = 4;
+    g.strokeStyle = wheelSolved ? '#7ad67a' : '#5a4a38';
+    g.stroke();
+    g.beginPath();
+    g.arc(0, 0, 7, 0, Math.PI * 2);
+    g.fillStyle = '#2a2420';
     g.fill();
     g.restore();
+
+    if (!wheelSolved && heldFrac > 0) {
+      g.save();
+      g.translate(c.x, c.y);
+      g.beginPath();
+      g.arc(0, -42, 8, 0, Math.PI * 2);
+      g.strokeStyle = 'rgba(255,255,255,0.3)';
+      g.lineWidth = 1.5;
+      g.stroke();
+      g.beginPath();
+      g.arc(0, -42, 8, -Math.PI / 2, -Math.PI / 2 + heldFrac * Math.PI * 2);
+      g.strokeStyle = '#ffb23c';
+      g.lineWidth = 3;
+      g.stroke();
+      g.restore();
+    }
   }
 
   function drawTable(g, cx, cy) {
@@ -1863,12 +1726,38 @@
       const br = Math.max(1, r * (0.12 + (u % 3) * 0.03));
       g.beginPath();
       g.arc(bx, by, br, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(190,225,245,0.55)';
+      g.fillStyle = 'rgba(170,220,180,0.55)';
       g.fill();
       g.beginPath();
       g.arc(bx - br * 0.3, by - br * 0.3, br * 0.4, 0, Math.PI * 2);
       g.fillStyle = 'rgba(255,255,255,0.4)';
       g.fill();
+    }
+  }
+
+  // The giant eel is draped in trailing seaweed -- 1-2 short strands per
+  // segment, anchored at a fixed point on the body (hashed from a seed,
+  // same stable-feature convention as the bumps above) and swaying with
+  // `t`, same swaying-strand technique as the floor's own seaweed clumps.
+  function drawEelWeed(g, r, seed, t) {
+    const h = Math.imul(Math.floor(seed * 1000), 2654435761) >>> 0;
+    const strands = 1 + (h % 2);
+    for (let i = 0; i < strands; i++) {
+      const baseAngle = ((h >> (i * 5)) % 360) * Math.PI / 180;
+      const baseX = Math.cos(baseAngle) * r * 0.8;
+      const baseY = Math.sin(baseAngle) * r * 0.8;
+      const len = r * (0.8 + ((h >> (i * 3 + 2)) % 10) / 15);
+      const phase = ((h % 100) / 100) * Math.PI * 2 + i * 1.3 + seed;
+      const sway = Math.sin(t * 0.0025 + phase) * 4;
+      const tipX = baseX + Math.cos(baseAngle) * len + sway;
+      const tipY = baseY + Math.sin(baseAngle) * len;
+      g.strokeStyle = i % 2 === 0 ? '#2f6b3a' : '#3a7d45';
+      g.lineWidth = 1.8;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(baseX, baseY);
+      g.quadraticCurveTo((baseX + tipX) / 2 + sway * 0.4, (baseY + tipY) / 2, tipX, tipY);
+      g.stroke();
     }
   }
 
@@ -1883,14 +1772,13 @@
       g.fill();
     }
 
-    // Body segments, tail first so the head draws on top -- a pale,
-    // sickly blue instead of the usual dark teal-green, tapering to a
-    // thin point at the tail, with a scatter of small raised bumps
-    // across every segment's surface.
+    // Body segments, tail first so the head draws on top -- a deep,
+    // weedy green, tapering to a thin point at the tail, with a scatter
+    // of small raised bumps and trailing seaweed across every segment.
     for (let i = monster.segments.length - 1; i >= 0; i--) {
       const seg = monster.segments[i];
       const r = Math.max(2.5, monster.radius * (1 - i * 0.055));
-      const base = i % 2 === 0 ? '#7ab8d9' : '#8ac4e3';
+      const base = i % 2 === 0 ? '#3f8f52' : '#4aa05e';
       g.save();
       g.translate(seg.x, seg.y);
 
@@ -1899,7 +1787,7 @@
         const next = monster.segments[Math.min(i + 1, monster.segments.length - 1)];
         const dx = seg.x - next.x, dy = seg.y - next.y;
         const ang = Math.atan2(dy, dx) + Math.PI / 2;
-        drawFin(g, 0, 0, Math.cos(ang) * r * 1.6, Math.sin(ang) * r * 1.6, r * 0.5, 'rgba(120,180,220,0.55)');
+        drawFin(g, 0, 0, Math.cos(ang) * r * 1.6, Math.sin(ang) * r * 1.6, r * 0.5, 'rgba(70,140,85,0.55)');
       }
 
       const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
@@ -1909,17 +1797,18 @@
       g.beginPath();
       g.arc(0, 0, r, 0, Math.PI * 2);
       g.fillStyle = grad;
-      g.shadowColor = '#2a5a75';
+      g.shadowColor = '#15401f';
       g.shadowBlur = 5;
       g.fill();
       g.shadowBlur = 0;
 
       drawEelBumps(g, r, monster.seed + i * 13);
+      if (i % 3 === 0) drawEelWeed(g, r, monster.seed + i * 13, t);
 
       // pale underbelly stripe
       g.beginPath();
       g.ellipse(0, r * 0.35, r * 0.75, r * 0.3, 0, 0, Math.PI);
-      g.fillStyle = 'rgba(225,240,245,0.35)';
+      g.fillStyle = 'rgba(215,235,200,0.35)';
       g.fill();
 
       g.restore();
@@ -1951,20 +1840,21 @@
       const backAngle = headAngle + Math.PI + (0.5 * side);
       const tipX = baseX + Math.cos(backAngle) * monster.radius * 1.4;
       const tipY = baseY + Math.sin(backAngle) * monster.radius * 1.4;
-      drawFin(g, baseX, baseY, tipX, tipY, monster.radius * 0.35, 'rgba(120,180,220,0.6)');
+      drawFin(g, baseX, baseY, tipX, tipY, monster.radius * 0.35, 'rgba(70,140,85,0.6)');
     });
 
     trace();
     const headGrad = g.createRadialGradient(-monster.radius * 0.3, -monster.radius * 0.35, 1, 0, 0, monster.radius * 1.05);
-    headGrad.addColorStop(0, shade('#8ac4e3', 0.22));
-    headGrad.addColorStop(0.55, '#8ac4e3');
-    headGrad.addColorStop(1, shade('#8ac4e3', -0.3));
+    headGrad.addColorStop(0, shade('#4aa05e', 0.22));
+    headGrad.addColorStop(0.55, '#4aa05e');
+    headGrad.addColorStop(1, shade('#4aa05e', -0.3));
     g.fillStyle = headGrad;
-    g.shadowColor = '#2a5a75';
+    g.shadowColor = '#15401f';
     g.shadowBlur = 10;
     g.fill();
     g.shadowBlur = 0;
     drawEelBumps(g, monster.radius, monster.seed);
+    drawEelWeed(g, monster.radius, monster.seed, t);
 
     g.save();
     trace();
@@ -2311,7 +2201,6 @@
     drawRadar(vx, p, now);
     drawScanner(vx, p, now);
     drawShotgunHud(vx, p);
-    drawWeldingGunHud(vx, p);
     const minimapH = drawMinimap(vx, now);
     drawStaminaBar(vx, p, minimapH);
 
@@ -2345,37 +2234,6 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffd27a';
     ctx.fillText(`${p.shotgunAmmo}x`, cx + 3, cy + 4);
-    ctx.restore();
-  }
-
-  // A small badge in the corner once this specific player is carrying
-  // the welding gun -- same spot/shape convention as the shotgun badge,
-  // stacked just below it so both can show at once.
-  function drawWeldingGunHud(vx, p) {
-    if (!p.carryingGun) return;
-    const cx = vx + VIEW_W - 34, cy = 96;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(15,25,35,0.75)';
-    ctx.fill();
-    ctx.strokeStyle = '#8ac4e3';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.fillStyle = '#3a3a3e';
-    ctx.fillRect(-2, -8, 4, 11);
-    ctx.fillStyle = '#2a2a2e';
-    ctx.fillRect(-4, 2, 8, 4);
-    ctx.beginPath();
-    ctx.arc(0, -9, 2.6, 0, Math.PI * 2);
-    ctx.fillStyle = '#8ac4e3';
-    ctx.shadowColor = '#8ac4e3';
-    ctx.shadowBlur = 5;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.restore();
     ctx.restore();
   }
 
@@ -2509,16 +2367,19 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'THE LAST PIPE SEALS &mdash; warping to Level 18&hellip;';
+      messageEl.innerHTML = 'THE GREAT WHEEL TURNS &mdash; you made it out. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
     } else {
       messageEl.style.display = 'none';
     }
   }
 
   function updateHud() {
-    const weldedCount = pipesWelded.filter(Boolean).length;
-    hudPipesEl.textContent = `Pipes: ${weldedCount} / ${PIPES_NEEDED}`;
-    hudPipesEl.classList.toggle('done', weldedCount >= PIPES_NEEDED);
+    if (wheelSolved) {
+      hudWheelEl.textContent = 'Wheel: turned';
+    } else {
+      hudWheelEl.textContent = `Wheel: ${(wheelHeldMs / 1000).toFixed(1)}s / ${(WHEEL_HOLD_MS / 1000).toFixed(0)}s`;
+    }
+    hudWheelEl.classList.toggle('done', wheelSolved);
     hudDoorEl.textContent = `Door: ${doorUnlocked ? 'unlocked' : 'locked'}`;
     hudDoorEl.classList.toggle('done', doorUnlocked);
 
@@ -2528,7 +2389,7 @@
         bestMs = elapsedMs;
         localStorage.setItem(BEST_TIME_KEY, String(bestMs));
       }
-      if (window.GoofyStory) window.GoofyStory.completeLevel(17);
+      if (window.GoofyStory) window.GoofyStory.completeLevel(18);
     }
 
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
@@ -2547,8 +2408,7 @@
       updateInputMovement(now, dt);
       updateTriggers();
       updateCrates(now);
-      updateWeldingGunPickup(now);
-      updateWelding(now, dt);
+      updateWheel(now, dt);
       updateSmokeBombs(now);
       updateDecoy(now, dt);
       updateMonster(now, dt);

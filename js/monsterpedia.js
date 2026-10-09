@@ -23,6 +23,7 @@
   const frozenMutationCtx = ctxFor('monster-canvas-frozenmutation');
   const eelCtx = ctxFor('monster-canvas-eel');
   const currentEelCtx = ctxFor('monster-canvas-currenteel');
+  const greatEelCtx = ctxFor('monster-canvas-greateel');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -1707,6 +1708,119 @@
     g.restore();
   }
 
+  // The giant eel is draped in trailing seaweed -- 1-2 short strands per
+  // segment, anchored at a fixed point on the body (hashed from a seed,
+  // same stable-feature convention as drawEelBumps) and swaying with
+  // `t`, same technique game18.js's own drawEelWeed uses.
+  function drawEelWeed(g, r, seed, t) {
+    const h = Math.imul(Math.floor(seed * 1000), 2654435761) >>> 0;
+    const strands = 1 + (h % 2);
+    for (let i = 0; i < strands; i++) {
+      const baseAngle = ((h >> (i * 5)) % 360) * Math.PI / 180;
+      const baseX = Math.cos(baseAngle) * r * 0.8;
+      const baseY = Math.sin(baseAngle) * r * 0.8;
+      const len = r * (0.8 + ((h >> (i * 3 + 2)) % 10) / 15);
+      const phase = ((h % 100) / 100) * Math.PI * 2 + i * 1.3 + seed;
+      const sway = Math.sin(t * 0.0025 + phase) * 4;
+      const tipX = baseX + Math.cos(baseAngle) * len + sway;
+      const tipY = baseY + Math.sin(baseAngle) * len;
+      g.strokeStyle = i % 2 === 0 ? '#2f6b3a' : '#3a7d45';
+      g.lineWidth = 1.8;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(baseX, baseY);
+      g.quadraticCurveTo((baseX + tipX) / 2 + sway * 0.4, (baseY + tipY) / 2, tipX, tipY);
+      g.stroke();
+    }
+  }
+
+  // The Level 18 creature: the biggest of the three eels, deep green and
+  // draped in trailing seaweed rather than bare-skinned like its cousins.
+  function drawGreatEel(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const segCount = 9, spacing = 14, baseRadius = 20;
+
+    g.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let i = segCount - 1; i >= 0; i--) {
+      const along = i * spacing;
+      const wob = Math.sin(t * 0.0022 + i * 0.6) * 7;
+      const r = Math.max(3, baseRadius * (1 - i * 0.065));
+      g.beginPath();
+      g.ellipse(-56 + along, wob + r * 0.5, Math.max(2.5, r * 0.85), Math.max(2, r * 0.35), 0, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    for (let i = segCount - 1; i >= 0; i--) {
+      const along = i * spacing;
+      const wob = Math.sin(t * 0.0022 + i * 0.6) * 7;
+      const x = -56 + along;
+      const y = wob;
+      const r = Math.max(3, baseRadius * (1 - i * 0.065));
+      const base = i % 2 === 0 ? '#3f8f52' : '#4aa05e';
+      g.save();
+      g.translate(x, y);
+
+      if (i % 2 === 0 && i < segCount - 1) {
+        drawFin(g, 0, 0, 0, -r * 1.7, r * 0.5, 'rgba(70,140,85,0.55)');
+      }
+
+      const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
+      grad.addColorStop(0, shade(base, 0.22));
+      grad.addColorStop(0.55, base);
+      grad.addColorStop(1, shade(base, -0.3));
+      g.beginPath();
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.fillStyle = grad;
+      g.shadowColor = '#15401f';
+      g.shadowBlur = 5;
+      g.fill();
+      g.shadowBlur = 0;
+
+      drawEelBumps(g, r, i * 13 + 5);
+      if (i % 3 === 0) drawEelWeed(g, r, i * 13 + 5, t);
+
+      g.beginPath();
+      g.ellipse(0, r * 0.35, r * 0.75, r * 0.3, 0, 0, Math.PI);
+      g.fillStyle = 'rgba(215,235,200,0.35)';
+      g.fill();
+      g.restore();
+    }
+
+    g.save();
+    const headY = Math.sin(t * 0.0022) * 7;
+    g.translate(-56 + segCount * spacing, headY);
+    [-1, 1].forEach((side) => {
+      drawFin(g, 0, 0, side * baseRadius * 1.3, baseRadius * 0.9, baseRadius * 0.3, 'rgba(70,140,85,0.6)');
+    });
+    const points = 12;
+    const headPath = [];
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const r = baseRadius + Math.sin(t * 0.008 + i * 1.7) * 2;
+      headPath.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    g.beginPath();
+    headPath.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+    g.closePath();
+    const headGrad = g.createRadialGradient(-baseRadius * 0.3, -baseRadius * 0.35, 1, 0, 0, baseRadius * 1.05);
+    headGrad.addColorStop(0, shade('#4aa05e', 0.22));
+    headGrad.addColorStop(0.55, '#4aa05e');
+    headGrad.addColorStop(1, shade('#4aa05e', -0.3));
+    g.fillStyle = headGrad;
+    g.shadowColor = '#15401f';
+    g.shadowBlur = 12;
+    g.fill();
+    g.shadowBlur = 0;
+    drawEelBumps(g, baseRadius, 5);
+    drawEelWeed(g, baseRadius, 5, t);
+    const angle = t * 0.0006;
+    drawMonsterTeeth(g, baseRadius, { x: Math.cos(angle), y: Math.sin(angle) * 0.4 });
+    g.restore();
+    g.restore();
+  }
+
   function drawPortraitOrLock(ctx, drawFn, t, phase2) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
@@ -1758,6 +1872,7 @@
       drawPortraitOrLock(lastKnightCtx, drawLastKnight, t, phase2Shown.has(lastKnightCtx));
       drawPortraitOrLock(eelCtx, drawEel, t);
       drawPortraitOrLock(currentEelCtx, drawCurrentEel, t);
+      drawPortraitOrLock(greatEelCtx, drawGreatEel, t);
     }
     requestAnimationFrame(loop);
   }

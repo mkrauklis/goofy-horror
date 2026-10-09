@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 18</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 18 &mdash; The Great Wheel</h1>
+  <p class="objective">Clear blue water this time, coral growing everywhere. Find the giant pipe room at the center and have both players hold down the two pressure plates flanking the wheel for <strong>10 seconds straight</strong> to turn it and unlock the exit. A giant seaweed-covered eel roams at a full <strong>1.0x</strong> your speed with short vision &mdash; but spot it and it triples to <strong>3.0x</strong>.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-wheel">Wheel: 0.0s / 10s</span>
+      <span id="hud-door">Door: locked</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    A completely different shape from the last two flooded levels &mdash;
+    no grid of identical rooms this time. One giant hub room sits at the
+    center with a corridor spoking out to each of four satellite rooms,
+    and the water itself has finally cleared to a real blue, with coral
+    growing wherever the current isn't dragging you anymore &mdash; this
+    water's still.
+  </p>
+  <p class="level-description">
+    The giant pipe room at the hub is lined wall-to-wall with rusted
+    pipework and holds a single giant wheel at its center, flanked by two
+    pressure plates spaced too far apart for one person to cover both.
+    Both of you have to stand on your own plate and hold it down for a
+    full <strong>10 seconds</strong> together &mdash; step off even for a
+    moment and the hold starts draining back down. Turning the wheel
+    unlocks the exit door, tucked past the satellite room to the east.
+  </p>
+  <p class="level-description">
+    The thing guarding the hub is the biggest of the three eels down
+    here, draped head to tail in trailing seaweed, green from nose to
+    tail. It roams at a full <strong>1.0x</strong> your own speed, but its
+    vision is short &mdash; it has to be genuinely close to notice you.
+    Once it does, it triples to <strong>3.0x</strong>.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level18/level.js"></script>
+<script src="js/game18.js"></script>
+</body>
+</html>
