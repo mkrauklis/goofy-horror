@@ -55,8 +55,11 @@
   const SPEAR_MAX_LIVE = 3;
   const SPEAR_DAMAGE = 2.5;
   const SPEAR_MIN_PLAYER_DIST = 90;
-  const THROWN_SPEAR_SPEED = PLAYER_SPEED * 4.5;
-  const THROWN_SPEAR_HIT_RADIUS = BOSS_RADIUS * 0.85;
+
+  // The corner radar -- small enough to stay out of the way, big enough
+  // to show where the live spears actually are at this zoomed-way-out scale.
+  const MINIMAP_RADIUS = 46;
+  const MINIMAP_MARGIN = 14;
 
   // Attack 1: wall spin -- a 2s warning while the boss glides to the
   // arena wall, then 5s circling the perimeter at 4x player speed.
@@ -136,46 +139,15 @@
   let ambientGain = null;
   let ambientSubOsc = null;
   let ambientMidGain = null;
-  let safeMusicGain = null;
-  let safeGlitchGain = null;
-  let safeVoices = [];
-
-  function makeBitcrushCurve(steps) {
-    const curve = new Float32Array(1024);
-    for (let i = 0; i < 1024; i++) {
-      const x = (i / 1023) * 2 - 1;
-      curve[i] = Math.round(x * steps) / steps;
-    }
-    return curve;
-  }
-
-  function scheduleSafeMusicGlitch() {
-    const delay = 3000 + Math.random() * 4500;
-    setTimeout(() => {
-      if (!audioCtx || !safeGlitchGain) return;
-      const t = audioCtx.currentTime;
-      safeGlitchGain.gain.cancelScheduledValues(t);
-      safeGlitchGain.gain.setValueAtTime(1, t);
-      let tt = t;
-      const stutters = 1 + Math.floor(Math.random() * 2);
-      for (let i = 0; i < stutters; i++) {
-        tt += 0.05 + Math.random() * 0.04;
-        safeGlitchGain.gain.setValueAtTime(0.4, tt);
-        tt += 0.04 + Math.random() * 0.04;
-        safeGlitchGain.gain.setValueAtTime(1, tt);
-      }
-      if (Math.random() < 0.4) {
-        safeVoices.forEach((osc) => {
-          const base = osc.frequency.value;
-          osc.frequency.cancelScheduledValues(t);
-          osc.frequency.setValueAtTime(base, t);
-          osc.frequency.linearRampToValueAtTime(base * 0.975, t + 0.09);
-          osc.frequency.linearRampToValueAtTime(base, t + 0.22);
-        });
-      }
-      scheduleSafeMusicGlitch();
-    }, delay);
-  }
+  // The actual boss-battle track -- a pulsing bass/kick/lead pattern
+  // scheduled a beat at a time (see scheduleBossMusicStep) rather than a
+  // fixed loop, so phase 2 can just replay the same pattern faster and
+  // louder instead of needing a whole second track.
+  let bossMusicGain = null;
+  let bossMusicTimer = null;
+  let bossMusicStarted = false;
+  let bossMusicPhase2 = false;
+  let bossMusicStep = 0;
 
   function ensureAudio() {
     if (audioCtx) return;
@@ -233,62 +205,87 @@
     ambientMidGain = addDroneVoice(91, 'sawtooth', 0, 0.12, 5).gain; // dissonant edge, fades in with tension
     addDroneVoice(540, 'triangle', 0.04, 0.02, 30); // faint distant ringing
 
-    safeMusicGain = audioCtx.createGain();
-    safeMusicGain.gain.value = 0.0001;
-    safeMusicGain.connect(musicMasterGain);
-
-    const safeCrusher = audioCtx.createWaveShaper();
-    safeCrusher.curve = makeBitcrushCurve(14);
-    safeCrusher.oversample = '2x';
-
-    const safeFilter = audioCtx.createBiquadFilter();
-    safeFilter.type = 'lowpass';
-    safeFilter.frequency.value = 1600;
-    safeFilter.Q.value = 0.3;
-
-    const safeDelay = audioCtx.createDelay(1.0);
-    safeDelay.delayTime.value = 0.24;
-    const safeDelayFeedback = audioCtx.createGain();
-    safeDelayFeedback.gain.value = 0.25;
-    const safeDelayMix = audioCtx.createGain();
-    safeDelayMix.gain.value = 0.3;
-    safeDelay.connect(safeDelayFeedback);
-    safeDelayFeedback.connect(safeDelay);
-    safeDelay.connect(safeDelayMix);
-    safeDelayMix.connect(safeMusicGain);
-
-    safeGlitchGain = audioCtx.createGain();
-    safeGlitchGain.gain.value = 1;
-    safeGlitchGain.connect(safeCrusher);
-    safeCrusher.connect(safeFilter);
-    safeFilter.connect(safeMusicGain);
-    safeFilter.connect(safeDelay);
-
-    safeVoices = [];
-    [261.6, 329.6, 392.0, 523.2].map((f) => f * 0.8).forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      const voiceGain = audioCtx.createGain();
-      voiceGain.gain.value = 0.16;
-      const vibrato = audioCtx.createOscillator();
-      vibrato.frequency.value = 0.1 + i * 0.03;
-      const vibratoGain = audioCtx.createGain();
-      vibratoGain.gain.value = 1.5;
-      vibrato.connect(vibratoGain);
-      vibratoGain.connect(osc.frequency);
-      vibrato.start();
-      osc.connect(voiceGain);
-      voiceGain.connect(safeGlitchGain);
-      osc.start();
-      safeVoices.push(osc);
-    });
-    scheduleSafeMusicGlitch();
+    bossMusicGain = audioCtx.createGain();
+    bossMusicGain.gain.value = 0.55;
+    bossMusicGain.connect(musicMasterGain);
   }
 
-  function updateSafeMusic(inSafeZone) {
+  // A-minor-ish bass riff, a kick on every other step, and a sparse lead
+  // that only sounds on non-rest steps -- aquatic and a little eerie
+  // rather than triumphant, to match the boss. Phase 2 replays the exact
+  // same pattern at a faster tempo with a louder lead pitched up an
+  // octave, which reads as "the same fight, now hungrier" instead of a
+  // jarring track switch.
+  const BOSS_MUSIC_BASS = [55, 55, 65.4, 55, 61.7, 55, 73.4, 65.4];
+  const BOSS_MUSIC_LEAD = [0, 220, 0, 261.6, 0, 220, 246.9, 0];
+
+  function scheduleBossMusicStep() {
+    if (!bossMusicStarted || !audioCtx || !bossMusicGain) return;
+    const bpm = bossMusicPhase2 ? 150 : 112;
+    const stepSec = 60 / bpm / 2;
+    const i = bossMusicStep % BOSS_MUSIC_BASS.length;
+    const t = audioCtx.currentTime;
+
+    const bassOsc = audioCtx.createOscillator();
+    const bassGain = audioCtx.createGain();
+    bassOsc.type = 'triangle';
+    bassOsc.frequency.value = BOSS_MUSIC_BASS[i];
+    bassGain.gain.setValueAtTime(0.0001, t);
+    bassGain.gain.exponentialRampToValueAtTime(bossMusicPhase2 ? 0.3 : 0.22, t + 0.015);
+    bassGain.gain.exponentialRampToValueAtTime(0.0001, t + stepSec * 0.9);
+    bassOsc.connect(bassGain);
+    bassGain.connect(bossMusicGain);
+    bassOsc.start(t);
+    bassOsc.stop(t + stepSec);
+
+    if (i % 2 === 0) {
+      const kick = audioCtx.createOscillator();
+      const kickGain = audioCtx.createGain();
+      kick.type = 'sine';
+      kick.frequency.setValueAtTime(110, t);
+      kick.frequency.exponentialRampToValueAtTime(38, t + 0.09);
+      kickGain.gain.setValueAtTime(0.3, t);
+      kickGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      kick.connect(kickGain);
+      kickGain.connect(bossMusicGain);
+      kick.start(t);
+      kick.stop(t + 0.14);
+    }
+
+    const leadFreq = BOSS_MUSIC_LEAD[i];
+    if (leadFreq) {
+      const leadOsc = audioCtx.createOscillator();
+      const leadGain = audioCtx.createGain();
+      leadOsc.type = 'square';
+      leadOsc.frequency.value = bossMusicPhase2 ? leadFreq * 2 : leadFreq;
+      leadGain.gain.setValueAtTime(0.0001, t);
+      leadGain.gain.exponentialRampToValueAtTime(bossMusicPhase2 ? 0.15 : 0.09, t + 0.02);
+      leadGain.gain.exponentialRampToValueAtTime(0.0001, t + stepSec * 0.75);
+      leadOsc.connect(leadGain);
+      leadGain.connect(bossMusicGain);
+      leadOsc.start(t);
+      leadOsc.stop(t + stepSec);
+    }
+
+    bossMusicStep++;
+    bossMusicTimer = setTimeout(scheduleBossMusicStep, stepSec * 1000);
+  }
+
+  function startBossMusic() {
+    if (bossMusicStarted) return;
+    ensureAudio();
     if (!audioCtx) return;
-    safeMusicGain.gain.setTargetAtTime(inSafeZone ? 0.09 : 0.0001, audioCtx.currentTime, 0.8);
+    bossMusicStarted = true;
+    bossMusicStep = 0;
+    scheduleBossMusicStep();
+  }
+
+  function stopBossMusic() {
+    bossMusicStarted = false;
+    if (bossMusicTimer) {
+      clearTimeout(bossMusicTimer);
+      bossMusicTimer = null;
+    }
   }
 
   function playTone(freq, duration, type, peakGain, delay) {
@@ -578,12 +575,10 @@
   }
 
   // Spears, the boss's one weak point -- spawn on a timer up to a cap,
-  // same convention Level 15's torches use. Grabbing one flings it at
-  // the boss rather than hitting on contact, so it becomes a thrown
-  // projectile the instant a player walks onto it.
+  // same convention Level 15's torches use. Walking onto one is the hit,
+  // same as Level 10's dynamite and Level 15's torches.
   let spears = []; // [{x, y, seed}]
   let nextSpearSpawnAt = 0;
-  let thrownSpears = []; // [{x, y, dirX, dirY}]
 
   // Shared projectile pool for both the barrage and wave-splash attacks
   // -- one physics/render pass regardless of which attack spawned them,
@@ -696,9 +691,11 @@
     boss.nextIdleUntil = 0;
     bossHealth = BOSS_MAX_HEALTH;
 
+    stopBossMusic();
+    bossMusicPhase2 = false;
+
     spears = [];
     nextSpearSpawnAt = 0;
-    thrownSpears = [];
     projectiles = [];
 
     floatingTexts = [];
@@ -858,8 +855,8 @@
     }
   }
 
-  // Walking onto a spear flings it at the boss -- not an instant hit on
-  // touch, a real thrown projectile that still has to travel and land.
+  // Walking onto a spear is the hit -- same "pickup is the damage action"
+  // convention Level 10's dynamite and Level 15's torches use.
   function updateSpears(now) {
     if (now >= nextSpearSpawnAt && spears.length < SPEAR_MAX_LIVE && !boss.defeated) {
       spawnSpear();
@@ -871,30 +868,11 @@
         const s = spears[i];
         if (Math.hypot(p.x - s.x, p.y - s.y) < 18) {
           spears.splice(i, 1);
-          const dx = boss.x - s.x, dy = boss.y - s.y;
-          const d = Math.hypot(dx, dy) || 1;
-          thrownSpears.push({ x: s.x, y: s.y, dirX: dx / d, dirY: dy / d });
-          playTone(520, 0.08, 'square', 0.16);
+          damageBoss(SPEAR_DAMAGE, s.x, s.y, now);
+          playSpearHit();
         }
       }
     });
-  }
-
-  function updateThrownSpears(now, dt) {
-    for (let i = thrownSpears.length - 1; i >= 0; i--) {
-      const s = thrownSpears[i];
-      s.x += s.dirX * THROWN_SPEAR_SPEED * dt;
-      s.y += s.dirY * THROWN_SPEAR_SPEED * dt;
-      if (Math.hypot(s.x - ARENA_CENTER_X, s.y - ARENA_CENTER_Y) > ARENA_RADIUS_PX) {
-        thrownSpears.splice(i, 1);
-        continue;
-      }
-      if (!boss.defeated && Math.hypot(s.x - boss.x, s.y - boss.y) < THROWN_SPEAR_HIT_RADIUS) {
-        thrownSpears.splice(i, 1);
-        damageBoss(SPEAR_DAMAGE, s.x, s.y, now);
-        playSpearHit();
-      }
-    }
   }
 
   function damageBoss(amount, x, y, now) {
@@ -903,6 +881,7 @@
     spawnFloatingText(x, y, `-${amount}`);
     if (!boss.phase2 && bossHealth > 0 && bossHealth <= PHASE2_HEALTH_THRESHOLD) {
       boss.phase2 = true;
+      bossMusicPhase2 = true;
       spawnFloatingText(boss.x, boss.y, 'PHASE 2');
       playPhaseShift();
       gameState = 'phase2intro';
@@ -914,6 +893,7 @@
       dryStartedAt = now;
       dryFinished = false;
       playBossDefeat();
+      stopBossMusic();
     }
   }
 
@@ -1169,6 +1149,7 @@
     p.invulnerableUntil = Infinity;
     if (gameState === 'playing' && players.every((pl) => pl.caught)) {
       gameState = 'wiped';
+      stopBossMusic();
     }
   }
 
@@ -1385,13 +1366,11 @@
     drawWhirlpool(g, now);
     drawBloodSplatters(g);
     drawSpears(g, now);
-    drawThrownSpears(g);
     drawWaterRipples(g, now);
     drawFloatingTexts(g);
   }
-  // A spear stuck upright in the sand, glinting faintly -- grabbed and
-  // flung the instant a player walks onto it (see drawThrownSpears for
-  // the in-flight version).
+  // A spear stuck upright in the sand, glinting faintly -- walking onto
+  // it is the hit.
   function drawSpears(g, now) {
     spears.forEach((s) => {
       const bob = Math.sin(now * 0.003 + s.seed) * 2;
@@ -1408,34 +1387,6 @@
       g.moveTo(0, -18);
       g.lineTo(-4, -8);
       g.lineTo(4, -8);
-      g.closePath();
-      g.fillStyle = '#c9d4d8';
-      g.fill();
-      g.strokeStyle = 'rgba(0,0,0,0.4)';
-      g.lineWidth = 1;
-      g.stroke();
-      g.restore();
-    });
-  }
-
-  // A spear in flight -- oriented along its own travel direction, same
-  // body/head shapes as the planted version just laid on its side.
-  function drawThrownSpears(g) {
-    thrownSpears.forEach((s) => {
-      g.save();
-      g.translate(s.x, s.y);
-      g.rotate(Math.atan2(s.dirY, s.dirX));
-      g.strokeStyle = '#8a7560';
-      g.lineWidth = 3;
-      g.lineCap = 'round';
-      g.beginPath();
-      g.moveTo(-12, 0);
-      g.lineTo(10, 0);
-      g.stroke();
-      g.beginPath();
-      g.moveTo(18, 0);
-      g.lineTo(8, -4);
-      g.lineTo(8, 4);
       g.closePath();
       g.fillStyle = '#c9d4d8';
       g.fill();
@@ -1953,6 +1904,65 @@
     ctx.restore();
   }
 
+  // A small radar in the corner -- the main view is zoomed out far enough
+  // that a planted spear is only a few screen pixels, easy to lose track
+  // of against the coral and seaweed. This draws the arena flattened to a
+  // fixed-size circle with bright, oversized dots for the spears (the
+  // whole point of it), plus the boss and both players for orientation.
+  function drawMinimap(vx, now) {
+    const cx = vx + VIEW_W - MINIMAP_RADIUS - MINIMAP_MARGIN;
+    const cy = MINIMAP_RADIUS + MINIMAP_MARGIN;
+    const scale = MINIMAP_RADIUS / ARENA_RADIUS_PX;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, MINIMAP_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(5,16,20,0.72)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(120,200,210,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, MINIMAP_RADIUS - 1, 0, Math.PI * 2);
+    ctx.clip();
+
+    spears.forEach((s) => {
+      const sx = cx + (s.x - ARENA_CENTER_X) * scale;
+      const sy = cy + (s.y - ARENA_CENTER_Y) * scale;
+      const pulse = 0.55 + 0.45 * Math.sin(now * 0.006 + s.seed);
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3.4, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,224,110,${pulse})`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(sx, sy, 5.2, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,224,110,${pulse * 0.4})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+
+    const bx2 = cx + (boss.x - ARENA_CENTER_X) * scale;
+    const by2 = cy + (boss.y - ARENA_CENTER_Y) * scale;
+    ctx.beginPath();
+    ctx.arc(bx2, by2, 4, 0, Math.PI * 2);
+    ctx.fillStyle = boss.phase2 ? '#e0603a' : '#2fb8a8';
+    ctx.fill();
+
+    players.forEach((pl, i) => {
+      const px2 = cx + (pl.x - ARENA_CENTER_X) * scale;
+      const py2 = cy + (pl.y - ARENA_CENTER_Y) * scale;
+      ctx.beginPath();
+      ctx.arc(px2, py2, 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = i === 0 ? '#f2a33c' : '#5fd45f';
+      ctx.fill();
+    });
+
+    ctx.restore();
+    ctx.restore();
+  }
+
   function renderViewport(index, now) {
     const p = players[index];
     const vx = index * VIEW_W;
@@ -1996,6 +2006,7 @@
       drawProximityWarning(vx, Math.hypot(p.x - boss.x, p.y - boss.y), now);
       drawBossHealthBar(vx, now);
       drawStaminaBar(vx, p);
+      drawMinimap(vx, now);
       if (p.caught) drawCutsceneOverlay(vx, p, now);
     }
 
@@ -2090,6 +2101,7 @@
       gameState = 'playing';
       boss.nextIdleUntil = now + BOSS_INTRO_GRACE_MS;
       nextSpearSpawnAt = now + 1500;
+      startBossMusic();
     }
   }
 
@@ -2150,7 +2162,6 @@
       elapsedMs = now - runStartTime;
       updateInputMovement(now, dt);
       updateSpears(now);
-      updateThrownSpears(now, dt);
       updateFish(now, dt);
       updateBoss(now, dt);
       updateAmbientTension();
