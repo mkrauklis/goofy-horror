@@ -2422,7 +2422,9 @@
       ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
     }
 
-    drawProximityWarning(vx, Math.hypot(p.x - monster.x, p.y - monster.y), now);
+    if (monster.state === 'alert') {
+      drawProximityWarning(vx, Math.hypot(p.x - monster.x, p.y - monster.y), now);
+    }
     drawRadar(vx, p, now);
     drawScanner(vx, p, now);
     drawShotgunHud(vx, p);
