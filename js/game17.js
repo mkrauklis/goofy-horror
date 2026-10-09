@@ -41,6 +41,11 @@
   const REPATH_MS = 500;
   const ALERT_GRACE_MS = 3000;
   const DETECT_RADIUS = 70; // short vision -- it has to be genuinely close to notice you
+  // Even outside its own short sight range, the Bog gives itself away
+  // once a player's flashlight actually lands full-strength on it --
+  // the same inner radius `punchLight` uses for the bright center of
+  // each player's own light, not the dim outer falloff ring.
+  const FLASHLIGHT_FULL_RADIUS = 90;
   const PIPES_NEEDED = 3;
   const WELD_DURATION_MS = 3000;
   const RADAR_DURATION_MS = 10000;
@@ -614,6 +619,64 @@
   let floatingTexts = [];
   let waterRipples = []; // { x, y, bornAt }
 
+  // Ambient wildlife, purely decorative -- small/medium/large fish
+  // wandering the open water, never interactive, never blocking anything.
+  const FISH_COUNT = 16;
+  let fish = []; // { x, y, angle, radius, speed, turnAt }
+
+  function spawnFish() {
+    fish = [];
+    const openTiles = [];
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (!isWallForPlayer(x, y)) openTiles.push({ x, y });
+      }
+    }
+    for (let i = 0; i < FISH_COUNT && openTiles.length; i++) {
+      const t = openTiles[Math.floor(Math.random() * openTiles.length)];
+      const c = tileCenter(t.x, t.y);
+      const roll = Math.random();
+      const radius = roll < 0.5 ? 4 : roll < 0.85 ? 7 : 11;
+      const speed = radius <= 4 ? 55 : radius <= 7 ? 38 : 24;
+      fish.push({ x: c.x, y: c.y, angle: Math.random() * Math.PI * 2, radius, speed, turnAt: 0 });
+    }
+  }
+
+  function updateFish(now, dt) {
+    fish.forEach((f) => {
+      if (now > f.turnAt) {
+        f.angle += (Math.random() - 0.5) * 2.2;
+        f.turnAt = now + 1200 + Math.random() * 2200;
+      }
+      const dx = Math.cos(f.angle) * f.speed * dt;
+      const dy = Math.sin(f.angle) * f.speed * dt;
+      if (canStandAt(f.x + dx, f.y)) f.x += dx; else f.angle = Math.PI - f.angle;
+      if (canStandAt(f.x, f.y + dy)) f.y += dy; else f.angle = -f.angle;
+    });
+  }
+
+  // Silhouette only -- a flat dark shape with no color or gradient
+  // detail, read as a shadow glimpsed in the water rather than a fully
+  // rendered creature.
+  function drawFish(g) {
+    fish.forEach((f) => {
+      g.save();
+      g.translate(f.x, f.y);
+      g.rotate(f.angle);
+      g.fillStyle = 'rgba(4,6,10,0.55)';
+      g.beginPath();
+      g.ellipse(0, 0, f.radius * 1.5, f.radius * 0.6, 0, 0, Math.PI * 2);
+      g.fill();
+      g.beginPath();
+      g.moveTo(-f.radius * 1.3, 0);
+      g.lineTo(-f.radius * 2.3, -f.radius * 0.75);
+      g.lineTo(-f.radius * 2.3, f.radius * 0.75);
+      g.closePath();
+      g.fill();
+      g.restore();
+    });
+  }
+
   function respawnPlayer(p) {
     const c = tileCenter(p.spawn.x, p.spawn.y);
     p.x = c.x; p.y = c.y; p.facing = { x: 0, y: 1 };
@@ -663,6 +726,7 @@
     nvgUntil = 0;
     floatingTexts = [];
     waterRipples = [];
+    spawnFish();
     resetExploration();
     runStartTime = performance.now();
     elapsedMs = 0;
@@ -1170,7 +1234,8 @@
     for (const p of players) {
       if (p.caught || isInSafeZone(p) || isInSmoke(p, now)) continue;
       const d = Math.hypot(p.x - monster.x, p.y - monster.y);
-      if (d <= DETECT_RADIUS && hasLineOfSight(monster.x, monster.y, p.x, p.y)) {
+      const spotted = d <= DETECT_RADIUS || d <= FLASHLIGHT_FULL_RADIUS;
+      if (spotted && hasLineOfSight(monster.x, monster.y, p.x, p.y)) {
         monster.state = 'alert';
         monster.alertUntil = now + ALERT_GRACE_MS;
         monster.alertTargetTile = worldToTile(p.x, p.y);
@@ -1997,20 +2062,22 @@
       const backAngle = headAngle + Math.PI + (0.5 * side);
       const tipX = baseX + Math.cos(backAngle) * monster.radius * 1.4;
       const tipY = baseY + Math.sin(backAngle) * monster.radius * 1.4;
-      drawFin(g, baseX, baseY, tipX, tipY, monster.radius * 0.35, 'rgba(120,180,220,0.6)');
+      drawFin(g, baseX, baseY, tipX, tipY, monster.radius * 0.35, 'rgba(70,140,85,0.6)');
     });
 
     trace();
     const headGrad = g.createRadialGradient(-monster.radius * 0.3, -monster.radius * 0.35, 1, 0, 0, monster.radius * 1.05);
-    headGrad.addColorStop(0, shade('#8ac4e3', 0.22));
-    headGrad.addColorStop(0.55, '#8ac4e3');
-    headGrad.addColorStop(1, shade('#8ac4e3', -0.3));
+    headGrad.addColorStop(0, shade('#4aa05e', 0.22));
+    headGrad.addColorStop(0.55, '#4aa05e');
+    headGrad.addColorStop(1, shade('#4aa05e', -0.3));
     g.fillStyle = headGrad;
-    g.shadowColor = '#2a5a75';
+    g.shadowColor = '#15401f';
     g.shadowBlur = 10;
     g.fill();
     g.shadowBlur = 0;
     drawEelBumps(g, monster.radius, monster.seed);
+    drawEelWeed(g, monster.radius, monster.seed, t);
+    drawEelWeed(g, monster.radius, monster.seed + 6.5, t);
 
     g.save();
     trace();
@@ -2339,6 +2406,7 @@
     ctx.save();
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY, now);
+    drawFish(ctx);
     drawSmokeBombs(ctx, now);
     drawDecoy(ctx, now);
     drawEel(ctx, now);
@@ -2598,6 +2666,7 @@
       updateWelding(now, dt);
       updateSmokeBombs(now);
       updateDecoy(now, dt);
+      updateFish(now, dt);
       updateMonster(now, dt);
       updateShotgunDefense(now);
       updateCatch(now);

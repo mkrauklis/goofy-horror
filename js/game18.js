@@ -582,6 +582,64 @@
   let floatingTexts = [];
   let waterRipples = []; // { x, y, bornAt }
 
+  // Ambient wildlife, purely decorative -- small/medium/large fish
+  // wandering the open water, never interactive, never blocking anything.
+  const FISH_COUNT = 16;
+  let fish = []; // { x, y, angle, radius, speed, turnAt }
+
+  function spawnFish() {
+    fish = [];
+    const openTiles = [];
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (!isWallForPlayer(x, y)) openTiles.push({ x, y });
+      }
+    }
+    for (let i = 0; i < FISH_COUNT && openTiles.length; i++) {
+      const t = openTiles[Math.floor(Math.random() * openTiles.length)];
+      const c = tileCenter(t.x, t.y);
+      const roll = Math.random();
+      const radius = roll < 0.5 ? 4 : roll < 0.85 ? 7 : 11;
+      const speed = radius <= 4 ? 55 : radius <= 7 ? 38 : 24;
+      fish.push({ x: c.x, y: c.y, angle: Math.random() * Math.PI * 2, radius, speed, turnAt: 0 });
+    }
+  }
+
+  function updateFish(now, dt) {
+    fish.forEach((f) => {
+      if (now > f.turnAt) {
+        f.angle += (Math.random() - 0.5) * 2.2;
+        f.turnAt = now + 1200 + Math.random() * 2200;
+      }
+      const dx = Math.cos(f.angle) * f.speed * dt;
+      const dy = Math.sin(f.angle) * f.speed * dt;
+      if (canStandAt(f.x + dx, f.y)) f.x += dx; else f.angle = Math.PI - f.angle;
+      if (canStandAt(f.x, f.y + dy)) f.y += dy; else f.angle = -f.angle;
+    });
+  }
+
+  // Silhouette only -- a flat dark shape with no color or gradient
+  // detail, read as a shadow glimpsed in the water rather than a fully
+  // rendered creature.
+  function drawFish(g) {
+    fish.forEach((f) => {
+      g.save();
+      g.translate(f.x, f.y);
+      g.rotate(f.angle);
+      g.fillStyle = 'rgba(4,6,10,0.55)';
+      g.beginPath();
+      g.ellipse(0, 0, f.radius * 1.5, f.radius * 0.6, 0, 0, Math.PI * 2);
+      g.fill();
+      g.beginPath();
+      g.moveTo(-f.radius * 1.3, 0);
+      g.lineTo(-f.radius * 2.3, -f.radius * 0.75);
+      g.lineTo(-f.radius * 2.3, f.radius * 0.75);
+      g.closePath();
+      g.fill();
+      g.restore();
+    });
+  }
+
   function respawnPlayer(p) {
     const c = tileCenter(p.spawn.x, p.spawn.y);
     p.x = c.x; p.y = c.y; p.facing = { x: 0, y: 1 };
@@ -629,6 +687,7 @@
     nvgUntil = 0;
     floatingTexts = [];
     waterRipples = [];
+    spawnFish();
     resetExploration();
     runStartTime = performance.now();
     elapsedMs = 0;
@@ -2153,6 +2212,7 @@
     ctx.save();
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY, now);
+    drawFish(ctx);
     drawSmokeBombs(ctx, now);
     drawDecoy(ctx, now);
     drawEel(ctx, now);
@@ -2382,6 +2442,7 @@
       updateWheel(now, dt);
       updateSmokeBombs(now);
       updateDecoy(now, dt);
+      updateFish(now, dt);
       updateMonster(now, dt);
       updateShotgunDefense(now);
       updateCatch(now);
