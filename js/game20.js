@@ -23,10 +23,11 @@
   const VIEW_W = 460;
   const VIEW_H = 340;
   // Boss fights read the whole arena at once rather than following a
-  // player closely -- same trick Level 10/15 use (a low ZOOM makes the
-  // camera's own visible half-extent exceed half the world, which
-  // collapses renderViewport's clamp() to a fixed center).
-  const ZOOM = 0.42;
+  // player closely -- the camera sits fixed on the arena's center and
+  // ZOOM is computed so the full circle (plus a little margin) fits
+  // inside the shorter screen dimension, same spirit as Level 10/15's
+  // own fixed low-zoom boss camera.
+  const ZOOM = (Math.min(VIEW_W, VIEW_H) - 24) / (ARENA_RADIUS_PX * 2);
 
   // Speeds are px/second and movement is scaled by the real elapsed time
   // each frame (see `dt` in loop()) rather than a fixed px/frame step.
@@ -54,12 +55,18 @@
   const SPEAR_MAX_LIVE = 3;
   const SPEAR_DAMAGE = 2.5;
   const SPEAR_MIN_PLAYER_DIST = 90;
+  const THROWN_SPEAR_SPEED = PLAYER_SPEED * 4.5;
+  const THROWN_SPEAR_HIT_RADIUS = BOSS_RADIUS * 0.85;
 
   // Attack 1: wall spin -- a 2s warning while the boss glides to the
   // arena wall, then 5s circling the perimeter at 4x player speed.
   const WALLSPIN_WARNING_MS = 2000;
   const WALLSPIN_DURATION_MS = 5000;
   const WALLSPIN_SPEED = PLAYER_SPEED * 4;
+  // A whirlpool opens up in the middle of the arena for the whole
+  // wall-spin attack (warning included), dragging both players outward
+  // toward the wall -- and the spinning boss -- at a flat 0.8x speed.
+  const WHIRLPOOL_SPEED = PLAYER_SPEED * 0.8;
 
   // Attack 2: vanish -- fades to near-invisible but for a couple of
   // faint ripples, glides to a random spot in the arena, then slams
@@ -116,11 +123,6 @@
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
   const messageEl = document.getElementById('game-message');
-
-  const maskCanvas = document.createElement('canvas');
-  maskCanvas.width = VIEW_W;
-  maskCanvas.height = VIEW_H;
-  const maskCtx = maskCanvas.getContext('2d');
 
   const hudBossEl = document.getElementById('hud-boss');
   const hudSpearsEl = document.getElementById('hud-spears');
@@ -455,9 +457,8 @@
       keys[e.key] = true;
       e.preventDefault();
     }
-    if (e.key === 'Enter' && gameState === 'complete') {
+    if (e.key === 'Enter' && gameState === 'wiped') {
       resetLevel();
-      gameState = 'playing';
     }
   });
   window.addEventListener('keyup', (e) => {
@@ -576,10 +577,13 @@
     return boss.phase2 ? PHASE2_SPEED_MULT : 1;
   }
 
-  // Spears, the boss's one weak point -- same "spawn on a timer up to a
-  // cap, pickup is the hit" convention as Level 15's torches.
+  // Spears, the boss's one weak point -- spawn on a timer up to a cap,
+  // same convention Level 15's torches use. Grabbing one flings it at
+  // the boss rather than hitting on contact, so it becomes a thrown
+  // projectile the instant a player walks onto it.
   let spears = []; // [{x, y, seed}]
   let nextSpearSpawnAt = 0;
+  let thrownSpears = []; // [{x, y, dirX, dirY}]
 
   // Shared projectile pool for both the barrage and wave-splash attacks
   // -- one physics/render pass regardless of which attack spawned them,
@@ -590,20 +594,27 @@
   let waterRipples = []; // { x, y, bornAt }
 
   // Ambient wildlife, purely decorative -- small/medium/large fish
-  // wandering the open water, never interactive, never blocking anything.
+  // wandering the water around the SIDES of the arena, not through the
+  // open fighting space in the middle: confined to an outer ring
+  // between FISH_BAND_INNER and the wall, same spirit as the wall-hug
+  // boundary other hazards respect.
   const FISH_COUNT = 16;
+  const FISH_BAND_INNER = ARENA_RADIUS_PX * 0.6;
   let fish = []; // { x, y, angle, radius, speed, turnAt }
 
   function spawnFish() {
     fish = [];
-    const openTiles = [];
+    const bandTiles = [];
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
-        if (!isWallForPlayer(x, y)) openTiles.push({ x, y });
+        if (isWallForPlayer(x, y)) continue;
+        const c = tileCenter(x, y);
+        const d = Math.hypot(c.x - ARENA_CENTER_X, c.y - ARENA_CENTER_Y);
+        if (d >= FISH_BAND_INNER && d <= ARENA_RADIUS_PX - TILE) bandTiles.push({ x, y });
       }
     }
-    for (let i = 0; i < FISH_COUNT && openTiles.length; i++) {
-      const t = openTiles[Math.floor(Math.random() * openTiles.length)];
+    for (let i = 0; i < FISH_COUNT && bandTiles.length; i++) {
+      const t = bandTiles[Math.floor(Math.random() * bandTiles.length)];
       const c = tileCenter(t.x, t.y);
       const roll = Math.random();
       const radius = roll < 0.5 ? 4 : roll < 0.85 ? 7 : 11;
@@ -618,10 +629,19 @@
         f.angle += (Math.random() - 0.5) * 2.2;
         f.turnAt = now + 1200 + Math.random() * 2200;
       }
-      const dx = Math.cos(f.angle) * f.speed * dt;
-      const dy = Math.sin(f.angle) * f.speed * dt;
-      if (canStandAt(f.x + dx, f.y)) f.x += dx; else f.angle = Math.PI - f.angle;
-      if (canStandAt(f.x, f.y + dy)) f.y += dy; else f.angle = -f.angle;
+      const step = f.speed * dt;
+      const nx = f.x + Math.cos(f.angle) * step;
+      const ny = f.y + Math.sin(f.angle) * step;
+      const distFromCenter = Math.hypot(nx - ARENA_CENTER_X, ny - ARENA_CENTER_Y);
+      if (canStandAt(nx, ny) && distFromCenter >= FISH_BAND_INNER) {
+        f.x = nx; f.y = ny;
+      } else {
+        // bounced off the outer wall or the inner edge of its band --
+        // turn back toward the band instead of into the open middle
+        const awayFromCenter = Math.atan2(f.y - ARENA_CENTER_Y, f.x - ARENA_CENTER_X);
+        f.angle = awayFromCenter + (Math.random() - 0.5) * 2;
+        f.turnAt = now + 300;
+      }
     });
   }
 
@@ -678,6 +698,7 @@
 
     spears = [];
     nextSpearSpawnAt = 0;
+    thrownSpears = [];
     projectiles = [];
 
     floatingTexts = [];
@@ -748,6 +769,14 @@
       p.facing = { x: nx, y: ny };
       const speed = PLAYER_SPEED * speedMultiplierFor(p);
       movePlayer(p, nx * speed * dt, ny * speed * dt);
+    }
+    // The whirlpool only spins up during the wall-spin attack, pushing
+    // outward toward the wall (and the spinning boss) regardless of
+    // input -- a real current, not just a movement penalty.
+    if (boss.phase === 'wallspin') {
+      const dx = p.x - ARENA_CENTER_X, dy = p.y - ARENA_CENTER_Y;
+      const d = Math.hypot(dx, dy) || 1;
+      movePlayer(p, (dx / d) * WHIRLPOOL_SPEED * dt, (dy / d) * WHIRLPOOL_SPEED * dt);
     }
   }
 
@@ -829,8 +858,8 @@
     }
   }
 
-  // Walking onto a spear is the hit -- same pickup-is-the-damage
-  // convention as every other boss weapon on this site.
+  // Walking onto a spear flings it at the boss -- not an instant hit on
+  // touch, a real thrown projectile that still has to travel and land.
   function updateSpears(now) {
     if (now >= nextSpearSpawnAt && spears.length < SPEAR_MAX_LIVE && !boss.defeated) {
       spawnSpear();
@@ -842,11 +871,30 @@
         const s = spears[i];
         if (Math.hypot(p.x - s.x, p.y - s.y) < 18) {
           spears.splice(i, 1);
-          damageBoss(SPEAR_DAMAGE, s.x, s.y, now);
-          playSpearHit();
+          const dx = boss.x - s.x, dy = boss.y - s.y;
+          const d = Math.hypot(dx, dy) || 1;
+          thrownSpears.push({ x: s.x, y: s.y, dirX: dx / d, dirY: dy / d });
+          playTone(520, 0.08, 'square', 0.16);
         }
       }
     });
+  }
+
+  function updateThrownSpears(now, dt) {
+    for (let i = thrownSpears.length - 1; i >= 0; i--) {
+      const s = thrownSpears[i];
+      s.x += s.dirX * THROWN_SPEAR_SPEED * dt;
+      s.y += s.dirY * THROWN_SPEAR_SPEED * dt;
+      if (Math.hypot(s.x - ARENA_CENTER_X, s.y - ARENA_CENTER_Y) > ARENA_RADIUS_PX) {
+        thrownSpears.splice(i, 1);
+        continue;
+      }
+      if (!boss.defeated && Math.hypot(s.x - boss.x, s.y - boss.y) < THROWN_SPEAR_HIT_RADIUS) {
+        thrownSpears.splice(i, 1);
+        damageBoss(SPEAR_DAMAGE, s.x, s.y, now);
+        playSpearHit();
+      }
+    }
   }
 
   function damageBoss(amount, x, y, now) {
@@ -1107,6 +1155,9 @@
     }
   }
 
+  // A caught player stays down -- no auto-respawn timer. Only when
+  // BOTH players are down at once does the fight actually end, and it
+  // ends in a full wipe/retry rather than a quiet respawn.
   function triggerCaught(p, now) {
     if (p.caught) return;
     catchFlash = 1;
@@ -1115,17 +1166,12 @@
     spawnBloodEffect(p.x, p.y);
     p.caught = true;
     p.caughtAt = now;
-    p.invulnerableUntil = now + CATCH_CUTSCENE_MS + 1200;
+    p.invulnerableUntil = Infinity;
+    if (gameState === 'playing' && players.every((pl) => pl.caught)) {
+      gameState = 'wiped';
+    }
   }
 
-  function updateCutscenes(now) {
-    players.forEach((p) => {
-      if (p.caught && now - p.caughtAt >= CATCH_CUTSCENE_MS) {
-        respawnPlayer(p);
-        p.caught = false;
-      }
-    });
-  }
 
   // ---- blood splatter / particles ----
   let bloodSplatters = [];
@@ -1222,6 +1268,34 @@
 
   // ---- rendering ----
 
+  // A spinning vortex at the arena's center, visible for the whole
+  // wall-spin attack (warning included) -- several arms of churned
+  // water rotating around the middle, matching the outward pull every
+  // player actually feels during this attack.
+  function drawWhirlpool(g, now) {
+    if (boss.phase !== 'wallspin') return;
+    g.save();
+    g.translate(ARENA_CENTER_X, ARENA_CENTER_Y);
+    const rings = 4;
+    for (let i = 0; i < rings; i++) {
+      const r = 30 + i * 22;
+      const spin = (now * 0.0018 + i * 0.7) * (i % 2 === 0 ? 1 : -1);
+      g.save();
+      g.rotate(spin);
+      g.beginPath();
+      for (let a = 0; a <= Math.PI * 1.6; a += 0.15) {
+        const rr = r * (0.7 + 0.3 * (a / (Math.PI * 1.6)));
+        const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+        if (a === 0) g.moveTo(x, y); else g.lineTo(x, y);
+      }
+      g.strokeStyle = `rgba(190,245,230,${0.3 - i * 0.05})`;
+      g.lineWidth = 3;
+      g.stroke();
+      g.restore();
+    }
+    g.restore();
+  }
+
   // A swaying clump of 3-4 seaweed strands -- a fixed base position per
   // tile (hashed, like the floor shading) with each strand's sway phase
   // offset so the clump doesn't move as one rigid unit.
@@ -1275,13 +1349,12 @@
     }
   }
 
-  function drawTiles(g, camX, camY, now) {
-    const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
-    const maxTX = Math.min(COLS - 1, Math.ceil((camX + VIEW_W / 2) / TILE) + 1);
-    const minTY = Math.max(0, Math.floor((camY - VIEW_H / 2) / TILE) - 1);
-    const maxTY = Math.min(ROWS - 1, Math.ceil((camY + VIEW_H / 2) / TILE) + 1);
-    for (let y = minTY; y <= maxTY; y++) {
-      for (let x = minTX; x <= maxTX; x++) {
+  // Zoomed all the way out to show the whole arena, so there's no
+  // camera-relative culling to do -- the full 42x42 grid is cheap
+  // enough to just draw every frame regardless of camX/camY/zoom.
+  function drawTiles(g, now) {
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
         const ch = LEVEL.grid[y][x];
         const px = x * TILE, py = y * TILE;
         g.fillStyle = ch === '#' ? '#1a2226' : floorShade(x, y);
@@ -1309,13 +1382,16 @@
       }
     }
 
+    drawWhirlpool(g, now);
     drawBloodSplatters(g);
     drawSpears(g, now);
+    drawThrownSpears(g);
     drawWaterRipples(g, now);
     drawFloatingTexts(g);
   }
-  // A spear stuck upright in the sand, glinting faintly -- walking onto
-  // it is the hit, so there's no separate "throw" animation to draw.
+  // A spear stuck upright in the sand, glinting faintly -- grabbed and
+  // flung the instant a player walks onto it (see drawThrownSpears for
+  // the in-flight version).
   function drawSpears(g, now) {
     spears.forEach((s) => {
       const bob = Math.sin(now * 0.003 + s.seed) * 2;
@@ -1342,15 +1418,47 @@
     });
   }
 
+  // A spear in flight -- oriented along its own travel direction, same
+  // body/head shapes as the planted version just laid on its side.
+  function drawThrownSpears(g) {
+    thrownSpears.forEach((s) => {
+      g.save();
+      g.translate(s.x, s.y);
+      g.rotate(Math.atan2(s.dirY, s.dirX));
+      g.strokeStyle = '#8a7560';
+      g.lineWidth = 3;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(-12, 0);
+      g.lineTo(10, 0);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(18, 0);
+      g.lineTo(8, -4);
+      g.lineTo(8, 4);
+      g.closePath();
+      g.fillStyle = '#c9d4d8';
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.4)';
+      g.lineWidth = 1;
+      g.stroke();
+      g.restore();
+    });
+  }
+
   function drawFloatingTexts(g) {
+    // Counter-scaled against the boss camera's own zoom so damage
+    // numbers stay a fixed, readable size on screen instead of
+    // shrinking down with everything else in the zoomed-out arena.
+    const invZoom = 1 / ZOOM;
     floatingTexts.forEach((f) => {
       const t = f.life / f.maxLife;
       g.save();
       g.globalAlpha = 1 - t;
       g.fillStyle = '#ffe27a';
-      g.font = 'bold 11px monospace';
+      g.font = `bold ${11 * invZoom}px monospace`;
       g.textAlign = 'center';
-      g.fillText(f.text, f.x, f.y - 18 - t * 20);
+      g.fillText(f.text, f.x, f.y - (18 + t * 20) * invZoom);
       g.restore();
     });
   }
@@ -1428,6 +1536,43 @@
       g.quadraticCurveTo((baseX + tipX) / 2 + sway * 0.4, (baseY + tipY) / 2, tipX, tipY);
       g.stroke();
     }
+  }
+
+  // Coral balls (barrage) and waves (wavesplash) -- both share the same
+  // projectile pool and physics, so one draw pass covers both. A wave
+  // reads as a pale ring of churned water; a coral ball as a solid,
+  // colored orb.
+  function drawProjectiles(g) {
+    projectiles.forEach((pr) => {
+      g.save();
+      g.translate(pr.x, pr.y);
+      if (pr.wave) {
+        g.rotate(Math.atan2(pr.dirY, pr.dirX));
+        g.beginPath();
+        g.ellipse(0, 0, 13, 7, 0, 0, Math.PI * 2);
+        g.strokeStyle = 'rgba(210,245,235,0.85)';
+        g.lineWidth = 2.5;
+        g.stroke();
+        g.beginPath();
+        g.ellipse(-3, 0, 7, 4, 0, 0, Math.PI * 2);
+        g.strokeStyle = 'rgba(210,245,235,0.5)';
+        g.lineWidth = 1.5;
+        g.stroke();
+      } else {
+        const grad = g.createRadialGradient(-3, -3, 1, 0, 0, 9);
+        grad.addColorStop(0, '#ffb48a');
+        grad.addColorStop(0.6, '#ff6f4a');
+        grad.addColorStop(1, '#b8341a');
+        g.beginPath();
+        g.arc(0, 0, 9, 0, Math.PI * 2);
+        g.fillStyle = grad;
+        g.shadowColor = '#ff6f4a';
+        g.shadowBlur = 8;
+        g.fill();
+        g.shadowBlur = 0;
+      }
+      g.restore();
+    });
   }
 
   function drawBoss(g, t) {
@@ -1738,40 +1883,6 @@
     });
   }
 
-  function punchLight(g, x, y, radius, intensity) {
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius)) return;
-    g.save();
-    g.globalCompositeOperation = 'destination-out';
-    const grad = g.createRadialGradient(x, y, 0, x, y, radius);
-    grad.addColorStop(0, `rgba(0,0,0,${intensity})`);
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = grad;
-    g.beginPath();
-    g.arc(x, y, radius, 0, Math.PI * 2);
-    g.fill();
-    g.restore();
-  }
-
-  function buildDarknessMask(camX, camY, now) {
-    const worldToScreen = (wx, wy) => ({ x: wx - camX + VIEW_W / 2, y: wy - camY + VIEW_H / 2 });
-
-    maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
-    maskCtx.globalCompositeOperation = 'source-over';
-    maskCtx.fillStyle = '#000000';
-    maskCtx.fillRect(0, 0, VIEW_W, VIEW_H);
-
-    players.forEach((pl) => {
-      const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 90, 1);
-      punchLight(maskCtx, s.x, s.y, 230, 0.85);
-    });
-
-    // A faint, dim glow around the boss itself so it's never fully lost
-    // in the dark -- fades out along with it during the vanish attack.
-    const bs = worldToScreen(boss.x, boss.y);
-    punchLight(maskCtx, bs.x, bs.y, boss.radius * 2.2, 0.4 * boss.alpha);
-  }
-
   function hexToRgbTriplet(hex) {
     const n = parseInt(hex.slice(1), 16);
     return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
@@ -1848,8 +1959,13 @@
     const intro = gameState === 'intro';
     const phase2Intro = gameState === 'phase2intro';
     const cutscene = intro || phase2Intro;
-    const camX = cutscene ? boss.x : clamp(p.x, VIEW_W / 2, WORLD_W - VIEW_W / 2);
-    const camY = cutscene ? boss.y : clamp(p.y, VIEW_H / 2, WORLD_H - VIEW_H / 2);
+    // Fully zoomed out, fixed on the arena's own center -- the whole
+    // circular room fits on screen at once, so there's no reason to
+    // follow either player around. The intro/phase-2 cutscenes punch in
+    // tighter on the boss itself for a dramatic close-up instead.
+    const zoom = cutscene ? ZOOM * BOSS_INTRO_ZOOM_MULT : ZOOM;
+    const camX = cutscene ? boss.x : ARENA_CENTER_X;
+    const camY = cutscene ? boss.y : ARENA_CENTER_Y;
     const shakeX = cutscene ? (Math.random() - 0.5) * 2 * BOSS_INTRO_SHAKE_MAG : 0;
     const shakeY = cutscene ? (Math.random() - 0.5) * 2 * BOSS_INTRO_SHAKE_MAG : 0;
 
@@ -1861,16 +1977,16 @@
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
 
     ctx.save();
-    ctx.translate(vx + VIEW_W / 2 - camX + shakeX, VIEW_H / 2 - camY + shakeY);
-    drawTiles(ctx, camX, camY, now);
+    ctx.translate(vx + VIEW_W / 2 + shakeX, VIEW_H / 2 + shakeY);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-camX, -camY);
+    drawTiles(ctx, now);
     drawFish(ctx);
+    drawProjectiles(ctx);
     drawBoss(ctx, now);
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
-
-    buildDarknessMask(camX, camY, now);
-    ctx.drawImage(maskCanvas, vx, 0);
 
     if (intro) {
       drawBossIntroOverlay(vx, now);
@@ -1960,7 +2076,12 @@
   }
 
   function updateOverlay() {
-    messageEl.style.display = 'none';
+    if (gameState === 'wiped') {
+      messageEl.style.display = 'flex';
+      messageEl.innerHTML = 'BOTH OF YOU ARE DOWN &mdash; press Enter to try again.';
+    } else {
+      messageEl.style.display = 'none';
+    }
   }
 
   function updateIntroCutscene(now) {
@@ -2029,9 +2150,9 @@
       elapsedMs = now - runStartTime;
       updateInputMovement(now, dt);
       updateSpears(now);
+      updateThrownSpears(now, dt);
       updateFish(now, dt);
       updateBoss(now, dt);
-      updateCutscenes(now);
       updateAmbientTension();
       updateWaterRipples(now);
     }
