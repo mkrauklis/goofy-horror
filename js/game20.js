@@ -1,7 +1,7 @@
 (function () {
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
-  if (window.GoofyStory && !window.GoofyStory.isUnlocked(19)) {
+  if (window.GoofyStory && !window.GoofyStory.isUnlocked(20)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
@@ -10,48 +10,90 @@
     return;
   }
 
-  const LEVEL = window.LEVEL19;
+  const LEVEL = window.LEVEL20;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
   const WORLD_W = COLS * TILE;
   const WORLD_H = ROWS * TILE;
+  const ARENA_CENTER_X = LEVEL.arenaCenter.x * TILE + TILE / 2;
+  const ARENA_CENTER_Y = LEVEL.arenaCenter.y * TILE + TILE / 2;
+  const ARENA_RADIUS_PX = LEVEL.arenaRadiusTiles * TILE;
 
   const VIEW_W = 460;
   const VIEW_H = 340;
+  // Boss fights read the whole arena at once rather than following a
+  // player closely -- same trick Level 10/15 use (a low ZOOM makes the
+  // camera's own visible half-extent exceed half the world, which
+  // collapses renderViewport's clamp() to a fixed center).
+  const ZOOM = 0.42;
 
   // Speeds are px/second and movement is scaled by the real elapsed time
   // each frame (see `dt` in loop()) rather than a fixed px/frame step.
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  // 10 tiny eels, not one patient stalker -- no patrol/detection stealth
-  // at all, just a flat, constant speed straight toward whichever living
-  // player (not hidden in the safe zone or smoke) is nearest. The swarm
-  // itself is the threat, not a single creature's AI.
-  const EEL_COUNT = 10;
-  const EEL_SPEED = PLAYER_SPEED * 1.2;
-  const CATCH_RADIUS = 16;
-  const REPATH_MS = 500;
-  const DRAIN_DURATION_MS = 2500;
-  const RADAR_DURATION_MS = 10000;
-  const ENERGY_DURATION_MS = 10000;
-  const SCANNER_DURATION_MS = 10000;
-  const FREEZE_DURATION_MS = 10000;
-  const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
-  const SUPER_RADAR_DURATION_MS = 10000;
-  const SMOKE_FUSE_MS = 3000;
-  const SMOKE_DURATION_MS = 10000;
-  const SMOKE_RADIUS = 70;
-  const NVG_DURATION_MS = 10000;
-  const NVG_RANGE_MULT = 2;
-  // No meat lure or decoy here -- the swarm has no single-target detection
-  // state for either to hook into (every eel just always beelines for the
-  // nearest player), so those two item types are dropped for this level.
-  const CRATE_ITEMS = ['radar', 'co2', 'scanner', 'super-radar', 'smoke', 'nightvision', 'shotgun-ammo', 'energy'];
-  const SHOTGUN_STUN_MS = 5000;
-  const SHOTGUN_AMMO_MAX = 3;
-  const SHOTGUN_RANGE = 70;
+
+  // ---- the boss ----
+  const BOSS_NAME = 'THE CISTERN';
+  const BOSS_MAX_HEALTH = 50;
+  const PHASE2_HEALTH_THRESHOLD = 25;
+  const PHASE2_SPEED_MULT = 1.1; // "attacks are 1.1x faster" in phase 2
+  const BOSS_RADIUS = 34;
+  const BOSS_SEGMENT_COUNT = 16;
+  const BOSS_SEGMENT_SPACING = 20;
+  const BOSS_IDLE_SPEED = PLAYER_SPEED * 0.55;
+  const BOSS_IDLE_MIN_MS = 700;
+  const BOSS_IDLE_MAX_MS = 1400;
+
+  // Spears: a fresh one spawns every 10s, never more than 3 live at
+  // once, and walking onto one is the hit -- same "pickup is the damage
+  // action" convention every other boss weapon on this site uses (Level
+  // 10's dynamite, Level 15's torches), no separate aim/throw step.
+  const SPEAR_SPAWN_INTERVAL_MS = 10000;
+  const SPEAR_MAX_LIVE = 3;
+  const SPEAR_DAMAGE = 2.5;
+  const SPEAR_MIN_PLAYER_DIST = 90;
+
+  // Attack 1: wall spin -- a 2s warning while the boss glides to the
+  // arena wall, then 5s circling the perimeter at 4x player speed.
+  const WALLSPIN_WARNING_MS = 2000;
+  const WALLSPIN_DURATION_MS = 5000;
+  const WALLSPIN_SPEED = PLAYER_SPEED * 4;
+
+  // Attack 2: vanish -- fades to near-invisible but for a couple of
+  // faint ripples, glides to a random spot in the arena, then slams
+  // back into view.
+  const VANISH_FADE_MS = 600;
+  const VANISH_TRAVEL_MS = 1600;
+  const VANISH_LAND_WARNING_MS = 350;
+  const VANISH_MIN_ALPHA = 0.06;
+  const VANISH_SLAM_RADIUS = BOSS_RADIUS * 1.9;
+  const VANISH_RIPPLE_INTERVAL_MS = 450;
+
+  // Attack 3: barrage -- coral balls fired at each player in turn.
+  const BARRAGE_DURATION_MS = 5000;
+  const BARRAGE_FIRE_INTERVAL_MS = 550;
+  const BARRAGE_PROJECTILE_SPEED = PLAYER_SPEED * 2.2;
+
+  // Phase-2-only attack: wave splash -- a burst of waves in random
+  // directions every 2.5s, for 10s straight.
+  const WAVESPLASH_DURATION_MS = 10000;
+  const WAVESPLASH_INTERVAL_MS = 2500;
+  const WAVESPLASH_COUNT = 8;
+  const WAVESPLASH_SPEED = PLAYER_SPEED * 2.2;
+
+  const PROJECTILE_HIT_RADIUS = 20;
+
+  // ---- boss intro / phase-2 cutscenes ----
+  const BOSS_INTRO_CUTSCENE_MS = 3000;
+  const BOSS_INTRO_GRACE_MS = 3000;
+  const BOSS_INTRO_ZOOM_MULT = 1.7;
+  const BOSS_INTRO_SHAKE_MAG = 7;
+  const PHASE2_CUTSCENE_MS = 3000;
+  const PHASE2_NAME_COLOR = '#d9a24a';
+  const PHASE2_SUBTITLE = 'DEHYDRATED';
+  const DRY_CUTSCENE_MS = 4000;
 
   // ---- sprint / stamina ----
   const DOUBLE_TAP_MS = 300;
@@ -63,15 +105,10 @@
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking
   const WALK_CYCLE_SPEED = 9; // radians/second the walk-cycle phase advances at 1x speed
-  // A tiny eel's body -- a third the radius of the standard Flood Eel
-  // (15px), scaled down the same way everywhere else on this site scales
-  // a body: fewer, closer-together segments too, not just a smaller head.
-  const EEL_SEGMENT_COUNT = 8;
-  const EEL_SEGMENT_SPACING = 10;
-  const EEL_RADIUS = 5;
 
   // Ripples spawn at a moving player's feet and expand outward, fading as
-  // they go -- purely cosmetic, reused for the eel's own wake too.
+  // they go -- purely cosmetic, reused for the boss's own wake and its
+  // vanish-attack tell too.
   const RIPPLE_INTERVAL_MS = 260;
   const RIPPLE_LIFE_MS = 900;
   const RIPPLE_MAX_RADIUS = 20;
@@ -85,16 +122,8 @@
   maskCanvas.height = VIEW_H;
   const maskCtx = maskCanvas.getContext('2d');
 
-  const exploredCanvas = document.createElement('canvas');
-  exploredCanvas.width = COLS;
-  exploredCanvas.height = ROWS;
-  const exploredCtx = exploredCanvas.getContext('2d');
-  let explored = new Uint8Array(COLS * ROWS);
-  const EXPLORE_RADIUS = 7;
-  const MINIMAP_W = 90;
-
-  const hudDrainsEl = document.getElementById('hud-drains');
-  const hudDoorEl = document.getElementById('hud-door');
+  const hudBossEl = document.getElementById('hud-boss');
+  const hudSpearsEl = document.getElementById('hud-spears');
   const hudTimerEl = document.getElementById('hud-timer');
   const hudBestEl = document.getElementById('hud-best');
 
@@ -280,35 +309,58 @@
     playTone(freq, 0.25, 'square', 0.18);
   }
 
-  function playDoorUnlockChime() {
-    playTone(440, 0.2, 'triangle', 0.22, 0);
-    playTone(660, 0.2, 'triangle', 0.22, 0.12);
-    playTone(880, 0.3, 'triangle', 0.22, 0.24);
-  }
-
-  // A short buzzy welding-torch crackle (a harsh sawtooth flickering
-  // between frequencies like an unsteady arc) finishing in a clean,
-  // satisfied chime -- the sound of sealing a pipe shut, not a wet
-  // valve-wheel clunk.
-  function playWeldComplete() {
+  // A wet thunk-and-crack -- the sound of a spear actually landing in
+  // the boss, not just a generic chime.
+  function playSpearHit() {
     if (!audioCtx) return;
     const start = audioCtx.currentTime;
-    const buzz = audioCtx.createOscillator();
-    const buzzGain = audioCtx.createGain();
-    buzz.type = 'sawtooth';
-    buzzGain.gain.setValueAtTime(0.0001, start);
-    buzzGain.gain.exponentialRampToValueAtTime(0.22, start + 0.03);
-    buzzGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.3);
-    buzz.connect(buzzGain);
-    buzzGain.connect(audioCtx.destination);
-    for (let i = 0; i < 6; i++) {
-      buzz.frequency.setValueAtTime(180 + Math.random() * 220, start + i * 0.045);
-    }
-    buzz.start(start);
-    buzz.stop(start + 0.32);
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(260, start);
+    osc.frequency.exponentialRampToValueAtTime(70, start + 0.2);
+    gain.gain.setValueAtTime(0.26, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.25);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.28);
+    playTone(180, 0.15, 'square', 0.2, 0.03);
+  }
 
-    playTone(880, 0.2, 'triangle', 0.2, 0.3);
-    playTone(1320, 0.25, 'triangle', 0.18, 0.38);
+  // A low, ominous drop into a darker tone -- the phase-2 shift.
+  function playPhaseShift() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, start);
+    osc.frequency.exponentialRampToValueAtTime(55, start + 1.1);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.3, start + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 1.2);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 1.25);
+  }
+
+  // A long dry crackle -- the boss's death, the water going out of it.
+  function playBossDefeat() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const crackle = audioCtx.createOscillator();
+    const crackleGain = audioCtx.createGain();
+    crackle.type = 'sawtooth';
+    crackle.frequency.setValueAtTime(140, start);
+    crackle.frequency.exponentialRampToValueAtTime(30, start + 2);
+    crackleGain.gain.setValueAtTime(0.3, start);
+    crackleGain.gain.exponentialRampToValueAtTime(0.0001, start + 2.2);
+    crackle.connect(crackleGain);
+    crackleGain.connect(audioCtx.destination);
+    crackle.start(start);
+    crackle.stop(start + 2.25);
   }
 
   function playCatchSting() {
@@ -343,30 +395,13 @@
     osc.stop(start + 0.25);
   }
 
-  function playShotgunBlast() {
-    if (!audioCtx) return;
-    const start = audioCtx.currentTime;
-    const crack = audioCtx.createOscillator();
-    const crackGain = audioCtx.createGain();
-    crack.type = 'sawtooth';
-    crack.frequency.setValueAtTime(1800, start);
-    crack.frequency.exponentialRampToValueAtTime(200, start + 0.08);
-    crackGain.gain.setValueAtTime(0.3, start);
-    crackGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.1);
-    crack.connect(crackGain);
-    crackGain.connect(audioCtx.destination);
-    crack.start(start);
-    crack.stop(start + 0.12);
-    playChompThud(0.02);
-  }
-
   function playWinJingle() {
     [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, 0.35, 'triangle', 0.2, i * 0.14));
   }
 
   function updateAmbientTension() {
     if (!audioCtx) return;
-    const minDist = Math.min(...players.flatMap((p) => monsters.map((m) => Math.hypot(p.x - m.x, p.y - m.y))));
+    const minDist = Math.min(...players.map((p) => Math.hypot(p.x - boss.x, p.y - boss.y)));
     const proximity = clamp(1 - minDist / 380, 0, 1);
     ambientGain.gain.setTargetAtTime(0.05 + proximity * 0.18, audioCtx.currentTime, 0.3);
     ambientSubOsc.frequency.setTargetAtTime(38.5 + proximity * 11, audioCtx.currentTime, 0.3);
@@ -450,11 +485,10 @@
     return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
   }
 
-  // A handful of near-identical deep blues, picked per-tile by hashing
+  // A handful of near-identical deep teals, picked per-tile by hashing
   // its coordinates, so the flooded floor reads as moving, uneven water
-  // instead of one flat color -- a clear blue, unlike the sickly greens
-  // of the other two flood levels.
-  const WATER_SHADES = ['#143c5c', '#184468', '#123354', '#1a4a70', '#0f3050', '#164060'];
+  // instead of one flat color -- teal to match the boss itself.
+  const WATER_SHADES = ['#0f4a46', '#115450', '#0c3e3a', '#135a54', '#0a3632', '#105048'];
   function floorShade(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % WATER_SHADES.length;
@@ -472,7 +506,7 @@
 
   // ---- game state ----
 
-  const BEST_TIME_KEY = 'goofy-horror-best-level19';
+  const BEST_TIME_KEY = 'goofy-horror-best-level20';
   let bestMs = (() => {
     const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
     return Number.isFinite(v) ? v : null;
@@ -487,17 +521,14 @@
     const s = totalSec % 60;
     return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
   }
-  let doorUnlocked = false;
-  let gameState = 'playing'; // 'playing' | 'complete'
+  // gameState: 'intro' | 'playing' | 'phase2intro' | 'drying' | 'wiped'
+  let gameState = 'intro';
+  let introStartedAt = 0;
+  let phase2IntroStartedAt = 0;
+  let dryStartedAt = 0;
+  let dryFinished = false;
   let catchFlash = 0;
-
-  // The two pressure plates and the giant wheel they turn, straight from
-  // 3 storm drains, auto-located from the level data -- same "computed
-  // list, plus per-item progress arrays" convention as every other
-  // hold-to-fill objective on this site.
-  const DRAIN_POSITIONS = LEVEL.drains;
-  let drainsOpen = [];
-  let drainProgress = [];
+  let bossHealth = BOSS_MAX_HEALTH;
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
@@ -506,7 +537,6 @@
       caught: false, caughtAt: 0,
       stamina: STAMINA_MAX, moveState: 'normal', exhaustedUntil: 0, sprintActive: false,
       walkPhase: 0,
-      shotgunAmmo: 0,
       nextRippleAt: 0,
     };
   }
@@ -516,34 +546,46 @@
     makePlayer(LEVEL.spawn2, '#3ddc84'),
   ];
 
-  // 10 tiny eels instead of one patient stalker. Each is its own
-  // self-contained creature (own trail/segments/path/frozen state) --
-  // no shared "the monster" singleton anywhere below.
-  function makeEel(spawn) {
-    return {
-      x: 0, y: 0,
-      spawn,
-      radius: EEL_RADIUS,
-      seed: Math.random() * 100,
-      path: [],
-      pathIndex: 0,
-      nextRepathAt: 0,
-      lookDir: { x: 1, y: 0 },
-      frozenUntil: 0,
-      trail: [],
-      segments: [],
-      nextRippleAt: 0,
-    };
-  }
-  const monsters = LEVEL.monsterSpawns.map(makeEel);
+  // The boss: a giant, Bog-styled eel (segmented trailing body, same
+  // technique as every eel on this site) -- teal, grown over with both
+  // seaweed AND coral, unlike the Bog's seaweed-only coat.
+  const boss = {
+    x: ARENA_CENTER_X, y: ARENA_CENTER_Y,
+    radius: BOSS_RADIUS,
+    seed: Math.random() * 100,
+    lookDir: { x: 0, y: -1 },
+    trail: [], segments: [],
+    nextRippleAt: 0,
+    alpha: 1,
+    phase: 'idle', // 'idle' | 'wallspin' | 'vanish' | 'barrage' | 'wavesplash'
+    phase2: false,
+    defeated: false,
+    lastAttack: null,
+    nextIdleUntil: 0,
+    // wallspin
+    wsSubPhase: 'warn', wsWarnUntil: 0, wsUntil: 0, wsAngle: 0, wsDir: 1,
+    // vanish
+    vSubPhase: 'fade', vPhaseUntil: 0, vStartX: 0, vStartY: 0, vTargetX: 0, vTargetY: 0, vNextRippleAt: 0,
+    // barrage
+    bNextFireAt: 0, bUntil: 0, bPlayerIndex: 0,
+    // wavesplash
+    wNextBurstAt: 0, wUntil: 0,
+  };
 
-  let crates = [];
-  let radarUntil = 0;
-  let energyUntil = 0;
-  let scannerUntil = 0;
-  let superRadarUntil = 0;
-  let smokeBombs = [];
-  let nvgUntil = 0;
+  function speedMult(now) {
+    return boss.phase2 ? PHASE2_SPEED_MULT : 1;
+  }
+
+  // Spears, the boss's one weak point -- same "spawn on a timer up to a
+  // cap, pickup is the hit" convention as Level 15's torches.
+  let spears = []; // [{x, y, seed}]
+  let nextSpearSpawnAt = 0;
+
+  // Shared projectile pool for both the barrage and wave-splash attacks
+  // -- one physics/render pass regardless of which attack spawned them,
+  // same convention Level 15's icicle shower uses.
+  let projectiles = []; // [{x, y, dirX, dirY, speed}]
+
   let floatingTexts = [];
   let waterRipples = []; // { x, y, bornAt }
 
@@ -610,11 +652,6 @@
     p.x = c.x; p.y = c.y; p.facing = { x: 0, y: 1 };
   }
 
-  function resetExploration() {
-    explored = new Uint8Array(COLS * ROWS);
-    exploredCtx.clearRect(0, 0, COLS, ROWS);
-  }
-
   function resetLevel() {
     players.forEach((p) => {
       respawnPlayer(p);
@@ -625,47 +662,38 @@
       p.moveState = 'normal';
       p.exhaustedUntil = 0;
       p.sprintActive = false;
-      p.shotgunAmmo = 0;
       p.nextRippleAt = 0;
     });
 
-    monsters.forEach((eel) => {
-      const m = tileCenter(eel.spawn.x, eel.spawn.y);
-      eel.x = m.x; eel.y = m.y;
-      eel.path = []; eel.pathIndex = 0; eel.nextRepathAt = 0;
-      eel.frozenUntil = 0;
-      eel.trail = []; eel.segments = []; eel.nextRippleAt = 0;
-    });
+    boss.x = ARENA_CENTER_X; boss.y = ARENA_CENTER_Y;
+    boss.lookDir = { x: 0, y: -1 };
+    boss.trail = []; boss.segments = []; boss.nextRippleAt = 0;
+    boss.alpha = 1;
+    boss.phase = 'idle';
+    boss.phase2 = false;
+    boss.defeated = false;
+    boss.lastAttack = null;
+    boss.nextIdleUntil = 0;
+    bossHealth = BOSS_MAX_HEALTH;
 
-    drainsOpen = DRAIN_POSITIONS.map(() => false);
-    drainProgress = DRAIN_POSITIONS.map(() => 0);
-    doorUnlocked = false;
+    spears = [];
+    nextSpearSpawnAt = 0;
+    projectiles = [];
 
-    crates = (LEVEL.crateSpawns || []).map((c) => ({
-      x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
-    }));
-    radarUntil = 0;
-    energyUntil = 0;
-    scannerUntil = 0;
-    superRadarUntil = 0;
-    smokeBombs = [];
-    nvgUntil = 0;
     floatingTexts = [];
     waterRipples = [];
     spawnFish();
-    resetExploration();
     runStartTime = performance.now();
     elapsedMs = 0;
     bestRecorded = false;
+    gameState = 'intro';
+    introStartedAt = performance.now();
   }
   resetLevel();
 
   // ---- player movement & collision ----
   function isWallForPlayer(tx, ty) {
-    const ch = tileChar(tx, ty);
-    if (ch === '#') return true;
-    if (ch === 'D') return !doorUnlocked;
-    return false;
+    return tileChar(tx, ty) === '#';
   }
 
   function canStandAt(x, y) {
@@ -686,12 +714,6 @@
   }
 
   function updateStamina(p, now, dt, isMoving) {
-    if (now < energyUntil) {
-      p.moveState = (p.sprintActive && isMoving) ? 'sprinting' : 'normal';
-      p.stamina = STAMINA_MAX;
-      if (!isMoving) p.sprintActive = false;
-      return;
-    }
     if (p.moveState === 'exhausted') {
       p.stamina = Math.min(STAMINA_MAX, p.stamina + EXHAUSTED_REGEN_RATE * dt);
       if (now >= p.exhaustedUntil) p.moveState = 'normal';
@@ -752,101 +774,18 @@
     updatePlayerMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), now, dt);
   }
 
-  function isInSafeZone(p) {
-    const t = worldToTile(p.x, p.y);
-    return tileChar(t.x, t.y) === 'S';
-  }
-
-  // The scanner points at the nearest drain still waiting to be opened
-  // -- once all 3 are open there's nothing left to point at.
-  function scannerTarget() {
-    if (drainsOpen.every(Boolean)) return null;
-    const p = players[0];
-    let best = null, bestD = Infinity;
-    DRAIN_POSITIONS.forEach((d, i) => {
-      if (drainsOpen[i]) return;
-      const center = tileCenter(d.x, d.y);
-      const dist = Math.hypot(p.x - center.x, p.y - center.y);
-      if (dist < bestD) { bestD = dist; best = center; }
-    });
-    return best;
-  }
-
-  function minimapColorFor(ch) {
-    if (ch === '#') return '#8f8f9a';
-    if (ch === 'D') return '#d9ac4a';
-    if (ch === 'S') return '#3ddc84';
-    if (ch === 'V') return '#ffb347';
-    return '#163a56';
-  }
-
-  function updateExploration() {
-    players.forEach((p) => {
-      const t = worldToTile(p.x, p.y);
-      for (let dy = -EXPLORE_RADIUS; dy <= EXPLORE_RADIUS; dy++) {
-        const ty = t.y + dy;
-        if (ty < 0 || ty >= ROWS) continue;
-        for (let dx = -EXPLORE_RADIUS; dx <= EXPLORE_RADIUS; dx++) {
-          const tx = t.x + dx;
-          if (tx < 0 || tx >= COLS) continue;
-          if (dx * dx + dy * dy > EXPLORE_RADIUS * EXPLORE_RADIUS) continue;
-          const idx = ty * COLS + tx;
-          if (explored[idx]) continue;
-          explored[idx] = 1;
-          exploredCtx.fillStyle = minimapColorFor(LEVEL.grid[ty][tx]);
-          exploredCtx.fillRect(tx, ty, 1, 1);
-        }
-      }
-    });
-  }
-
-  function drawMinimap(vx, now) {
-    const mh = Math.round(MINIMAP_W * ROWS / COLS);
-    const mx = vx + 8, my = 8;
-    ctx.save();
-    ctx.fillStyle = 'rgba(5,5,8,0.65)';
-    ctx.fillRect(mx - 3, my - 3, MINIMAP_W + 6, mh + 6);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(exploredCanvas, mx, my, MINIMAP_W, mh);
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(mx + 0.5, my + 0.5, MINIMAP_W - 1, mh - 1);
-    if (now < superRadarUntil) {
-      monsters.forEach((m) => {
-        const px = mx + (m.x / WORLD_W) * MINIMAP_W;
-        const py = my + (m.y / WORLD_H) * mh;
-        ctx.beginPath();
-        ctx.arc(px, py, 2, 0, Math.PI * 2);
-        ctx.fillStyle = '#ff4d6d';
-        ctx.shadowColor = '#ff4d6d';
-        ctx.shadowBlur = 3;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      });
-    }
-    players.forEach((pl) => {
-      const px = mx + (pl.x / WORLD_W) * MINIMAP_W;
-      const py = my + (pl.y / WORLD_H) * mh;
-      ctx.beginPath();
-      ctx.arc(px, py, 2.2, 0, Math.PI * 2);
-      ctx.fillStyle = pl.color;
-      ctx.fill();
-    });
-    ctx.restore();
-    return mh;
-  }
-
-  function drawStaminaBar(vx, p, minimapH) {
-    const barW = MINIMAP_W, barH = 7;
-    const bx = vx + 8, by = 8 + minimapH + 8;
+  // Stamina bar sits top-left of each viewport -- no minimap in a single
+  // circular room you can already see the whole of.
+  function drawStaminaBar(vx, p) {
+    const barW = 90, barH = 7;
+    const bx = vx + 8, by = 8;
     ctx.save();
     ctx.fillStyle = 'rgba(5,5,8,0.65)';
     ctx.fillRect(bx - 2, by - 2, barW + 4, barH + 4);
     ctx.fillStyle = '#202225';
     ctx.fillRect(bx, by, barW, barH);
     const frac = clamp(p.stamina / STAMINA_MAX, 0, 1);
-    const color = performance.now() < energyUntil ? '#ffe27a'
-      : p.moveState === 'exhausted' ? '#c9403a' : p.moveState === 'sprinting' ? '#ffd27a' : '#3ddc84';
+    const color = p.moveState === 'exhausted' ? '#c9403a' : p.moveState === 'sprinting' ? '#ffd27a' : '#3ddc84';
     ctx.fillStyle = color;
     ctx.fillRect(bx, by, barW * frac, barH);
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
@@ -866,267 +805,91 @@
     }
   }
 
-  function applyItemEffect(item, x, y, now, p) {
-    if (item === 'radar') {
-      radarUntil = now + RADAR_DURATION_MS;
-      spawnFloatingText(x, y, 'RADAR');
-      playItemChime(880);
-    } else if (item === 'co2') {
-      monsters.forEach((m) => { m.frozenUntil = now + FREEZE_DURATION_MS; });
-      spawnFloatingText(x, y, 'FROZEN');
-      playItemChime(1200);
-    } else if (item === 'scanner') {
-      scannerUntil = now + SCANNER_DURATION_MS;
-      spawnFloatingText(x, y, 'SCANNER');
-      playItemChime(660);
-    } else if (item === 'super-radar') {
-      superRadarUntil = now + SUPER_RADAR_DURATION_MS;
-      spawnFloatingText(x, y, 'SUPER-RADAR');
-      playItemChime(1400);
-    } else if (item === 'smoke') {
-      smokeBombs.push({ x, y, armAt: now + SMOKE_FUSE_MS, exploded: false, endsAt: 0 });
-      spawnFloatingText(x, y, 'SMOKE BOMB');
-      playItemChime(500);
-    } else if (item === 'nightvision') {
-      nvgUntil = now + NVG_DURATION_MS;
-      spawnFloatingText(x, y, 'NIGHT VISION');
-      playItemChime(1000);
-    } else if (item === 'shotgun-ammo') {
-      if (p.shotgunAmmo < SHOTGUN_AMMO_MAX) {
-        p.shotgunAmmo++;
-        spawnFloatingText(x, y, `SHOTGUN LOADED (${p.shotgunAmmo}/${SHOTGUN_AMMO_MAX})`);
-        playItemChime(760);
-      } else {
-        spawnFloatingText(x, y, 'AMMO FULL');
-      }
-    } else if (item === 'energy') {
-      energyUntil = now + ENERGY_DURATION_MS;
-      spawnFloatingText(x, y, 'ENERGY');
-      playItemChime(900);
-    }
-  }
-
-  function isInSmoke(p, now) {
-    return smokeBombs.some((b) => b.exploded && now < b.endsAt && Math.hypot(p.x - b.x, p.y - b.y) < SMOKE_RADIUS);
-  }
-
-  function updateSmokeBombs(now) {
-    smokeBombs.forEach((b) => {
-      if (b.exploded || now < b.armAt) return;
-      b.exploded = true;
-      b.endsAt = now + SMOKE_DURATION_MS;
-      playItemChime(180);
-    });
-    smokeBombs = smokeBombs.filter((b) => !b.exploded || now < b.endsAt);
-  }
-
-  function drawSmokeBombs(g, now) {
-    smokeBombs.forEach((b) => {
-      if (!b.exploded) {
-        const t = clamp(1 - (b.armAt - now) / SMOKE_FUSE_MS, 0, 1);
-        g.beginPath();
-        g.arc(b.x, b.y, 5 + t * 4, 0, Math.PI * 2);
-        g.fillStyle = 'rgba(200,200,200,0.6)';
-        g.fill();
-        return;
-      }
-      const life = clamp((b.endsAt - now) / SMOKE_DURATION_MS, 0, 1);
-      const elapsed = SMOKE_DURATION_MS - (b.endsAt - now);
-      const radius = SMOKE_RADIUS * Math.min(1, Math.max(0, elapsed) / 800);
-      g.beginPath();
-      g.arc(b.x, b.y, radius, 0, Math.PI * 2);
-      g.fillStyle = `rgba(210,210,220,${0.32 * life})`;
-      g.fill();
-      g.strokeStyle = `rgba(255,255,255,${0.25 * life})`;
-      g.lineWidth = 2;
-      g.stroke();
-    });
-  }
-
-  function updateCrates(now) {
-    players.forEach((p) => {
-      const t = worldToTile(p.x, p.y);
-      crates.forEach((c) => {
-        if (c.opened) return;
-        if (c.x === t.x && c.y === t.y) {
-          c.opened = true;
-          c.openedAt = now;
-          applyItemEffect(c.item, tileCenter(c.x, c.y).x, tileCenter(c.x, c.y).y, now, p);
-        }
-      });
-    });
-    crates.forEach((c) => {
-      if (c.opened && now - c.openedAt >= CRATE_RESPAWN_MS) {
-        c.opened = false;
-        c.item = CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)];
-      }
-    });
-  }
-
-  // Standing on a drain holds it open, filling its progress over
-  // DRAIN_DURATION_MS; stepping away drains it back down at twice that
-  // rate, same fill/drain convention as every other hold-to-fill
-  // objective on this site. No carried item needed -- either player can
-  // work any drain. Opening the third one unlocks the door.
-  function updateDrains(now, dt) {
-    DRAIN_POSITIONS.forEach((drain, i) => {
-      if (drainsOpen[i]) return;
-      const holding = players.some((p) => {
-        if (p.caught) return false;
-        const t = worldToTile(p.x, p.y);
-        return t.x === drain.x && t.y === drain.y;
-      });
-      if (holding) {
-        drainProgress[i] = Math.min(1, drainProgress[i] + dt / (DRAIN_DURATION_MS / 1000));
-        if (drainProgress[i] >= 1) {
-          drainsOpen[i] = true;
-          const c = tileCenter(drain.x, drain.y);
-          spawnFloatingText(c.x, c.y, 'DRAIN OPEN');
-          playWeldComplete();
-          if (drainsOpen.every(Boolean)) {
-            doorUnlocked = true;
-            playDoorUnlockChime();
-          }
-        }
-      } else {
-        drainProgress[i] = Math.max(0, drainProgress[i] - dt / (DRAIN_DURATION_MS / 1000 / 2));
-      }
-    });
-  }
-
-  function updateTriggers() {
-    players.forEach((p) => {
-      const t = worldToTile(p.x, p.y);
-      const ch = tileChar(t.x, t.y);
-      if (ch === 'X' && doorUnlocked && gameState === 'playing') {
-        gameState = 'complete';
-        playWinJingle();
-        if (window.GoofyStory) window.GoofyStory.completeLevel(19);
-        setTimeout(() => { window.location.href = 'level20.html'; }, 2000);
-      }
-    });
-  }
-
-  // ---- monster AI ----
-  function monsterCanOccupy(ch) {
-    if (ch === '#' || ch === 'S') return false;
-    if (ch === 'D') return doorUnlocked;
-    return true;
-  }
-
-  function buildMonsterGraph() {
-    const graph = new Map();
+  // ---- spears ----
+  // One floor tile's worth of candidates, scanned once -- same "scan the
+  // grid once up front" convention Level 15 uses for its torch spawns.
+  const OPEN_FLOOR_TILES = (() => {
+    const list = [];
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
-        if (!monsterCanOccupy(LEVEL.grid[y][x])) continue;
-        const list = [];
-        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) return;
-          if (monsterCanOccupy(LEVEL.grid[ny][nx])) list.push({ x: nx, y: ny });
-        });
-        graph.set(y * COLS + x, list);
+        if (!isWallForPlayer(x, y)) list.push({ x, y });
       }
     }
-    return graph;
+    return list;
+  })();
+
+  function spawnSpear() {
+    for (let tries = 0; tries < 30; tries++) {
+      const t = OPEN_FLOOR_TILES[Math.floor(Math.random() * OPEN_FLOOR_TILES.length)];
+      const c = tileCenter(t.x, t.y);
+      const tooClose = players.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < SPEAR_MIN_PLAYER_DIST);
+      if (tooClose) continue;
+      spears.push({ x: c.x, y: c.y, seed: Math.random() * 100 });
+      return;
+    }
   }
 
-  function bfsPath(graph, start, goal) {
-    const key = (t) => t.y * COLS + t.x;
-    const startKey = key(start), goalKey = key(goal);
-    if (!graph.has(startKey) || !graph.has(goalKey)) return null;
-    if (startKey === goalKey) return [start];
-    const visited = new Set([startKey]);
-    const prev = new Map();
-    const queue = [start];
-    let found = false;
-    while (queue.length) {
-      const cur = queue.shift();
-      if (key(cur) === goalKey) { found = true; break; }
-      const neighbors = graph.get(key(cur)) || [];
-      for (const n of neighbors) {
-        const k = key(n);
-        if (!visited.has(k)) {
-          visited.add(k);
-          prev.set(k, cur);
-          queue.push(n);
+  // Walking onto a spear is the hit -- same pickup-is-the-damage
+  // convention as every other boss weapon on this site.
+  function updateSpears(now) {
+    if (now >= nextSpearSpawnAt && spears.length < SPEAR_MAX_LIVE && !boss.defeated) {
+      spawnSpear();
+      nextSpearSpawnAt = now + SPEAR_SPAWN_INTERVAL_MS;
+    }
+    players.forEach((p) => {
+      if (p.caught) return;
+      for (let i = spears.length - 1; i >= 0; i--) {
+        const s = spears[i];
+        if (Math.hypot(p.x - s.x, p.y - s.y) < 18) {
+          spears.splice(i, 1);
+          damageBoss(SPEAR_DAMAGE, s.x, s.y, now);
+          playSpearHit();
         }
       }
-    }
-    if (!found) return null;
-    const path = [goal];
-    let curKey = goalKey;
-    while (curKey !== startKey) {
-      const p = prev.get(curKey);
-      path.push(p);
-      curKey = key(p);
-    }
-    path.reverse();
-    return path;
-  }
-
-  function hasLineOfSight(x0, y0, x1, y1) {
-    const dist = Math.hypot(x1 - x0, y1 - y0);
-    const steps = Math.ceil(dist / (TILE / 2));
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps;
-      const t2 = worldToTile(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
-      if (tileChar(t2.x, t2.y) === '#') return false;
-    }
-    return true;
-  }
-
-  // The nearest player this eel will chase -- caught, safe-zoned, or
-  // smoked-out players are invisible to it, same exclusion every other
-  // creature's detection uses, just without a distance/line-of-sight
-  // gate on top: a tiny eel has no stealth phase, it's always hunting.
-  function nearestTargetFor(eel, now) {
-    let best = null, bestD = Infinity;
-    players.forEach((p) => {
-      if (p.caught || isInSafeZone(p) || isInSmoke(p, now)) return;
-      const d = Math.hypot(p.x - eel.x, p.y - eel.y);
-      if (d < bestD) { bestD = d; best = p; }
     });
-    return best;
   }
 
-  function wallOffsetDir(tx, ty) {
-    let dx = 0, dy = 0;
-    if (tileChar(tx - 1, ty) === '#') dx += 1;
-    if (tileChar(tx + 1, ty) === '#') dx -= 1;
-    if (tileChar(tx, ty - 1) === '#') dy += 1;
-    if (tileChar(tx, ty + 1) === '#') dy -= 1;
-    const len = Math.hypot(dx, dy);
-    if (len === 0) return { x: 0, y: 0 };
-    return { x: dx / len, y: dy / len };
+  function damageBoss(amount, x, y, now) {
+    if (boss.defeated) return;
+    bossHealth = Math.max(0, bossHealth - amount);
+    spawnFloatingText(x, y, `-${amount}`);
+    if (!boss.phase2 && bossHealth > 0 && bossHealth <= PHASE2_HEALTH_THRESHOLD) {
+      boss.phase2 = true;
+      spawnFloatingText(boss.x, boss.y, 'PHASE 2');
+      playPhaseShift();
+      gameState = 'phase2intro';
+      phase2IntroStartedAt = now;
+    }
+    if (bossHealth <= 0 && !boss.defeated) {
+      boss.defeated = true;
+      gameState = 'drying';
+      dryStartedAt = now;
+      dryFinished = false;
+      playBossDefeat();
+    }
   }
 
-  function tileTargetWithOffset(t) {
-    const c = tileCenter(t.x, t.y);
-    const off = wallOffsetDir(t.x, t.y);
-    return { x: c.x + off.x * 10, y: c.y + off.y * 10 };
-  }
-
-  function updateEelSegments(m, now) {
+  // ---- boss body (same trailing-segment technique as every eel here) ----
+  function updateBossSegments(m, now) {
     m.trail.unshift({ x: m.x, y: m.y });
     if (m.trail.length > 600) m.trail.length = 600;
     const segPositions = [];
     let distAccum = 0;
-    let targetDist = EEL_SEGMENT_SPACING;
+    let targetDist = BOSS_SEGMENT_SPACING;
     let segIndex = 0;
-    for (let i = 1; i < m.trail.length && segIndex < EEL_SEGMENT_COUNT; i++) {
+    for (let i = 1; i < m.trail.length && segIndex < BOSS_SEGMENT_COUNT; i++) {
       const a = m.trail[i - 1], b = m.trail[i];
       const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-      while (distAccum + segLen >= targetDist && segIndex < EEL_SEGMENT_COUNT) {
+      while (distAccum + segLen >= targetDist && segIndex < BOSS_SEGMENT_COUNT) {
         const t = segLen > 0.0001 ? (targetDist - distAccum) / segLen : 0;
         segPositions.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
         segIndex++;
-        targetDist += EEL_SEGMENT_SPACING;
+        targetDist += BOSS_SEGMENT_SPACING;
       }
       distAccum += segLen;
     }
     const last = m.trail[m.trail.length - 1] || { x: m.x, y: m.y };
-    while (segPositions.length < EEL_SEGMENT_COUNT) segPositions.push(last);
+    while (segPositions.length < BOSS_SEGMENT_COUNT) segPositions.push(last);
     m.segments = segPositions;
 
     if (now >= m.nextRippleAt) {
@@ -1135,75 +898,213 @@
     }
   }
 
-  // A single tiny eel: no patrol/alert state machine at all, just a
-  // constant beeline for whichever player is nearest right now,
-  // re-pathed every REPATH_MS the same way every other pathfinding
-  // creature on this site re-paths.
-  function updateEel(eel, now, dt) {
-    if (now < eel.frozenUntil) { updateEelSegments(eel, now); return; }
-
-    const target = nearestTargetFor(eel, now);
-    if (!target) { updateEelSegments(eel, now); return; }
-
-    if (now >= eel.nextRepathAt) {
-      eel.nextRepathAt = now + REPATH_MS;
-      const startTile = worldToTile(eel.x, eel.y);
-      const goalTile = worldToTile(target.x, target.y);
-      const graph = buildMonsterGraph();
-      const path = bfsPath(graph, startTile, goalTile);
-      eel.path = path && path.length > 1 ? path.slice(1) : [];
-      eel.pathIndex = 0;
+  // Simple vector movement toward a point, clamped to the arena's
+  // circular boundary -- the whole arena is one open room, so there's
+  // no pathfinding to do, just don't let anything cross the wall.
+  function moveToward(entity, tx, ty, speed, dt, radius) {
+    const dx = tx - entity.x, dy = ty - entity.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 0.001) return true;
+    const step = speed * dt;
+    if (d > 0.001) entity.lookDir = { x: dx / d, y: dy / d };
+    if (d <= step) {
+      entity.x = tx; entity.y = ty;
+    } else {
+      entity.x += (dx / d) * step;
+      entity.y += (dy / d) * step;
     }
-
-    if (eel.path && eel.pathIndex < eel.path.length) {
-      const step = EEL_SPEED * dt;
-      const pt = tileTargetWithOffset(eel.path[eel.pathIndex]);
-      const dx = pt.x - eel.x, dy = pt.y - eel.y;
-      const d = Math.hypot(dx, dy);
-      if (d > 0.001) eel.lookDir = { x: dx / d, y: dy / d };
-      if (d < step) {
-        eel.x = pt.x; eel.y = pt.y;
-        eel.pathIndex++;
-      } else {
-        eel.x += (dx / d) * step;
-        eel.y += (dy / d) * step;
-      }
-    }
-
-    updateEelSegments(eel, now);
+    clampToArena(entity, radius);
+    return d <= step;
   }
 
-  function updateMonsters(now, dt) {
-    monsters.forEach((eel) => updateEel(eel, now, dt));
+  function clampToArena(entity, radius) {
+    const dx = entity.x - ARENA_CENTER_X, dy = entity.y - ARENA_CENTER_Y;
+    const d = Math.hypot(dx, dy);
+    const maxD = ARENA_RADIUS_PX - radius;
+    if (d > maxD && d > 0.001) {
+      entity.x = ARENA_CENTER_X + (dx / d) * maxD;
+      entity.y = ARENA_CENTER_Y + (dy / d) * maxD;
+    }
   }
 
-  // A last-ditch defense, not a weapon you aim and fire: carrying a shell
-  // and getting close to something hunting you sets it off automatically
-  // -- whichever eel is actually in range, not the whole swarm. Checked
-  // ahead of updateCatch so a stun this same frame can still save a
-  // player who'd otherwise be caught on it.
-  function updateShotgunDefense(now) {
+  // ---- boss attack state machine ----
+  const ALL_ATTACKS = ['wallspin', 'vanish', 'barrage'];
+
+  function pickAttack() {
+    const pool = boss.phase2 ? ALL_ATTACKS.concat(['wavesplash']) : ALL_ATTACKS;
+    const choices = pool.filter((a) => a !== boss.lastAttack);
+    return choices[Math.floor(Math.random() * choices.length)];
+  }
+
+  function startAttack(kind, now) {
+    boss.phase = kind;
+    boss.lastAttack = kind;
+    if (kind === 'wallspin') {
+      boss.wsSubPhase = 'warn';
+      boss.wsWarnUntil = now + WALLSPIN_WARNING_MS;
+      boss.wsAngle = Math.atan2(boss.y - ARENA_CENTER_Y, boss.x - ARENA_CENTER_X);
+      boss.wsDir = Math.random() < 0.5 ? 1 : -1;
+    } else if (kind === 'vanish') {
+      boss.vSubPhase = 'fade';
+      boss.vPhaseUntil = now + VANISH_FADE_MS;
+      boss.vStartX = boss.x; boss.vStartY = boss.y;
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.random() * (ARENA_RADIUS_PX - boss.radius * 2.2);
+      boss.vTargetX = ARENA_CENTER_X + Math.cos(angle) * r;
+      boss.vTargetY = ARENA_CENTER_Y + Math.sin(angle) * r;
+      boss.vNextRippleAt = now;
+    } else if (kind === 'barrage') {
+      boss.bUntil = now + BARRAGE_DURATION_MS;
+      boss.bNextFireAt = now + 400;
+      boss.bPlayerIndex = 0;
+    } else if (kind === 'wavesplash') {
+      boss.wUntil = now + WAVESPLASH_DURATION_MS;
+      boss.wNextBurstAt = now;
+    }
+  }
+
+  function finishAttack(now) {
+    boss.phase = 'idle';
+    boss.nextIdleUntil = now + BOSS_IDLE_MIN_MS + Math.random() * (BOSS_IDLE_MAX_MS - BOSS_IDLE_MIN_MS);
+  }
+
+  function updateBossIdle(now, dt) {
+    if (now >= boss.nextIdleUntil) {
+      startAttack(pickAttack(), now);
+      return;
+    }
+    const target = players[0].caught && !players[1].caught ? players[1]
+      : players[1].caught && !players[0].caught ? players[0]
+      : (Math.hypot(players[0].x - boss.x, players[0].y - boss.y) <= Math.hypot(players[1].x - boss.x, players[1].y - boss.y) ? players[0] : players[1]);
+    moveToward(boss, target.x, target.y, BOSS_IDLE_SPEED, dt, boss.radius);
+  }
+
+  function bossContactCheck(now, radius) {
     players.forEach((p) => {
-      if (p.caught) return;
-      if (p.shotgunAmmo <= 0) return;
-      const eel = monsters.find((m) => now >= m.frozenUntil && Math.hypot(p.x - m.x, p.y - m.y) < SHOTGUN_RANGE);
-      if (eel) {
-        eel.frozenUntil = now + SHOTGUN_STUN_MS;
-        p.shotgunAmmo--;
-        spawnFloatingText(eel.x, eel.y, 'STUNNED!');
-        playShotgunBlast();
-      }
+      if (p.caught || now < p.invulnerableUntil) return;
+      if (Math.hypot(p.x - boss.x, p.y - boss.y) < radius) triggerCaught(p, now);
     });
   }
 
-  function updateCatch(now) {
-    players.forEach((p) => {
-      if (p.caught) return;
-      if (isInSafeZone(p) || isInSmoke(p, now)) return;
-      if (now < p.invulnerableUntil) return;
-      const caughtBy = monsters.find((m) => now >= m.frozenUntil && Math.hypot(p.x - m.x, p.y - m.y) < CATCH_RADIUS);
-      if (caughtBy) triggerCaught(p, now);
-    });
+  function updateBossWallspin(now, dt) {
+    const wallR = ARENA_RADIUS_PX - boss.radius;
+    if (boss.wsSubPhase === 'warn') {
+      const tx = ARENA_CENTER_X + Math.cos(boss.wsAngle) * wallR;
+      const ty = ARENA_CENTER_Y + Math.sin(boss.wsAngle) * wallR;
+      moveToward(boss, tx, ty, PLAYER_SPEED * 1.6, dt, boss.radius);
+      if (now >= boss.wsWarnUntil) {
+        boss.wsSubPhase = 'spin';
+        boss.wsUntil = now + WALLSPIN_DURATION_MS;
+        boss.wsAngle = Math.atan2(boss.y - ARENA_CENTER_Y, boss.x - ARENA_CENTER_X);
+      }
+      return;
+    }
+    const speed = WALLSPIN_SPEED * speedMult(now);
+    boss.wsAngle += (speed / wallR) * boss.wsDir * dt;
+    boss.x = ARENA_CENTER_X + Math.cos(boss.wsAngle) * wallR;
+    boss.y = ARENA_CENTER_Y + Math.sin(boss.wsAngle) * wallR;
+    boss.lookDir = { x: -Math.sin(boss.wsAngle) * boss.wsDir, y: Math.cos(boss.wsAngle) * boss.wsDir };
+    bossContactCheck(now, boss.radius + PLAYER_RADIUS + 6);
+    if (now >= boss.wsUntil) finishAttack(now);
+  }
+
+  function updateBossVanish(now, dt) {
+    if (boss.vSubPhase === 'fade') {
+      const t = clamp(1 - (boss.vPhaseUntil - now) / VANISH_FADE_MS, 0, 1);
+      boss.alpha = 1 - t * (1 - VANISH_MIN_ALPHA);
+      if (now >= boss.vPhaseUntil) {
+        boss.vSubPhase = 'travel';
+        boss.vPhaseUntil = now + VANISH_TRAVEL_MS;
+      }
+      return;
+    }
+    if (boss.vSubPhase === 'travel') {
+      boss.alpha = VANISH_MIN_ALPHA;
+      const dist = Math.hypot(boss.vTargetX - boss.vStartX, boss.vTargetY - boss.vStartY) || 1;
+      const speed = (dist / (VANISH_TRAVEL_MS / 1000)) * speedMult(now);
+      moveToward(boss, boss.vTargetX, boss.vTargetY, speed, dt, boss.radius);
+      if (now >= boss.vNextRippleAt) {
+        waterRipples.push({ x: boss.x, y: boss.y, bornAt: now, faint: true });
+        boss.vNextRippleAt = now + VANISH_RIPPLE_INTERVAL_MS;
+      }
+      if (now >= boss.vPhaseUntil) {
+        boss.vSubPhase = 'warn';
+        boss.vPhaseUntil = now + VANISH_LAND_WARNING_MS;
+      }
+      return;
+    }
+    if (boss.vSubPhase === 'warn') {
+      const t = clamp(1 - (boss.vPhaseUntil - now) / VANISH_LAND_WARNING_MS, 0, 1);
+      boss.alpha = VANISH_MIN_ALPHA + (1 - VANISH_MIN_ALPHA) * t;
+      if (now >= boss.vPhaseUntil) {
+        boss.vSubPhase = 'settle';
+        boss.vPhaseUntil = now + 400;
+        boss.alpha = 1;
+        boss.vSlamAt = now;
+        playChompThud(0);
+        bossContactCheck(now, VANISH_SLAM_RADIUS);
+      }
+      return;
+    }
+    if (now >= boss.vPhaseUntil) finishAttack(now);
+  }
+
+  function updateBossBarrage(now, dt) {
+    moveToward(boss, ARENA_CENTER_X, ARENA_CENTER_Y, BOSS_IDLE_SPEED * 0.5, dt, boss.radius);
+    if (now >= boss.bNextFireAt) {
+      const mult = speedMult(now);
+      const speed = BARRAGE_PROJECTILE_SPEED * mult;
+      const target = players[boss.bPlayerIndex % players.length];
+      boss.bPlayerIndex++;
+      const dx = target.x - boss.x, dy = target.y - boss.y;
+      const d = Math.hypot(dx, dy) || 1;
+      projectiles.push({ x: boss.x, y: boss.y, dirX: dx / d, dirY: dy / d, speed });
+      boss.bNextFireAt = now + BARRAGE_FIRE_INTERVAL_MS / mult;
+      playChompThud(0);
+    }
+    if (now >= boss.bUntil) finishAttack(now);
+  }
+
+  function updateBossWavesplash(now, dt) {
+    moveToward(boss, ARENA_CENTER_X, ARENA_CENTER_Y, BOSS_IDLE_SPEED * 0.5, dt, boss.radius);
+    if (now >= boss.wNextBurstAt) {
+      for (let i = 0; i < WAVESPLASH_COUNT; i++) {
+        const a = Math.random() * Math.PI * 2;
+        projectiles.push({ x: boss.x, y: boss.y, dirX: Math.cos(a), dirY: Math.sin(a), speed: WAVESPLASH_SPEED, wave: true });
+      }
+      boss.wNextBurstAt = now + WAVESPLASH_INTERVAL_MS;
+      playChompThud(0);
+    }
+    if (now >= boss.wUntil) finishAttack(now);
+  }
+
+  function updateProjectiles(now, dt) {
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const pr = projectiles[i];
+      const nx = pr.x + pr.dirX * pr.speed * dt;
+      const ny = pr.y + pr.dirY * pr.speed * dt;
+      if (Math.hypot(nx - ARENA_CENTER_X, ny - ARENA_CENTER_Y) > ARENA_RADIUS_PX) { projectiles.splice(i, 1); continue; }
+      pr.x = nx; pr.y = ny;
+      let hit = false;
+      players.forEach((p) => {
+        if (hit || p.caught || now < p.invulnerableUntil) return;
+        if (Math.hypot(p.x - pr.x, p.y - pr.y) < PROJECTILE_HIT_RADIUS) { triggerCaught(p, now); hit = true; }
+      });
+      if (hit) projectiles.splice(i, 1);
+    }
+  }
+
+  function updateBoss(now, dt) {
+    updateProjectiles(now, dt);
+    updateBossSegments(boss, now);
+    if (boss.defeated) return;
+    switch (boss.phase) {
+      case 'idle': updateBossIdle(now, dt); break;
+      case 'wallspin': updateBossWallspin(now, dt); break;
+      case 'vanish': updateBossVanish(now, dt); break;
+      case 'barrage': updateBossBarrage(now, dt); break;
+      case 'wavesplash': updateBossWavesplash(now, dt); break;
+    }
   }
 
   function triggerCaught(p, now) {
@@ -1320,18 +1221,28 @@
   }
 
   // ---- rendering ----
-  const doorBounds = (() => {
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        if (LEVEL.grid[y][x] === 'D') {
-          x0 = Math.min(x0, x); y0 = Math.min(y0, y);
-          x1 = Math.max(x1, x); y1 = Math.max(y1, y);
-        }
-      }
+
+  // A swaying clump of 3-4 seaweed strands -- a fixed base position per
+  // tile (hashed, like the floor shading) with each strand's sway phase
+  // offset so the clump doesn't move as one rigid unit.
+  function drawSeaweed(g, px, py, x, y, t) {
+    const h = Math.imul(x, 2654435761) ^ Math.imul(y, 40503);
+    const u = (h ^ (h >>> 15)) >>> 0;
+    const strands = 3 + (u % 2);
+    for (let i = 0; i < strands; i++) {
+      const baseX = px + 6 + ((u >> (i * 4)) % 20);
+      const height = 14 + ((u >> (i * 3 + 2)) % 10);
+      const phase = (u % 100) / 100 * Math.PI * 2 + i * 1.7;
+      const sway = Math.sin(t * 0.0022 + phase) * 5;
+      g.strokeStyle = i % 2 === 0 ? '#2f6b4a' : '#3a7d55';
+      g.lineWidth = 2.2;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(baseX, py + TILE - 2);
+      g.quadraticCurveTo(baseX + sway * 0.6, py + TILE - height * 0.6, baseX + sway, py + TILE - height);
+      g.stroke();
     }
-    return { x0, y0, x1, y1 };
-  })();
+  }
 
   // A small branching coral clump -- a fixed base position per tile
   // (hashed, like the floor shading), 2-4 colorful branches radiating
@@ -1373,175 +1284,60 @@
       for (let x = minTX; x <= maxTX; x++) {
         const ch = LEVEL.grid[y][x];
         const px = x * TILE, py = y * TILE;
-        let color;
-        switch (ch) {
-          case '#': color = '#1a2226'; break;
-          case 'S': color = floorShade(x, y); break;
-          case 'E': color = '#15283c'; break;
-          case 'D': color = doorUnlocked ? floorShade(x, y) : '#1e3a50'; break;
-          default: color = floorShade(x, y);
-        }
-        g.fillStyle = color;
+        g.fillStyle = ch === '#' ? '#1a2226' : floorShade(x, y);
         g.fillRect(px, py, TILE, TILE);
 
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+          continue;
         }
 
-        // A faint drifting light-caustic streak across every bit of open
-        // water, not just the 'R' coral tiles -- a subtle moving band
-        // instead of a static floor texture.
-        if (ch === '.' || ch === 'R' || ch === 'S' || ch === 'E') {
-          const h = Math.imul(x, 668265263) ^ Math.imul(y, 2246822519);
-          const seed = ((h ^ (h >>> 13)) >>> 0) % 1000 / 1000;
-          const band = Math.sin(now * 0.0005 + seed * 20 + x * 0.3 + y * 0.2);
-          if (band > 0.65) {
-            g.fillStyle = `rgba(205,230,255,${(band - 0.65) * 0.25})`;
-            g.fillRect(px, py, TILE, TILE);
-          }
+        // A faint drifting light-caustic streak across every bit of
+        // open water -- a subtle moving band instead of a static floor
+        // texture.
+        const h = Math.imul(x, 668265263) ^ Math.imul(y, 2246822519);
+        const seed = ((h ^ (h >>> 13)) >>> 0) % 1000 / 1000;
+        const band = Math.sin(now * 0.0005 + seed * 20 + x * 0.3 + y * 0.2);
+        if (band > 0.65) {
+          g.fillStyle = `rgba(190,245,230,${(band - 0.65) * 0.25})`;
+          g.fillRect(px, py, TILE, TILE);
         }
 
         if (ch === 'R') drawCoral(g, px, py, x, y, now);
+        if (ch === 'G') drawSeaweed(g, px, py, x, y, now);
       }
     }
 
-    const dx0 = doorBounds.x0 * TILE, dy0 = doorBounds.y0 * TILE;
-    const dw = (doorBounds.x1 - doorBounds.x0 + 1) * TILE;
-    const dh = (doorBounds.y1 - doorBounds.y0 + 1) * TILE;
-    if (!doorUnlocked) {
-      g.strokeStyle = '#0d1114';
-      g.lineWidth = 4;
-      g.strokeRect(dx0 + 3, dy0 + 3, dw - 6, dh - 6);
-      g.strokeStyle = 'rgba(255,190,60,0.5)';
-      g.lineWidth = 3;
-      g.strokeRect(dx0 + 9, dy0 + 9, dw - 18, dh - 18);
-      g.beginPath();
-      g.moveTo(dx0 + dw / 2, dy0 + 4);
-      g.lineTo(dx0 + dw / 2, dy0 + dh - 4);
-      g.stroke();
-    } else {
-      g.strokeStyle = 'rgba(255,255,255,0.18)';
-      g.lineWidth = 3;
-      g.strokeRect(dx0 + 2, dy0 + 2, dw - 4, dh - 4);
-    }
-
-    const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
-    g.beginPath();
-    g.arc(ex.x, ex.y, doorUnlocked ? 12 : 6, 0, Math.PI * 2);
-    g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
-    g.fill();
-
-    drawDrains(g);
-    drawSafeZone(g);
     drawBloodSplatters(g);
-    drawCrates(g);
+    drawSpears(g, now);
     drawWaterRipples(g, now);
     drawFloatingTexts(g);
   }
-
-  // A short pipe stub sticking out of the floor, rusty and dull until
-  // opened -- a glowing amber progress ring builds above it while
-  // someone's actively holding it, and a bright steam puff marks it
-  // open for good.
-  function drawDrains(g) {
-    DRAIN_POSITIONS.forEach((drain, i) => {
-      const center = tileCenter(drain.x, drain.y);
-      const open = drainsOpen[i];
-      const progress = drainProgress[i];
+  // A spear stuck upright in the sand, glinting faintly -- walking onto
+  // it is the hit, so there's no separate "throw" animation to draw.
+  function drawSpears(g, now) {
+    spears.forEach((s) => {
+      const bob = Math.sin(now * 0.003 + s.seed) * 2;
       g.save();
-      g.translate(center.x, center.y);
-
+      g.translate(s.x, s.y + bob);
+      g.strokeStyle = '#8a7560';
+      g.lineWidth = 3;
+      g.lineCap = 'round';
       g.beginPath();
-      g.arc(0, 0, 11, 0, Math.PI * 2);
-      g.fillStyle = open ? '#4a4a52' : '#2a2420';
-      g.fill();
-      g.strokeStyle = 'rgba(0,0,0,0.5)';
-      g.lineWidth = 2;
+      g.moveTo(0, 10);
+      g.lineTo(0, -12);
       g.stroke();
-
       g.beginPath();
-      g.arc(0, 0, 7, 0, Math.PI * 2);
-      g.fillStyle = open ? '#7ad67a' : '#161414';
+      g.moveTo(0, -18);
+      g.lineTo(-4, -8);
+      g.lineTo(4, -8);
+      g.closePath();
+      g.fillStyle = '#c9d4d8';
       g.fill();
-
-      if (open) {
-        for (let k = 0; k < 4; k++) {
-          const a = (k / 4) * Math.PI * 2;
-          g.beginPath();
-          g.moveTo(Math.cos(a) * 3, Math.sin(a) * 3);
-          g.lineTo(Math.cos(a) * 9, Math.sin(a) * 9);
-          g.strokeStyle = 'rgba(122,214,122,0.6)';
-          g.lineWidth = 1.5;
-          g.stroke();
-        }
-      } else if (progress > 0) {
-        g.beginPath();
-        g.arc(0, -18, 7, 0, Math.PI * 2);
-        g.strokeStyle = 'rgba(255,255,255,0.3)';
-        g.lineWidth = 1;
-        g.stroke();
-        g.beginPath();
-        g.arc(0, -18, 7, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-        g.strokeStyle = '#ffb23c';
-        g.lineWidth = 3;
-        g.stroke();
-      }
-      g.restore();
-    });
-  }
-
-  function drawTable(g, cx, cy) {
-    g.fillStyle = '#5a4530';
-    g.fillRect(cx - 12, cy - 8, 24, 16);
-    g.strokeStyle = '#382a1c';
-    g.lineWidth = 1.5;
-    g.strokeRect(cx - 12, cy - 8, 24, 16);
-    g.fillStyle = '#4a3826';
-    [[-10, -6], [10, -6], [-10, 6], [10, 6]].forEach(([dx, dy]) => {
-      g.fillRect(cx + dx - 1.5, cy + dy - 1.5, 3, 3);
-    });
-  }
-
-  function drawSafeZone(g) {
-    const sz = LEVEL.safeZone;
-    const x0 = sz.x0 * TILE, y0 = sz.y0 * TILE;
-    const w = (sz.x1 - sz.x0 + 1) * TILE, h = (sz.y1 - sz.y0 + 1) * TILE;
-
-    g.strokeStyle = '#3ddc84';
-    g.lineWidth = 3;
-    g.shadowColor = '#3ddc84';
-    g.shadowBlur = 6;
-    g.strokeRect(x0 + 1.5, y0 + 1.5, w - 3, h - 3);
-    g.shadowBlur = 0;
-
-    const cx = x0 + w / 2, cy = y0 + h / 2;
-    drawTable(g, cx - w / 4, cy);
-    drawTable(g, cx + w / 4, cy);
-  }
-
-  function drawCrates(g) {
-    crates.forEach((c) => {
-      const center = tileCenter(c.x, c.y);
-      g.save();
-      g.translate(center.x, center.y);
-      if (c.opened) {
-        g.fillStyle = '#4a3826';
-        g.fillRect(-9, -6, 18, 12);
-        g.strokeStyle = '#2a1e14';
-        g.lineWidth = 1.5;
-        g.strokeRect(-9, -6, 18, 12);
-      } else {
-        g.fillStyle = '#7a5a34';
-        g.fillRect(-10, -10, 20, 20);
-        g.strokeStyle = '#4a3520';
-        g.lineWidth = 2;
-        g.strokeRect(-10, -10, 20, 20);
-        g.beginPath();
-        g.moveTo(-10, 0); g.lineTo(10, 0);
-        g.moveTo(0, -10); g.lineTo(0, 10);
-        g.stroke();
-      }
+      g.strokeStyle = 'rgba(0,0,0,0.4)';
+      g.lineWidth = 1;
+      g.stroke();
       g.restore();
     });
   }
@@ -1581,50 +1377,90 @@
   // seed, not live position, so it reads as a stable growth rather than
   // something drifting around) -- same CORAL_PALETTE as the floor's own
   // coral, just shrunk down to fit a body a third the usual eel's size.
-  function drawEelCoral(g, r, seed) {
+  // Coral growths on the boss's own body -- the same branching-clump
+  // technique as the arena floor's own coral, just anchored to a moving
+  // body segment instead of a tile. Phase 2: every patch turns red and
+  // grows to 2x the size.
+  function drawBossCoralGrowth(g, r, seed, phase2) {
     const count = 2;
+    const sizeMult = phase2 ? 2 : 1;
     for (let i = 0; i < count; i++) {
       const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
       const u = (h ^ (h >>> 15)) >>> 0;
       const a = (u % 360) * Math.PI / 180;
       const dist = r * (0.3 + (u % 5) * 0.1);
       const bx = Math.cos(a) * dist, by = Math.sin(a) * dist;
-      const color = CORAL_PALETTE[u % CORAL_PALETTE.length];
-      const tipLen = Math.max(1.2, r * 0.3);
+      const color = phase2 ? '#ff3b3b' : CORAL_PALETTE[u % CORAL_PALETTE.length];
+      const tipLen = Math.max(1.4, r * 0.32) * sizeMult;
       g.strokeStyle = color;
-      g.lineWidth = Math.max(0.8, r * 0.16);
+      g.lineWidth = Math.max(1, r * 0.17) * sizeMult;
       g.lineCap = 'round';
       g.beginPath();
       g.moveTo(bx, by);
       g.lineTo(bx + Math.cos(a) * tipLen, by + Math.sin(a) * tipLen);
       g.stroke();
       g.beginPath();
-      g.arc(bx + Math.cos(a) * tipLen, by + Math.sin(a) * tipLen, Math.max(0.8, r * 0.14), 0, Math.PI * 2);
+      g.arc(bx + Math.cos(a) * tipLen, by + Math.sin(a) * tipLen, Math.max(1, r * 0.15) * sizeMult, 0, Math.PI * 2);
       g.fillStyle = color;
       g.fill();
     }
   }
 
-  function drawEel(g, m, t) {
+  // Trailing seaweed, same strands-off-a-fixed-anchor technique the Bog
+  // itself uses -- the boss "looks like the Bog" in this exact way.
+  function drawBossWeed(g, r, seed, t) {
+    const h = Math.imul(Math.floor(seed * 1000), 2654435761) >>> 0;
+    const strands = 1 + (h % 2);
+    for (let i = 0; i < strands; i++) {
+      const baseAngle = ((h >> (i * 5)) % 360) * Math.PI / 180;
+      const baseX = Math.cos(baseAngle) * r * 0.8;
+      const baseY = Math.sin(baseAngle) * r * 0.8;
+      const len = r * (0.7 + ((h >> (i * 3 + 2)) % 10) / 15);
+      const phase = ((h % 100) / 100) * Math.PI * 2 + i * 1.3 + seed;
+      const sway = Math.sin(t * 0.0025 + phase) * 4;
+      const tipX = baseX + Math.cos(baseAngle) * len + sway;
+      const tipY = baseY + Math.sin(baseAngle) * len;
+      g.strokeStyle = i % 2 === 0 ? '#2f6b4a' : '#3a7d55';
+      g.lineWidth = 2;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(baseX, baseY);
+      g.quadraticCurveTo((baseX + tipX) / 2 + sway * 0.4, (baseY + tipY) / 2, tipX, tipY);
+      g.stroke();
+    }
+  }
+
+  function drawBoss(g, t) {
+    if (boss.defeated) return;
+    const m = boss;
+    g.save();
+    g.globalAlpha = m.alpha;
+
     // Ground shadow trail, drawn first so it sits under every segment.
     g.fillStyle = 'rgba(0,0,0,0.25)';
     for (let i = m.segments.length - 1; i >= 0; i--) {
       const seg = m.segments[i];
-      const r = m.radius * (1 - i * 0.055);
+      const r = m.radius * (1 - i * 0.045);
       g.beginPath();
-      g.ellipse(seg.x, seg.y + r * 0.5, Math.max(1.5, r * 0.85), Math.max(1, r * 0.35), 0, 0, Math.PI * 2);
+      g.ellipse(seg.x, seg.y + r * 0.5, Math.max(2, r * 0.85), Math.max(1.5, r * 0.35), 0, 0, Math.PI * 2);
       g.fill();
     }
 
-    // Body segments, tail first so the head draws on top -- a muted
-    // blue-grey, tapering to a thin point at the tail, with a couple of
-    // tiny coral nubs growing out of each segment.
+    // Body segments, tail first so the head draws on top -- a deep
+    // teal, grown over with both seaweed and coral.
     for (let i = m.segments.length - 1; i >= 0; i--) {
       const seg = m.segments[i];
-      const r = Math.max(1.2, m.radius * (1 - i * 0.055));
-      const base = i % 2 === 0 ? '#6a7a85' : '#7a8a95';
+      const r = Math.max(2, m.radius * (1 - i * 0.045));
+      const base = i % 2 === 0 ? '#1a7a6e' : '#1f8c7e';
       g.save();
       g.translate(seg.x, seg.y);
+
+      if (i % 2 === 0 && i < m.segments.length - 2) {
+        const next = m.segments[Math.min(i + 1, m.segments.length - 1)];
+        const dx = seg.x - next.x, dy = seg.y - next.y;
+        const ang = Math.atan2(dy, dx) + Math.PI / 2;
+        drawFin(g, 0, 0, Math.cos(ang) * r * 1.5, Math.sin(ang) * r * 1.5, r * 0.45, 'rgba(60,180,160,0.5)');
+      }
 
       const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
       grad.addColorStop(0, shade(base, 0.22));
@@ -1633,12 +1469,13 @@
       g.beginPath();
       g.arc(0, 0, r, 0, Math.PI * 2);
       g.fillStyle = grad;
-      g.shadowColor = '#1c2630';
-      g.shadowBlur = 3;
+      g.shadowColor = '#0a2e28';
+      g.shadowBlur = 4;
       g.fill();
       g.shadowBlur = 0;
 
-      drawEelCoral(g, r, m.seed + i * 13);
+      drawBossWeed(g, r, m.seed + i * 13, t);
+      drawBossCoralGrowth(g, r, m.seed + i * 13 + 6.5, m.phase2);
 
       g.restore();
     }
@@ -1646,13 +1483,13 @@
     g.save();
     g.translate(m.x, m.y);
 
-    const points = 10;
+    const points = 12;
     const path = [];
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
       const r = m.radius
-        + Math.sin(t * 0.006 + i * 1.7 + m.seed) * 0.7
-        + Math.sin(t * 0.0021 + i * 3.1 + m.seed) * 0.4;
+        + Math.sin(t * 0.006 + i * 1.7 + m.seed) * 1.6
+        + Math.sin(t * 0.0021 + i * 3.1 + m.seed) * 0.8;
       path.push([Math.cos(a) * r, Math.sin(a) * r]);
     }
     const trace = () => {
@@ -1661,42 +1498,34 @@
       g.closePath();
     };
 
+    const headAngle = Math.atan2(m.lookDir.y, m.lookDir.x);
+    [-1, 1].forEach((side) => {
+      const perp = headAngle + (Math.PI / 2) * side;
+      const baseX = Math.cos(perp) * m.radius * 0.5, baseY = Math.sin(perp) * m.radius * 0.5;
+      const backAngle = headAngle + Math.PI + (0.5 * side);
+      const tipX = baseX + Math.cos(backAngle) * m.radius * 1.3;
+      const tipY = baseY + Math.sin(backAngle) * m.radius * 1.3;
+      drawFin(g, baseX, baseY, tipX, tipY, m.radius * 0.32, 'rgba(60,180,160,0.55)');
+    });
+
     trace();
     const headGrad = g.createRadialGradient(-m.radius * 0.3, -m.radius * 0.35, 1, 0, 0, m.radius * 1.05);
-    headGrad.addColorStop(0, shade('#7a8a95', 0.22));
-    headGrad.addColorStop(0.55, '#7a8a95');
-    headGrad.addColorStop(1, shade('#7a8a95', -0.3));
+    headGrad.addColorStop(0, shade('#1f8c7e', 0.22));
+    headGrad.addColorStop(0.55, '#1f8c7e');
+    headGrad.addColorStop(1, shade('#1f8c7e', -0.3));
     g.fillStyle = headGrad;
-    g.shadowColor = '#1c2630';
-    g.shadowBlur = 5;
+    g.shadowColor = '#0a2e28';
+    g.shadowBlur = 8;
     g.fill();
     g.shadowBlur = 0;
-    drawEelCoral(g, m.radius, m.seed);
+    drawBossWeed(g, m.radius, m.seed, t);
+    drawBossCoralGrowth(g, m.radius, m.seed + 6.5, m.phase2);
 
     // mouth instead of an eye, same convention as the Dig Worm
     drawMonsterMouth(g, m.radius, m.lookDir);
 
-    if (t < m.frozenUntil) {
-      g.beginPath();
-      for (let i = 0; i <= points; i++) {
-        const a = (i / points) * Math.PI * 2;
-        const r = m.radius + 2;
-        const px = Math.cos(a) * r, py = Math.sin(a) * r;
-        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
-      }
-      g.closePath();
-      g.fillStyle = 'rgba(140,220,255,0.45)';
-      g.fill();
-      g.strokeStyle = 'rgba(220,250,255,0.8)';
-      g.lineWidth = 1;
-      g.stroke();
-    }
-
     g.restore();
-  }
-
-  function drawEels(g, t) {
-    monsters.forEach((m) => drawEel(g, m, t));
+    g.restore();
   }
 
   // No eye on this one -- a mouth instead, same convention as the Dig
@@ -1788,36 +1617,6 @@
     g.restore();
   }
 
-  function drawHeldShotgun(g, R, p) {
-    g.save();
-    const grip = Math.sin(p.walkPhase) * R * 0.05;
-    g.translate(R * 0.15, R * 0.25 + grip);
-    g.rotate(-0.12);
-    g.strokeStyle = '#5a4428';
-    g.lineWidth = R * 0.22;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(-R * 0.35, 0);
-    g.lineTo(R * 0.25, 0);
-    g.stroke();
-    g.strokeStyle = '#3a3d42';
-    g.lineWidth = R * 0.15;
-    g.beginPath();
-    g.moveTo(R * 0.15, 0);
-    g.lineTo(R * 1.55, 0);
-    g.stroke();
-    if (p.shotgunAmmo > 0) {
-      g.beginPath();
-      g.arc(R * 1.55, 0, R * 0.12, 0, Math.PI * 2);
-      g.fillStyle = '#ff6a2a';
-      g.shadowColor = '#ff6a2a';
-      g.shadowBlur = 6;
-      g.fill();
-      g.shadowBlur = 0;
-    }
-    g.restore();
-  }
-
   function drawPlayers(g) {
     const R = PLAYER_RADIUS;
     players.forEach((p) => {
@@ -1892,7 +1691,6 @@
 
       drawLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
       drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
-      drawHeldShotgun(g, R, p);
 
       g.save();
       g.translate(R * 0.55, -bob);
@@ -1956,33 +1754,104 @@
 
   function buildDarknessMask(camX, camY, now) {
     const worldToScreen = (wx, wy) => ({ x: wx - camX + VIEW_W / 2, y: wy - camY + VIEW_H / 2 });
-    const nvgMult = now < nvgUntil ? NVG_RANGE_MULT : 1;
 
     maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
     maskCtx.globalCompositeOperation = 'source-over';
     maskCtx.fillStyle = '#000000';
     maskCtx.fillRect(0, 0, VIEW_W, VIEW_H);
 
-    const sz = LEVEL.safeZone;
-    const s0 = worldToScreen(sz.x0 * TILE, sz.y0 * TILE);
-    maskCtx.save();
-    maskCtx.globalCompositeOperation = 'destination-out';
-    maskCtx.fillStyle = 'rgba(0,0,0,1)';
-    maskCtx.fillRect(s0.x, s0.y, (sz.x1 - sz.x0 + 1) * TILE, (sz.y1 - sz.y0 + 1) * TILE);
-    maskCtx.restore();
-
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 90 * nvgMult, 1);
-      punchLight(maskCtx, s.x, s.y, 230 * nvgMult, 0.85);
+      punchLight(maskCtx, s.x, s.y, 90, 1);
+      punchLight(maskCtx, s.x, s.y, 230, 0.85);
     });
+
+    // A faint, dim glow around the boss itself so it's never fully lost
+    // in the dark -- fades out along with it during the vanish attack.
+    const bs = worldToScreen(boss.x, boss.y);
+    punchLight(maskCtx, bs.x, bs.y, boss.radius * 2.2, 0.4 * boss.alpha);
+  }
+
+  function hexToRgbTriplet(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+  }
+
+  function drawBossIntroOverlay(vx, now) {
+    const t = clamp((now - introStartedAt) / BOSS_INTRO_CUTSCENE_MS, 0, 1);
+    const alpha = t < 0.15 ? t / 0.15 : t > 0.85 ? (1 - t) / 0.15 : 1;
+    ctx.save();
+    ctx.fillStyle = `rgba(5,5,8,${0.55 * alpha})`;
+    ctx.fillRect(vx, VIEW_H / 2 - 34, VIEW_W, 68);
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = `rgba(220,60,60,${alpha})`;
+    ctx.shadowColor = 'rgba(220,60,60,0.8)';
+    ctx.shadowBlur = 10 * alpha;
+    ctx.fillText(BOSS_NAME, vx + VIEW_W / 2, VIEW_H / 2 + 8);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  function drawPhase2IntroOverlay(vx, now) {
+    const t = clamp((now - phase2IntroStartedAt) / PHASE2_CUTSCENE_MS, 0, 1);
+    const alpha = t < 0.15 ? t / 0.15 : t > 0.85 ? (1 - t) / 0.15 : 1;
+    const rgb = hexToRgbTriplet(PHASE2_NAME_COLOR);
+    ctx.save();
+    ctx.fillStyle = `rgba(5,5,8,${0.55 * alpha})`;
+    ctx.fillRect(vx, VIEW_H / 2 - 42, VIEW_W, 84);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillStyle = `rgba(${rgb},${alpha})`;
+    ctx.shadowColor = `rgba(${rgb},0.8)`;
+    ctx.shadowBlur = 10 * alpha;
+    ctx.fillText(BOSS_NAME, vx + VIEW_W / 2, VIEW_H / 2);
+    ctx.shadowBlur = 0;
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = `rgba(${rgb},${alpha * 0.85})`;
+    ctx.fillText(PHASE2_SUBTITLE, vx + VIEW_W / 2, VIEW_H / 2 + 24);
+    ctx.restore();
+  }
+
+  function drawBossHealthBar(vx, now) {
+    const barW = 210, barH = 10;
+    const bx = vx + VIEW_W / 2 - barW / 2, by = 14;
+    const frac = clamp(bossHealth / BOSS_MAX_HEALTH, 0, 1);
+    ctx.save();
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = boss.phase2 ? PHASE2_NAME_COLOR : '#7ad6c8';
+    ctx.fillText(boss.phase2 ? `${BOSS_NAME} — ${PHASE2_SUBTITLE}` : BOSS_NAME, vx + VIEW_W / 2, by - 4);
+    ctx.fillStyle = 'rgba(5,5,8,0.7)';
+    ctx.fillRect(bx - 2, by - 2, barW + 4, barH + 4);
+    ctx.fillStyle = '#202225';
+    ctx.fillRect(bx, by, barW, barH);
+    const grad = ctx.createLinearGradient(bx, 0, bx + barW, 0);
+    if (boss.phase2) { grad.addColorStop(0, '#8a1a1a'); grad.addColorStop(1, '#d9a24a'); }
+    else { grad.addColorStop(0, '#0f4a46'); grad.addColorStop(1, '#2fb0a0'); }
+    ctx.fillStyle = grad;
+    ctx.fillRect(bx, by, barW * frac, barH);
+    if (frac < 0.3) {
+      const flicker = 0.3 + 0.3 * Math.sin(now * 0.02);
+      ctx.fillStyle = `rgba(255,255,255,${flicker * 0.4})`;
+      ctx.fillRect(bx, by, barW * frac, barH);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, barW - 1, barH - 1);
+    ctx.restore();
   }
 
   function renderViewport(index, now) {
     const p = players[index];
     const vx = index * VIEW_W;
-    const camX = clamp(p.x, VIEW_W / 2, WORLD_W - VIEW_W / 2);
-    const camY = clamp(p.y, VIEW_H / 2, WORLD_H - VIEW_H / 2);
+    const intro = gameState === 'intro';
+    const phase2Intro = gameState === 'phase2intro';
+    const cutscene = intro || phase2Intro;
+    const camX = cutscene ? boss.x : clamp(p.x, VIEW_W / 2, WORLD_W - VIEW_W / 2);
+    const camY = cutscene ? boss.y : clamp(p.y, VIEW_H / 2, WORLD_H - VIEW_H / 2);
+    const shakeX = cutscene ? (Math.random() - 0.5) * 2 * BOSS_INTRO_SHAKE_MAG : 0;
+    const shakeY = cutscene ? (Math.random() - 0.5) * 2 * BOSS_INTRO_SHAKE_MAG : 0;
 
     ctx.save();
     ctx.beginPath();
@@ -1992,11 +1861,10 @@
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
 
     ctx.save();
-    ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
+    ctx.translate(vx + VIEW_W / 2 - camX + shakeX, VIEW_H / 2 - camY + shakeY);
     drawTiles(ctx, camX, camY, now);
     drawFish(ctx);
-    drawSmokeBombs(ctx, now);
-    drawEels(ctx, now);
+    drawBoss(ctx, now);
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
@@ -2004,80 +1872,21 @@
     buildDarknessMask(camX, camY, now);
     ctx.drawImage(maskCanvas, vx, 0);
 
-    if (now < nvgUntil) {
-      ctx.fillStyle = 'rgba(40,255,120,0.16)';
-      ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
+    if (intro) {
+      drawBossIntroOverlay(vx, now);
+    } else if (phase2Intro) {
+      drawPhase2IntroOverlay(vx, now);
+    } else {
+      drawProximityWarning(vx, Math.hypot(p.x - boss.x, p.y - boss.y), now);
+      drawBossHealthBar(vx, now);
+      drawStaminaBar(vx, p);
+      if (p.caught) drawCutsceneOverlay(vx, p, now);
     }
 
-    const nearestDist = Math.min(...monsters.map((m) => Math.hypot(p.x - m.x, p.y - m.y)));
-    drawProximityWarning(vx, nearestDist, now);
-    drawRadar(vx, p, now);
-    drawScanner(vx, p, now);
-    drawShotgunHud(vx, p);
-    const minimapH = drawMinimap(vx, now);
-    drawStaminaBar(vx, p, minimapH);
-
-    if (p.caught) drawCutsceneOverlay(vx, p, now);
-
     ctx.restore();
   }
 
-  function drawShotgunHud(vx, p) {
-    if (p.shotgunAmmo <= 0) return;
-    const cx = vx + VIEW_W - 34, cy = 64;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(40,20,10,0.75)';
-    ctx.fill();
-    ctx.strokeStyle = '#ff9c3d';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.save();
-    ctx.translate(cx - 6, cy);
-    ctx.fillStyle = '#c9451f';
-    ctx.fillRect(-4, -7, 8, 9);
-    ctx.fillStyle = '#d9b24a';
-    ctx.fillRect(-4, 2, 8, 4);
-    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(-4, -7, 8, 13);
-    ctx.restore();
-    ctx.font = 'bold 11px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#ffd27a';
-    ctx.fillText(`${p.shotgunAmmo}x`, cx + 3, cy + 4);
-    ctx.restore();
-  }
-
-  function drawRadar(vx, p, now) {
-    if (now > radarUntil) return;
-    const cx = vx + VIEW_W - 34, cy = 34;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, 22, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(10,25,15,0.75)';
-    ctx.fill();
-    ctx.strokeStyle = '#3ddc84';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    const nearest = monsters.reduce((a, b) => (Math.hypot(p.x - a.x, p.y - a.y) <= Math.hypot(p.x - b.x, p.y - b.y) ? a : b));
-    const angle = Math.atan2(nearest.y - p.y, nearest.x - p.x);
-    ctx.translate(cx, cy);
-    ctx.rotate(angle);
-    ctx.beginPath();
-    ctx.moveTo(14, 0);
-    ctx.lineTo(-6, -6);
-    ctx.lineTo(-6, 6);
-    ctx.closePath();
-    ctx.fillStyle = '#3ddc84';
-    ctx.shadowColor = '#3ddc84';
-    ctx.shadowBlur = 6;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  const PROXIMITY_WARNING_RADIUS = 400;
+  const PROXIMITY_WARNING_RADIUS = 300;
 
   function drawProximityWarning(vx, dist, now) {
     if (dist > PROXIMITY_WARNING_RADIUS) return;
@@ -2086,34 +1895,6 @@
     const alpha = closeness * 0.6 * pulse;
     ctx.fillStyle = `rgba(200,20,20,${alpha})`;
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
-  }
-
-  function drawScanner(vx, p, now) {
-    if (now > scannerUntil) return;
-    const target = scannerTarget();
-    if (!target) return;
-    const cx = vx + VIEW_W - 34, cy = VIEW_H - 34;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, 22, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(35,25,5,0.75)';
-    ctx.fill();
-    ctx.strokeStyle = '#ffb43d';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    const angle = Math.atan2(target.y - p.y, target.x - p.x);
-    ctx.translate(cx, cy);
-    ctx.rotate(angle);
-    ctx.beginPath();
-    ctx.moveTo(14, 0);
-    ctx.lineTo(-6, -6);
-    ctx.lineTo(-6, 6);
-    ctx.closePath();
-    ctx.fillStyle = '#ffb43d';
-    ctx.shadowColor = '#ffb43d';
-    ctx.shadowBlur = 6;
-    ctx.fill();
-    ctx.restore();
   }
 
   function drawJaw(g, vx, direction, progress, color) {
@@ -2179,30 +1960,56 @@
   }
 
   function updateOverlay() {
-    if (gameState === 'complete') {
-      messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'THE DRAINS RUN DRY &mdash; warping to Level 20&hellip;';
-    } else {
-      messageEl.style.display = 'none';
+    messageEl.style.display = 'none';
+  }
+
+  function updateIntroCutscene(now) {
+    if (gameState !== 'intro') return;
+    if (now - introStartedAt >= BOSS_INTRO_CUTSCENE_MS) {
+      gameState = 'playing';
+      boss.nextIdleUntil = now + BOSS_INTRO_GRACE_MS;
+      nextSpearSpawnAt = now + 1500;
     }
   }
 
-  function updateHud() {
-    const openCount = drainsOpen.filter(Boolean).length;
-    hudDrainsEl.textContent = `Drains: ${openCount} / ${DRAIN_POSITIONS.length}`;
-    hudDrainsEl.classList.toggle('done', openCount >= DRAIN_POSITIONS.length);
-    hudDoorEl.textContent = `Door: ${doorUnlocked ? 'unlocked' : 'locked'}`;
-    hudDoorEl.classList.toggle('done', doorUnlocked);
+  function updatePhase2Cutscene(now) {
+    if (gameState !== 'phase2intro') return;
+    if (now - phase2IntroStartedAt >= PHASE2_CUTSCENE_MS) gameState = 'playing';
+  }
 
-    if (gameState === 'complete' && !bestRecorded) {
+  function updateDryCutscene(now) {
+    if (gameState !== 'drying' || dryFinished) return;
+    if (now - dryStartedAt < DRY_CUTSCENE_MS) return;
+    dryFinished = true;
+    if (!bestRecorded) {
       bestRecorded = true;
       if (bestMs === null || elapsedMs < bestMs) {
         bestMs = elapsedMs;
         localStorage.setItem(BEST_TIME_KEY, String(bestMs));
       }
-      if (window.GoofyStory) window.GoofyStory.completeLevel(19);
     }
+    if (window.GoofyStory) window.GoofyStory.completeLevel(20);
+    window.location.href = 'level21.html';
+  }
 
+  function drawDryingOverlay(now) {
+    const t = clamp((now - dryStartedAt) / DRY_CUTSCENE_MS, 0, 1);
+    ctx.save();
+    ctx.fillStyle = `rgba(226,204,150,${t * 0.82})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (t > 0.3) {
+      ctx.font = 'bold 20px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(60,42,16,${clamp((t - 0.3) / 0.3, 0, 1)})`;
+      ctx.fillText('THE FACILITY DRIES UP...', canvas.width / 2, canvas.height / 2);
+    }
+    ctx.restore();
+  }
+
+  function updateHud() {
+    hudBossEl.textContent = boss.defeated ? 'Boss: defeated' : `Boss: ${bossHealth}/${BOSS_MAX_HEALTH} HP${boss.phase2 ? ' — phase 2' : ''}`;
+    hudBossEl.classList.toggle('done', boss.defeated);
+    hudSpearsEl.textContent = boss.defeated ? 'Spears: --' : `Spears: ${spears.length} live`;
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
   }
@@ -2214,21 +2021,18 @@
     const dt = lastFrameTime === null ? 1 / 60 : Math.min((now - lastFrameTime) / 1000, 0.05);
     lastFrameTime = now;
 
+    updateIntroCutscene(now);
+    updatePhase2Cutscene(now);
+    updateDryCutscene(now);
+
     if (gameState === 'playing') {
       elapsedMs = now - runStartTime;
       updateInputMovement(now, dt);
-      updateTriggers();
-      updateCrates(now);
-      updateDrains(now, dt);
-      updateSmokeBombs(now);
+      updateSpears(now);
       updateFish(now, dt);
-      updateMonsters(now, dt);
-      updateShotgunDefense(now);
-      updateCatch(now);
+      updateBoss(now, dt);
       updateCutscenes(now);
-      updateExploration();
       updateAmbientTension();
-      updateSafeMusic(players.some(isInSafeZone));
       updateWaterRipples(now);
     }
     updateParticles(dt);
@@ -2244,6 +2048,8 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       catchFlash -= dt * 1.2;
     }
+
+    if (gameState === 'drying') drawDryingOverlay(now);
 
     updateOverlay();
     updateHud();

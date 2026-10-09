@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 20</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 20 &mdash; The Cistern</h1>
+  <p class="objective">A circular arena, flooded teal, grown over with coral and seaweed, fish drifting through it. The Cistern has <strong>50 health</strong> &mdash; spears spawn every 10 seconds (never more than 3 at once), and walking onto one hits for <strong>2.5 damage</strong>. At <strong>25 health</strong> it turns DEHYDRATED: every coral patch on its body turns red and doubles in size, and every attack runs <strong>1.1x</strong> faster.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-boss">Boss: 50/50 HP</span>
+      <span id="hud-spears">Spears: 0 live</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    It looks like the Bog, grown monstrous and gone teal, both seaweed
+    and coral growing straight out of its hide. The arena itself is a
+    single round chamber, walls lost somewhere out past the lit water,
+    fish drifting through the dark the whole fight.
+  </p>
+  <p class="level-description">
+    Three attacks in phase one. It can glide to the wall over a 2-second
+    warning, then circle the whole arena's perimeter at <strong>4x</strong>
+    your speed for 5 seconds &mdash; get caught in its path and that's
+    the end of that attempt. It can fade to almost nothing but a couple
+    of faint ripples, cross the arena unseen, and slam back into view
+    wherever it lands. And it can hang back and fire coral balls at
+    <strong>2.2x</strong> your speed, one player at a time, for 5
+    seconds straight.
+  </p>
+  <p class="level-description">
+    Spears are the only way to hurt it &mdash; one spawns every 10
+    seconds, never more than 3 on the floor at once, and walking onto
+    one is the hit. Bring it to 25 health and it goes DEHYDRATED: every
+    attack above runs <strong>1.1x</strong> faster, and a fourth attack
+    joins the rotation &mdash; waves splashed out in random directions
+    every 2.5 seconds, for 10 seconds straight, each one as fast as the
+    coral balls. Bring it to 0 and the facility dries up around you.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level20/level.js"></script>
+<script src="js/game20.js"></script>
+</body>
+</html>
