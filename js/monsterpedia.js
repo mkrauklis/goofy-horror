@@ -1708,13 +1708,13 @@
     g.restore();
   }
 
-  // The giant eel is draped in trailing seaweed -- 1-2 short strands per
-  // segment, anchored at a fixed point on the body (hashed from a seed,
-  // same stable-feature convention as drawEelBumps) and swaying with
-  // `t`, same technique game18.js's own drawEelWeed uses.
+  // The giant eel is draped head to tail in a heavy coat of seaweed --
+  // several strands per call (fixed per spot, hashed from a seed, same
+  // stable-feature convention as drawEelBumps) swaying with `t`, same
+  // technique game17.js's own drawEelWeed uses.
   function drawEelWeed(g, r, seed, t) {
     const h = Math.imul(Math.floor(seed * 1000), 2654435761) >>> 0;
-    const strands = 1 + (h % 2);
+    const strands = 3 + (h % 4);
     for (let i = 0; i < strands; i++) {
       const baseAngle = ((h >> (i * 5)) % 360) * Math.PI / 180;
       const baseX = Math.cos(baseAngle) * r * 0.8;
@@ -1734,7 +1734,7 @@
     }
   }
 
-  // The Level 18 creature: the biggest of the three eels, deep green and
+  // The Level 17 creature: the biggest of the three eels, deep green and
   // draped in trailing seaweed rather than bare-skinned like its cousins.
   function drawGreatEel(g, w, h, t) {
     clear(g, w, h);
@@ -1779,7 +1779,8 @@
       g.shadowBlur = 0;
 
       drawEelBumps(g, r, i * 13 + 5);
-      if (i % 3 === 0) drawEelWeed(g, r, i * 13 + 5, t);
+      drawEelWeed(g, r, i * 13 + 5, t);
+      drawEelWeed(g, r, i * 13 + 5 + 6.5, t);
 
       g.beginPath();
       g.ellipse(0, r * 0.35, r * 0.75, r * 0.3, 0, 0, Math.PI);
@@ -1815,6 +1816,7 @@
     g.shadowBlur = 0;
     drawEelBumps(g, baseRadius, 5);
     drawEelWeed(g, baseRadius, 5, t);
+    drawEelWeed(g, baseRadius, 11.5, t);
     const angle = t * 0.0006;
     drawMonsterTeeth(g, baseRadius, { x: Math.cos(angle), y: Math.sin(angle) * 0.4 });
     g.restore();

@@ -24,17 +24,16 @@
   // each frame (see `dt` in loop()) rather than a fixed px/frame step.
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  // The giant eel roams at a full 1x player speed -- noticeably faster
-  // than the smaller flood/current eels -- and triples that the instant
-  // it spots someone, but its own vision is short, so it's a real threat
-  // only once you're already close.
-  const EEL_ROAM_SPEED = PLAYER_SPEED * 1.0;
-  const EEL_CHARGE_SPEED = PLAYER_SPEED * 3.0;
+  // The eel roams slower than a player, but charges much faster once it's
+  // spotted someone -- a patrol/alert split, same state machine as every
+  // other sight-based creature on this site, just with these two speeds.
+  const EEL_ROAM_SPEED = PLAYER_SPEED * 0.6;
+  const EEL_CHARGE_SPEED = PLAYER_SPEED * 1.8;
   const LURE_SPEED = PLAYER_SPEED * 0.6;
-  const CATCH_RADIUS = 26; // a bigger creature, a bigger bite radius
+  const CATCH_RADIUS = 22;
   const REPATH_MS = 500;
   const ALERT_GRACE_MS = 3000;
-  const DETECT_RADIUS = 70; // short vision -- it has to be genuinely close to notice you
+  const DETECT_RADIUS = 130; // open water -- a longer sight line than a cramped hall
   const WHEEL_HOLD_MS = 10000;
   const RADAR_DURATION_MS = 10000;
   const ENERGY_DURATION_MS = 10000;
@@ -66,12 +65,11 @@
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking
   const WALK_CYCLE_SPEED = 9; // radians/second the walk-cycle phase advances at 1x speed
-  // The eel's body: a long, slim trail of segments tapering to a point.
-  // This one is the giant of the three eels on this site -- longer,
-  // thicker, and spaced out further than the flood/current eels.
-  const EEL_SEGMENT_COUNT = 22;
-  const EEL_SEGMENT_SPACING = 30;
-  const EEL_RADIUS = 21;
+  // The eel's body: a long, slim trail of segments tapering to a point,
+  // slimmer than the armored caterpillars elsewhere on this site.
+  const EEL_SEGMENT_COUNT = 16;
+  const EEL_SEGMENT_SPACING = 24;
+  const EEL_RADIUS = 15;
 
   // Ripples spawn at a moving player's feet and expand outward, fading as
   // they go -- purely cosmetic, reused for the eel's own wake too.
@@ -1726,38 +1724,12 @@
       const br = Math.max(1, r * (0.12 + (u % 3) * 0.03));
       g.beginPath();
       g.arc(bx, by, br, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(170,220,180,0.55)';
+      g.fillStyle = 'rgba(190,225,245,0.55)';
       g.fill();
       g.beginPath();
       g.arc(bx - br * 0.3, by - br * 0.3, br * 0.4, 0, Math.PI * 2);
       g.fillStyle = 'rgba(255,255,255,0.4)';
       g.fill();
-    }
-  }
-
-  // The giant eel is draped in trailing seaweed -- 1-2 short strands per
-  // segment, anchored at a fixed point on the body (hashed from a seed,
-  // same stable-feature convention as the bumps above) and swaying with
-  // `t`, same swaying-strand technique as the floor's own seaweed clumps.
-  function drawEelWeed(g, r, seed, t) {
-    const h = Math.imul(Math.floor(seed * 1000), 2654435761) >>> 0;
-    const strands = 1 + (h % 2);
-    for (let i = 0; i < strands; i++) {
-      const baseAngle = ((h >> (i * 5)) % 360) * Math.PI / 180;
-      const baseX = Math.cos(baseAngle) * r * 0.8;
-      const baseY = Math.sin(baseAngle) * r * 0.8;
-      const len = r * (0.8 + ((h >> (i * 3 + 2)) % 10) / 15);
-      const phase = ((h % 100) / 100) * Math.PI * 2 + i * 1.3 + seed;
-      const sway = Math.sin(t * 0.0025 + phase) * 4;
-      const tipX = baseX + Math.cos(baseAngle) * len + sway;
-      const tipY = baseY + Math.sin(baseAngle) * len;
-      g.strokeStyle = i % 2 === 0 ? '#2f6b3a' : '#3a7d45';
-      g.lineWidth = 1.8;
-      g.lineCap = 'round';
-      g.beginPath();
-      g.moveTo(baseX, baseY);
-      g.quadraticCurveTo((baseX + tipX) / 2 + sway * 0.4, (baseY + tipY) / 2, tipX, tipY);
-      g.stroke();
     }
   }
 
@@ -1772,13 +1744,14 @@
       g.fill();
     }
 
-    // Body segments, tail first so the head draws on top -- a deep,
-    // weedy green, tapering to a thin point at the tail, with a scatter
-    // of small raised bumps and trailing seaweed across every segment.
+    // Body segments, tail first so the head draws on top -- a pale,
+    // sickly blue instead of the usual dark teal-green, tapering to a
+    // thin point at the tail, with a scatter of small raised bumps
+    // across every segment's surface.
     for (let i = monster.segments.length - 1; i >= 0; i--) {
       const seg = monster.segments[i];
       const r = Math.max(2.5, monster.radius * (1 - i * 0.055));
-      const base = i % 2 === 0 ? '#3f8f52' : '#4aa05e';
+      const base = i % 2 === 0 ? '#7ab8d9' : '#8ac4e3';
       g.save();
       g.translate(seg.x, seg.y);
 
@@ -1787,7 +1760,7 @@
         const next = monster.segments[Math.min(i + 1, monster.segments.length - 1)];
         const dx = seg.x - next.x, dy = seg.y - next.y;
         const ang = Math.atan2(dy, dx) + Math.PI / 2;
-        drawFin(g, 0, 0, Math.cos(ang) * r * 1.6, Math.sin(ang) * r * 1.6, r * 0.5, 'rgba(70,140,85,0.55)');
+        drawFin(g, 0, 0, Math.cos(ang) * r * 1.6, Math.sin(ang) * r * 1.6, r * 0.5, 'rgba(120,180,220,0.55)');
       }
 
       const grad = g.createRadialGradient(-r * 0.3, -r * 0.35, 1, 0, 0, r);
@@ -1797,18 +1770,17 @@
       g.beginPath();
       g.arc(0, 0, r, 0, Math.PI * 2);
       g.fillStyle = grad;
-      g.shadowColor = '#15401f';
+      g.shadowColor = '#2a5a75';
       g.shadowBlur = 5;
       g.fill();
       g.shadowBlur = 0;
 
       drawEelBumps(g, r, monster.seed + i * 13);
-      if (i % 3 === 0) drawEelWeed(g, r, monster.seed + i * 13, t);
 
       // pale underbelly stripe
       g.beginPath();
       g.ellipse(0, r * 0.35, r * 0.75, r * 0.3, 0, 0, Math.PI);
-      g.fillStyle = 'rgba(215,235,200,0.35)';
+      g.fillStyle = 'rgba(225,240,245,0.35)';
       g.fill();
 
       g.restore();
@@ -1840,21 +1812,20 @@
       const backAngle = headAngle + Math.PI + (0.5 * side);
       const tipX = baseX + Math.cos(backAngle) * monster.radius * 1.4;
       const tipY = baseY + Math.sin(backAngle) * monster.radius * 1.4;
-      drawFin(g, baseX, baseY, tipX, tipY, monster.radius * 0.35, 'rgba(70,140,85,0.6)');
+      drawFin(g, baseX, baseY, tipX, tipY, monster.radius * 0.35, 'rgba(120,180,220,0.6)');
     });
 
     trace();
     const headGrad = g.createRadialGradient(-monster.radius * 0.3, -monster.radius * 0.35, 1, 0, 0, monster.radius * 1.05);
-    headGrad.addColorStop(0, shade('#4aa05e', 0.22));
-    headGrad.addColorStop(0.55, '#4aa05e');
-    headGrad.addColorStop(1, shade('#4aa05e', -0.3));
+    headGrad.addColorStop(0, shade('#8ac4e3', 0.22));
+    headGrad.addColorStop(0.55, '#8ac4e3');
+    headGrad.addColorStop(1, shade('#8ac4e3', -0.3));
     g.fillStyle = headGrad;
-    g.shadowColor = '#15401f';
+    g.shadowColor = '#2a5a75';
     g.shadowBlur = 10;
     g.fill();
     g.shadowBlur = 0;
     drawEelBumps(g, monster.radius, monster.seed);
-    drawEelWeed(g, monster.radius, monster.seed, t);
 
     g.save();
     trace();
