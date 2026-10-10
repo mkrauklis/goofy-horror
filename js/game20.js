@@ -107,22 +107,24 @@
 
   const PROJECTILE_HIT_RADIUS = 20;
 
-  // Attack 4: coral burst -- the boss settles at the center (now at 2x
-  // its usual approach speed), 25 spots scattered around the arena flash
-  // a warning for 2 seconds, then red coral grows at every one of them
-  // and stays, a real hazard, for 3 seconds before the attack ends. A
-  // handful of neon blue coral spots light up for the same stretch --
-  // the arena goes pitch black but for your own light and theirs.
+  // Attack 4: coral burst -- the boss settles at the center (at 2x its
+  // usual approach speed), 25 spots scattered around the arena flash a
+  // warning for 2 seconds, then red coral grows at every one of them and
+  // stays, a real hazard, for 3 seconds before the attack ends.
   const CORALBURST_SPOT_COUNT = 25;
   const CORALBURST_SPOT_RADIUS = TILE * 1.05; // roughly a 2x2-tile footprint
   const CORALBURST_MIN_SPOT_DIST = TILE * 2.2;
   const CORALBURST_WARN_MS = 2000;
   const CORALBURST_GROWTH_MS = 3000;
   const CORALBURST_APPROACH_SPEED = BOSS_IDLE_SPEED * 2;
-  const CORALBURST_BLUE_COUNT = 5;
-  const CORALBURST_BLUE_RADIUS = TILE * 0.8;
-  const CORALBURST_BLUE_LIGHT_RADIUS = TILE * 5; // "5 tiles around"
-  const CORALBURST_PLAYER_LIGHT_RADIUS = TILE * 7; // doubled from the original 3.5 tiles
+
+  // The arena itself is always dark now, not just during coral burst --
+  // lit only by each player's own light and by a fixed scatter of neon
+  // blue coral, planted once when the level loads and never moving.
+  const ARENA_BLUE_CORAL_COUNT = 8;
+  const ARENA_BLUE_CORAL_RADIUS = TILE * 0.8;
+  const ARENA_BLUE_CORAL_LIGHT_RADIUS = TILE * 5; // "5 tiles around"
+  const PLAYER_LIGHT_RADIUS = TILE * 7;
 
   // ---- boss intro / phase-2 cutscenes ----
   const BOSS_INTRO_CUTSCENE_MS = 3000;
@@ -608,8 +610,13 @@
     // wavesplash
     wNextBurstAt: 0, wUntil: 0,
     // coralburst
-    cbSubPhase: 'approach', cbPhaseUntil: 0, cbSpots: [], cbBlueSpots: [],
+    cbSubPhase: 'approach', cbPhaseUntil: 0, cbSpots: [],
   };
+
+  // The arena's fixed neon blue coral, planted once per level load (see
+  // resetLevel) and never moving -- not part of the boss object since
+  // it's a property of the room, not of any one attack.
+  let permanentBlueCoral = [];
 
   function speedMult(now) {
     return boss.phase2 ? PHASE2_SPEED_MULT : 1;
@@ -733,9 +740,9 @@
     boss.cbSubPhase = 'approach';
     boss.cbPhaseUntil = 0;
     boss.cbSpots = [];
-    boss.cbBlueSpots = [];
     boss.vSlamAt = -Infinity;
     boss.vShockwaveHits = [];
+    permanentBlueCoral = pickCoralSpots(ARENA_BLUE_CORAL_COUNT, CORALBURST_MIN_SPOT_DIST, []);
     bossHealth = BOSS_MAX_HEALTH;
 
     stopBossMusic();
@@ -1067,8 +1074,7 @@
       boss.wNextBurstAt = now;
     } else if (kind === 'coralburst') {
       boss.cbSubPhase = 'approach';
-      boss.cbSpots = pickCoralSpots(CORALBURST_SPOT_COUNT, CORALBURST_MIN_SPOT_DIST, []);
-      boss.cbBlueSpots = pickCoralSpots(CORALBURST_BLUE_COUNT, CORALBURST_MIN_SPOT_DIST, boss.cbSpots);
+      boss.cbSpots = pickCoralSpots(CORALBURST_SPOT_COUNT, CORALBURST_MIN_SPOT_DIST, permanentBlueCoral);
     }
   }
 
@@ -1227,7 +1233,6 @@
     });
     if (now >= boss.cbPhaseUntil) {
       boss.cbSpots = [];
-      boss.cbBlueSpots = [];
       finishAttack(now);
     }
   }
@@ -1488,26 +1493,29 @@
     g.restore();
   }
 
-  // A neon blue coral clump that's lit the whole attack through (not just
-  // the 'grown' phase) -- it's the one thing giving off real light once
-  // the arena goes dark, so it needs to be there before the red coral is.
+  // A neon blue coral clump, always lit -- the arena's one permanent
+  // light source besides each player's own, fixed in place for the
+  // whole fight rather than tied to any one attack.
   function drawBlueCoral(g, s, now) {
     g.save();
     g.translate(s.x, s.y);
-    const glow = g.createRadialGradient(0, 0, 0, 0, 0, CORALBURST_BLUE_RADIUS * 2.4);
+    const glow = g.createRadialGradient(0, 0, 0, 0, 0, ARENA_BLUE_CORAL_RADIUS * 2.4);
     glow.addColorStop(0, 'rgba(58,212,255,0.4)');
     glow.addColorStop(1, 'rgba(58,212,255,0)');
     g.beginPath();
-    g.arc(0, 0, CORALBURST_BLUE_RADIUS * 2.4, 0, Math.PI * 2);
+    g.arc(0, 0, ARENA_BLUE_CORAL_RADIUS * 2.4, 0, Math.PI * 2);
     g.fillStyle = glow;
     g.fill();
     g.restore();
-    drawCoralPatch(g, s.x, s.y, CORALBURST_BLUE_RADIUS, s.seed, now, CORALBURST_BLUE, '#1a7a9e');
+    drawCoralPatch(g, s.x, s.y, ARENA_BLUE_CORAL_RADIUS, s.seed, now, CORALBURST_BLUE, '#1a7a9e');
+  }
+
+  function drawPermanentBlueCoral(g, now) {
+    permanentBlueCoral.forEach((s) => drawBlueCoral(g, s, now));
   }
 
   function drawCoralBurst(g, now) {
     if (boss.phase !== 'coralburst') return;
-    boss.cbBlueSpots.forEach((s) => drawBlueCoral(g, s, now));
     if (boss.cbSubPhase === 'warn') {
       const pulse = 0.5 + 0.5 * Math.sin(now * 0.012);
       boss.cbSpots.forEach((s) => {
@@ -1541,12 +1549,12 @@
     g.restore();
   }
 
-  // Only built while the coral-burst attack is actually running -- a
-  // flat black overlay with a hole punched out around each player's own
-  // light and around every neon blue coral spot, composited on top of
-  // the scaled world (which is otherwise always fully lit; nowhere else
-  // on this level ever goes dark).
-  function buildCoralBurstDarkness(camX, camY, zoom) {
+  // The arena is always dark now -- a flat black overlay with a hole
+  // punched out around each player's own light and around every neon
+  // blue coral spot, composited on top of the scaled world every frame
+  // of actual play (not during the intro/phase-2 cutscenes, which do
+  // their own tight zoomed-in framing instead).
+  function buildArenaDarkness(camX, camY, zoom) {
     const worldToScreen = (wx, wy) => ({ x: (wx - camX) * zoom + VIEW_W / 2, y: (wy - camY) * zoom + VIEW_H / 2 });
 
     maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
@@ -1556,11 +1564,11 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, CORALBURST_PLAYER_LIGHT_RADIUS * zoom, 1);
+      punchLight(maskCtx, s.x, s.y, PLAYER_LIGHT_RADIUS * zoom, 1);
     });
-    boss.cbBlueSpots.forEach((bs) => {
+    permanentBlueCoral.forEach((bs) => {
       const s = worldToScreen(bs.x, bs.y);
-      punchLight(maskCtx, s.x, s.y, CORALBURST_BLUE_LIGHT_RADIUS * zoom, 0.92);
+      punchLight(maskCtx, s.x, s.y, ARENA_BLUE_CORAL_LIGHT_RADIUS * zoom, 0.92);
     });
   }
 
@@ -1651,6 +1659,7 @@
     }
 
     drawWhirlpool(g, now);
+    drawPermanentBlueCoral(g, now);
     drawCoralBurst(g, now);
     drawVanishShockwave(g, now);
     drawBloodSplatters(g);
@@ -2371,8 +2380,8 @@
     drawParticles(ctx);
     ctx.restore();
 
-    if (!cutscene && boss.phase === 'coralburst') {
-      buildCoralBurstDarkness(camX, camY, zoom);
+    if (!cutscene) {
+      buildArenaDarkness(camX, camY, zoom);
       ctx.drawImage(maskCanvas, vx, 0);
     }
 
