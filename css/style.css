@@ -301,6 +301,32 @@ header.hero p {
   color: #2a1400;
 }
 
+.player-mode-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.mode-btn {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.6rem 0.9rem;
+  cursor: pointer;
+}
+
+.mode-btn:hover:not(.active) {
+  color: var(--ink);
+}
+
+.mode-btn.active {
+  background: var(--accent-dim);
+  color: #fff2e6;
+}
+
 .story-reset-btn {
   background: none;
   border: none;

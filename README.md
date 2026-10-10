@@ -43,7 +43,15 @@ you into Level 6 the same way.
 Split-screen local 2-player, sharing one dark facility. Player 1 (orange)
 moves with `W` `A` `S` `D`; Player 2 (green) moves with the arrow keys.
 Each half of the screen is that player's own camera into the same map. A
-**Music** button in the HUD mutes/unmutes the ambient drone and safe-room
+**1 Player / 2 Players** toggle on the menu switches to solo mode instead
+-- one full-width viewport, one character, controllable with either `W A
+S D` or the arrow keys. The couple of puzzles built around two players
+each holding down a separate pressure plate (Levels 3, 11, 18) only need
+one plate held in solo, since there's no second body free to cover the
+other. The choice is saved in `localStorage` and read by every
+`game{N}.js` at startup.
+
+A **Music** button in the HUD mutes/unmutes the ambient drone and safe-room
 tune (sound effects like chimes and the catch sting keep playing either
 way). A **Fullscreen** button next to it (added by the same shared
 `js/story.js` every page loads, not duplicated per level) expands just the

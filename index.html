@@ -17,15 +17,19 @@
 <header class="hero">
   <h1>GOOFY HORROR</h1>
   <p>
-    A 2-player local split-screen horror game. Real JavaScript, no build
-    step, no image or sound files &mdash; every room, creature, and note of
-    music is generated live in the browser.
+    A 1 or 2-player local split-screen horror game. Real JavaScript, no
+    build step, no image or sound files &mdash; every room, creature, and
+    note of music is generated live in the browser.
   </p>
 </header>
 
 <div class="wrap">
   <div id="story-cta" class="story-cta">
     <a id="story-continue" class="story-continue-btn" href="level1.html">Start the Story</a>
+    <div class="player-mode-toggle" role="group" aria-label="Player count">
+      <button type="button" class="mode-btn" data-mode="1">1 Player</button>
+      <button type="button" class="mode-btn" data-mode="2">2 Players</button>
+    </div>
     <button id="story-reset" class="story-reset-btn" type="button">Reset progress</button>
   </div>
   <section class="chapter chapter-1">
@@ -250,6 +254,25 @@
     if (!confirm('Reset story progress? This clears which levels are unlocked (best times are kept).')) return;
     window.GoofyStory.resetProgress();
     renderStoryState();
+  });
+
+  // Picked here, read by every game{N}.js at startup -- not a per-level
+  // setting, since it's how you're playing today, not something that
+  // varies level to level.
+  function renderPlayerMode() {
+    if (!window.GoofyStory) return;
+    const mode = window.GoofyStory.getPlayerMode();
+    document.querySelectorAll('.mode-btn').forEach((btn) => {
+      btn.classList.toggle('active', parseInt(btn.dataset.mode, 10) === mode);
+    });
+  }
+  renderPlayerMode();
+  document.querySelectorAll('.mode-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!window.GoofyStory) return;
+      window.GoofyStory.setPlayerMode(parseInt(btn.dataset.mode, 10));
+      renderPlayerMode();
+    });
   });
 </script>
 

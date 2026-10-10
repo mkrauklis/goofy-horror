@@ -20,7 +20,11 @@
   const ARENA_CENTER_Y = LEVEL.arenaCenter.y * TILE + TILE / 2;
   const ARENA_RADIUS_PX = LEVEL.arenaRadiusTiles * TILE;
 
-  const VIEW_W = 460;
+  // 1-player or 2-player, picked on the menu (js/story.js) before this
+  // level ever loads. Solo gets one full-width viewport instead of two
+  // half-width ones sharing the same canvas.
+  const PLAYER_MODE = (window.GoofyStory && window.GoofyStory.getPlayerMode()) || 2;
+  const VIEW_W = PLAYER_MODE === 1 ? 920 : 460;
   const VIEW_H = 340;
   // Boss fights read the whole arena at once rather than following a
   // player closely -- the camera sits fixed on the arena's center and
@@ -436,7 +440,8 @@
 
   const lastTapTime = [{}, {}];
   function handleMovementKeyPress(key, now) {
-    const playerIndex = (key === 'w' || key === 'a' || key === 's' || key === 'd') ? 0 : 1;
+    // Solo: both control schemes drive the one character that exists.
+    const playerIndex = PLAYER_MODE === 1 ? 0 : (key === 'w' || key === 'a' || key === 's' || key === 'd') ? 0 : 1;
     const last = lastTapTime[playerIndex][key] || 0;
     if (now - last < DOUBLE_TAP_MS) {
       const p = players[playerIndex];
@@ -539,10 +544,9 @@
     };
   }
 
-  const players = [
-    makePlayer(LEVEL.spawn1, '#ff8a3d'),
-    makePlayer(LEVEL.spawn2, '#3ddc84'),
-  ];
+  const players = PLAYER_MODE === 1
+    ? [makePlayer(LEVEL.spawn1, '#ff8a3d')]
+    : [makePlayer(LEVEL.spawn1, '#ff8a3d'), makePlayer(LEVEL.spawn2, '#3ddc84')];
 
   // The boss: a giant, Bog-styled eel (segmented trailing body, same
   // technique as every eel on this site) -- teal, grown over with both
@@ -796,6 +800,13 @@
   }
 
   function updateInputMovement(now, dt) {
+    if (PLAYER_MODE === 1) {
+      // Solo: either control scheme moves the one character that exists.
+      const ix = (keys.d || keys.ArrowRight ? 1 : 0) - (keys.a || keys.ArrowLeft ? 1 : 0);
+      const iy = (keys.s || keys.ArrowDown ? 1 : 0) - (keys.w || keys.ArrowUp ? 1 : 0);
+      updatePlayerMovement(players[0], ix, iy, now, dt);
+      return;
+    }
     updatePlayerMovement(players[0], (keys.d ? 1 : 0) - (keys.a ? 1 : 0), (keys.s ? 1 : 0) - (keys.w ? 1 : 0), now, dt);
     updatePlayerMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), now, dt);
   }
@@ -1001,9 +1012,12 @@
       startAttack(pickAttack(), now);
       return;
     }
-    const target = players[0].caught && !players[1].caught ? players[1]
-      : players[1].caught && !players[0].caught ? players[0]
-      : (Math.hypot(players[0].x - boss.x, players[0].y - boss.y) <= Math.hypot(players[1].x - boss.x, players[1].y - boss.y) ? players[0] : players[1]);
+    // Prefers a non-caught player over a caught one; otherwise whoever's
+    // nearest. Written as a reduce over `players` (not hardcoded to two)
+    // so it works unchanged whether there's one player or two.
+    const pool = players.some((p) => !p.caught) ? players.filter((p) => !p.caught) : players;
+    const target = pool.reduce((best, p) =>
+      Math.hypot(p.x - boss.x, p.y - boss.y) < Math.hypot(best.x - boss.x, best.y - boss.y) ? p : best);
     moveToward(boss, target.x, target.y, BOSS_IDLE_SPEED, dt, boss.radius);
   }
 
@@ -2172,8 +2186,10 @@
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     renderViewport(0, now);
-    renderViewport(1, now);
-    drawDivider();
+    if (PLAYER_MODE === 2) {
+      renderViewport(1, now);
+      drawDivider();
+    }
 
     if (catchFlash > 0) {
       ctx.fillStyle = `rgba(20,120,110,${catchFlash * 0.5})`;

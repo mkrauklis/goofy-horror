@@ -17,7 +17,11 @@
   const WORLD_W = COLS * TILE;
   const WORLD_H = ROWS * TILE;
 
-  const VIEW_W = 460;
+  // 1-player or 2-player, picked on the menu (js/story.js) before this
+  // level ever loads. Solo gets one full-width viewport instead of two
+  // half-width ones sharing the same canvas.
+  const PLAYER_MODE = (window.GoofyStory && window.GoofyStory.getPlayerMode()) || 2;
+  const VIEW_W = PLAYER_MODE === 1 ? 920 : 460;
   const VIEW_H = 340;
   // The arena is huge and the boss is the whole point of the level, so the
   // camera sits noticeably further back than the other levels' 1:1 view --
@@ -678,7 +682,8 @@
   // real edge of a fresh keydown, not the browser's auto-repeat.
   const lastTapTime = [{}, {}];
   function handleMovementKeyPress(key, now) {
-    const playerIndex = (key === 'w' || key === 'a' || key === 's' || key === 'd') ? 0 : 1;
+    // Solo: both control schemes drive the one character that exists.
+    const playerIndex = PLAYER_MODE === 1 ? 0 : (key === 'w' || key === 'a' || key === 's' || key === 'd') ? 0 : 1;
     const last = lastTapTime[playerIndex][key] || 0;
     if (now - last < DOUBLE_TAP_MS) {
       const p = players[playerIndex];
@@ -836,10 +841,9 @@
     };
   }
 
-  const players = [
-    makePlayer(LEVEL.spawn1, '#ff8a3d'),
-    makePlayer(LEVEL.spawn2, '#3ddc84'),
-  ];
+  const players = PLAYER_MODE === 1
+    ? [makePlayer(LEVEL.spawn1, '#ff8a3d')]
+    : [makePlayer(LEVEL.spawn1, '#ff8a3d'), makePlayer(LEVEL.spawn2, '#3ddc84')];
 
   // The boss: one giant, burnt Crawler. There's only ever one, so it's a
   // single object rather than an array of monsters like the other levels --
@@ -1072,6 +1076,13 @@
   }
 
   function updateInputMovement(now, dt) {
+    if (PLAYER_MODE === 1) {
+      // Solo: either control scheme moves the one character that exists.
+      const ix = (keys.d || keys.ArrowRight ? 1 : 0) - (keys.a || keys.ArrowLeft ? 1 : 0);
+      const iy = (keys.s || keys.ArrowDown ? 1 : 0) - (keys.w || keys.ArrowUp ? 1 : 0);
+      updatePlayerMovement(players[0], ix, iy, now, dt);
+      return;
+    }
     updatePlayerMovement(players[0], (keys.d ? 1 : 0) - (keys.a ? 1 : 0), (keys.s ? 1 : 0) - (keys.w ? 1 : 0), now, dt);
     updatePlayerMovement(players[1], (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), now, dt);
   }
@@ -3127,8 +3138,10 @@
       ctx.translate((Math.random() - 0.5) * shakeMag, (Math.random() - 0.5) * shakeMag);
     }
     renderViewport(0, now);
-    renderViewport(1, now);
-    drawDivider();
+    if (PLAYER_MODE === 2) {
+      renderViewport(1, now);
+      drawDivider();
+    }
     if (collapseT > 0) {
       ctx.restore();
       ctx.fillStyle = `rgba(10,5,5,${collapseT * 0.8})`;

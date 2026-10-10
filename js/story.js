@@ -67,6 +67,27 @@
     persist();
   }
 
+  // 1-player or 2-player, picked on the menu and read by every game{N}.js
+  // at startup -- one shared key rather than per-level storage, since it's
+  // a play-style preference, not level progress. Defaults to 2 (the game's
+  // original, still-primary mode) whenever nothing's been chosen yet or
+  // storage is blocked.
+  const PLAYER_MODE_KEY = 'goofy-horror-player-mode';
+  function getPlayerMode() {
+    try {
+      return localStorage.getItem(PLAYER_MODE_KEY) === '1' ? 1 : 2;
+    } catch (e) {
+      return 2;
+    }
+  }
+  function setPlayerMode(n) {
+    try {
+      localStorage.setItem(PLAYER_MODE_KEY, n === 1 ? '1' : '2');
+    } catch (e) {
+      // private-browsing / storage-full -- falls back to 2-player each load
+    }
+  }
+
   window.GoofyStory = {
     TOTAL_LEVELS,
     isUnlocked,
@@ -75,6 +96,8 @@
     nextLevel,
     isStoryComplete,
     resetProgress,
+    getPlayerMode,
+    setPlayerMode,
   };
 
   // Each level belongs to a 5-level chapter (Chapter 1 = levels 1-5,
@@ -134,10 +157,26 @@
     });
   }
 
+  // Every level page's hint paragraph is identical, hardcoded markup:
+  // "Player 1 ... Player 2 ..." as a leading text node followed by the
+  // #sound-hint span. In solo mode that's misleading (there's no Player
+  // 2), so this rewrites just that leading text node -- never touching
+  // the span itself -- rather than editing all 20 HTML files by hand.
+  function applyPlayerModeHint() {
+    if (!window.GoofyStory || window.GoofyStory.getPlayerMode() !== 1) return;
+    const hint = document.querySelector('p.hint');
+    if (!hint) return;
+    const firstNode = hint.childNodes[0];
+    if (firstNode && firstNode.nodeType === Node.TEXT_NODE) {
+      firstNode.textContent = 'Solo: W A S D or Arrow keys move your character';
+    }
+  }
+
   function onReady(fn) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
     else fn();
   }
   onReady(injectChapterLabel);
   onReady(setupFullscreenToggle);
+  onReady(applyPlayerModeHint);
 })();
