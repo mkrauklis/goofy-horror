@@ -122,7 +122,7 @@
   const CORALBURST_BLUE_COUNT = 5;
   const CORALBURST_BLUE_RADIUS = TILE * 0.8;
   const CORALBURST_BLUE_LIGHT_RADIUS = TILE * 5; // "5 tiles around"
-  const CORALBURST_PLAYER_LIGHT_RADIUS = TILE * 3.5;
+  const CORALBURST_PLAYER_LIGHT_RADIUS = TILE * 7; // doubled from the original 3.5 tiles
 
   // ---- boss intro / phase-2 cutscenes ----
   const BOSS_INTRO_CUTSCENE_MS = 3000;
