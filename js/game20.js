@@ -107,15 +107,22 @@
 
   const PROJECTILE_HIT_RADIUS = 20;
 
-  // Attack 4: coral burst -- the boss settles at the center, 10 spots
-  // scattered around the arena flash a warning for 2 seconds, then red
-  // coral grows at every one of them and stays, a real hazard, for 3
-  // seconds before the attack ends.
-  const CORALBURST_SPOT_COUNT = 10;
+  // Attack 4: coral burst -- the boss settles at the center (now at 2x
+  // its usual approach speed), 25 spots scattered around the arena flash
+  // a warning for 2 seconds, then red coral grows at every one of them
+  // and stays, a real hazard, for 3 seconds before the attack ends. A
+  // handful of neon blue coral spots light up for the same stretch --
+  // the arena goes pitch black but for your own light and theirs.
+  const CORALBURST_SPOT_COUNT = 25;
   const CORALBURST_SPOT_RADIUS = TILE * 1.05; // roughly a 2x2-tile footprint
   const CORALBURST_MIN_SPOT_DIST = TILE * 2.2;
   const CORALBURST_WARN_MS = 2000;
   const CORALBURST_GROWTH_MS = 3000;
+  const CORALBURST_APPROACH_SPEED = BOSS_IDLE_SPEED * 2;
+  const CORALBURST_BLUE_COUNT = 5;
+  const CORALBURST_BLUE_RADIUS = TILE * 0.8;
+  const CORALBURST_BLUE_LIGHT_RADIUS = TILE * 5; // "5 tiles around"
+  const CORALBURST_PLAYER_LIGHT_RADIUS = TILE * 3.5;
 
   // ---- boss intro / phase-2 cutscenes ----
   const BOSS_INTRO_CUTSCENE_MS = 3000;
@@ -148,6 +155,15 @@
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
   const messageEl = document.getElementById('game-message');
+
+  // Only ever used during the coral-burst attack -- the rest of this
+  // level is always fully lit (that's the whole point of the zoomed-out
+  // boss camera), so there's no reason to build or composite a mask any
+  // other time.
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = VIEW_W;
+  maskCanvas.height = VIEW_H;
+  const maskCtx = maskCanvas.getContext('2d');
 
   const hudBossEl = document.getElementById('hud-boss');
   const hudSpearsEl = document.getElementById('hud-spears');
@@ -592,7 +608,7 @@
     // wavesplash
     wNextBurstAt: 0, wUntil: 0,
     // coralburst
-    cbSubPhase: 'approach', cbPhaseUntil: 0, cbSpots: [],
+    cbSubPhase: 'approach', cbPhaseUntil: 0, cbSpots: [], cbBlueSpots: [],
   };
 
   function speedMult(now) {
@@ -717,6 +733,7 @@
     boss.cbSubPhase = 'approach';
     boss.cbPhaseUntil = 0;
     boss.cbSpots = [];
+    boss.cbBlueSpots = [];
     boss.vSlamAt = -Infinity;
     boss.vShockwaveHits = [];
     bossHealth = BOSS_MAX_HEALTH;
@@ -995,20 +1012,24 @@
   // ---- boss attack state machine ----
   const ALL_ATTACKS = ['wallspin', 'vanish', 'barrage', 'coralburst'];
 
-  // 10 spots scattered around the arena for the coral-burst attack,
-  // spread apart (rejection sampling) so they don't cluster into one big
-  // blob, and sampled with sqrt(random()) radius so they're spread evenly
-  // across the whole disk instead of bunching up near the center.
-  function pickCoralSpots() {
+  // Spots scattered around the arena for the coral-burst attack, spread
+  // apart (rejection sampling) so they don't cluster into one big blob,
+  // and sampled with sqrt(random()) radius so they're spread evenly
+  // across the whole disk instead of bunching up near the center. `avoid`
+  // lets the blue light spots steer clear of the red hazard spots (and
+  // vice versa) by checking against a second, already-picked list too.
+  function pickCoralSpots(count, minDist, avoid) {
     const spots = [];
+    const avoidList = avoid || [];
     let tries = 0;
-    while (spots.length < CORALBURST_SPOT_COUNT && tries < 500) {
+    while (spots.length < count && tries < 500) {
       tries++;
       const a = Math.random() * Math.PI * 2;
       const r = Math.sqrt(Math.random()) * (ARENA_RADIUS_PX - CORALBURST_SPOT_RADIUS - 10);
       const x = ARENA_CENTER_X + Math.cos(a) * r;
       const y = ARENA_CENTER_Y + Math.sin(a) * r;
-      if (spots.some((s) => Math.hypot(s.x - x, s.y - y) < CORALBURST_MIN_SPOT_DIST)) continue;
+      if (spots.some((s) => Math.hypot(s.x - x, s.y - y) < minDist)) continue;
+      if (avoidList.some((s) => Math.hypot(s.x - x, s.y - y) < minDist)) continue;
       spots.push({ x, y, seed: Math.random() * 1000 });
     }
     return spots;
@@ -1046,7 +1067,8 @@
       boss.wNextBurstAt = now;
     } else if (kind === 'coralburst') {
       boss.cbSubPhase = 'approach';
-      boss.cbSpots = pickCoralSpots();
+      boss.cbSpots = pickCoralSpots(CORALBURST_SPOT_COUNT, CORALBURST_MIN_SPOT_DIST, []);
+      boss.cbBlueSpots = pickCoralSpots(CORALBURST_BLUE_COUNT, CORALBURST_MIN_SPOT_DIST, boss.cbSpots);
     }
   }
 
@@ -1175,12 +1197,13 @@
     if (now >= boss.wUntil) finishAttack(now);
   }
 
-  // Settle at the center, let the 10 picked spots flash a warning, then
-  // let them actually grow into a real hazard for a few seconds before
-  // clearing out and handing control back to updateBossIdle.
+  // Settle at the center (at double the usual approach speed), let the
+  // picked spots flash a warning, then let them actually grow into a
+  // real hazard for a few seconds before clearing out and handing
+  // control back to updateBossIdle.
   function updateBossCoralburst(now, dt) {
     if (boss.cbSubPhase === 'approach') {
-      const arrived = moveToward(boss, ARENA_CENTER_X, ARENA_CENTER_Y, BOSS_IDLE_SPEED, dt, boss.radius);
+      const arrived = moveToward(boss, ARENA_CENTER_X, ARENA_CENTER_Y, CORALBURST_APPROACH_SPEED, dt, boss.radius);
       if (arrived) {
         boss.cbSubPhase = 'warn';
         boss.cbPhaseUntil = now + CORALBURST_WARN_MS;
@@ -1204,6 +1227,7 @@
     });
     if (now >= boss.cbPhaseUntil) {
       boss.cbSpots = [];
+      boss.cbBlueSpots = [];
       finishAttack(now);
     }
   }
@@ -1431,7 +1455,10 @@
   // grows in -- same red CORAL_PALETTE override the boss's own body uses
   // in phase 2, just planted in the sand instead of growing on its hide.
   const CORALBURST_RED = '#ff3b3b';
-  function drawCoralPatch(g, cx, cy, radius, seed, now) {
+  const CORALBURST_BLUE = '#3ad4ff';
+  function drawCoralPatch(g, cx, cy, radius, seed, now, color, coreColor) {
+    color = color || CORALBURST_RED;
+    coreColor = coreColor || '#b8291f';
     const h = Math.imul(Math.floor(seed * 1000), 2654435761) >>> 0;
     const branches = 6 + (h % 3);
     g.save();
@@ -1442,7 +1469,7 @@
       const sway = Math.sin(now * 0.002 + i + seed) * 2;
       const baseX = Math.cos(a) * radius * 0.15, baseY = Math.sin(a) * radius * 0.15;
       const tipX = Math.cos(a) * len + sway, tipY = Math.sin(a) * len;
-      g.strokeStyle = CORALBURST_RED;
+      g.strokeStyle = color;
       g.lineWidth = 3.2;
       g.lineCap = 'round';
       g.beginPath();
@@ -1451,18 +1478,36 @@
       g.stroke();
       g.beginPath();
       g.arc(tipX, tipY, 3, 0, Math.PI * 2);
-      g.fillStyle = CORALBURST_RED;
+      g.fillStyle = color;
       g.fill();
     }
     g.beginPath();
     g.arc(0, 0, radius * 0.22, 0, Math.PI * 2);
-    g.fillStyle = '#b8291f';
+    g.fillStyle = coreColor;
     g.fill();
     g.restore();
   }
 
+  // A neon blue coral clump that's lit the whole attack through (not just
+  // the 'grown' phase) -- it's the one thing giving off real light once
+  // the arena goes dark, so it needs to be there before the red coral is.
+  function drawBlueCoral(g, s, now) {
+    g.save();
+    g.translate(s.x, s.y);
+    const glow = g.createRadialGradient(0, 0, 0, 0, 0, CORALBURST_BLUE_RADIUS * 2.4);
+    glow.addColorStop(0, 'rgba(58,212,255,0.4)');
+    glow.addColorStop(1, 'rgba(58,212,255,0)');
+    g.beginPath();
+    g.arc(0, 0, CORALBURST_BLUE_RADIUS * 2.4, 0, Math.PI * 2);
+    g.fillStyle = glow;
+    g.fill();
+    g.restore();
+    drawCoralPatch(g, s.x, s.y, CORALBURST_BLUE_RADIUS, s.seed, now, CORALBURST_BLUE, '#1a7a9e');
+  }
+
   function drawCoralBurst(g, now) {
     if (boss.phase !== 'coralburst') return;
+    boss.cbBlueSpots.forEach((s) => drawBlueCoral(g, s, now));
     if (boss.cbSubPhase === 'warn') {
       const pulse = 0.5 + 0.5 * Math.sin(now * 0.012);
       boss.cbSpots.forEach((s) => {
@@ -1480,6 +1525,43 @@
     } else if (boss.cbSubPhase === 'grown') {
       boss.cbSpots.forEach((s) => drawCoralPatch(g, s.x, s.y, CORALBURST_SPOT_RADIUS, s.seed, now));
     }
+  }
+
+  function punchLight(g, x, y, radius, intensity) {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) return;
+    g.save();
+    g.globalCompositeOperation = 'destination-out';
+    const grad = g.createRadialGradient(x, y, 0, x, y, radius);
+    grad.addColorStop(0, `rgba(0,0,0,${intensity})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.beginPath();
+    g.arc(x, y, radius, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+
+  // Only built while the coral-burst attack is actually running -- a
+  // flat black overlay with a hole punched out around each player's own
+  // light and around every neon blue coral spot, composited on top of
+  // the scaled world (which is otherwise always fully lit; nowhere else
+  // on this level ever goes dark).
+  function buildCoralBurstDarkness(camX, camY, zoom) {
+    const worldToScreen = (wx, wy) => ({ x: (wx - camX) * zoom + VIEW_W / 2, y: (wy - camY) * zoom + VIEW_H / 2 });
+
+    maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
+    maskCtx.globalCompositeOperation = 'source-over';
+    maskCtx.fillStyle = '#000000';
+    maskCtx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+    players.forEach((pl) => {
+      const s = worldToScreen(pl.x, pl.y);
+      punchLight(maskCtx, s.x, s.y, CORALBURST_PLAYER_LIGHT_RADIUS * zoom, 1);
+    });
+    boss.cbBlueSpots.forEach((bs) => {
+      const s = worldToScreen(bs.x, bs.y);
+      punchLight(maskCtx, s.x, s.y, CORALBURST_BLUE_LIGHT_RADIUS * zoom, 0.92);
+    });
   }
 
   // A swaying clump of 3-4 seaweed strands -- a fixed base position per
@@ -1672,6 +1754,40 @@
     }
   }
 
+  // Dried, cracked skin once DEHYDRATED (phase 2) -- a few jagged dark
+  // fracture lines wandering out from a point near the center, clipped
+  // to this segment/head's own circular silhouette so they never poke
+  // outside it. Fixed per segment (hashed from its own seed, not its
+  // live position), same stable-growth convention as the coral above.
+  function drawBossCracks(g, r, seed) {
+    const h = Math.imul(Math.floor(seed * 1000), 2654435761) >>> 0;
+    g.save();
+    g.beginPath();
+    g.arc(0, 0, r, 0, Math.PI * 2);
+    g.clip();
+    const crackCount = 3;
+    for (let c = 0; c < crackCount; c++) {
+      const ch = Math.imul(h + c * 131, 2246822519) >>> 0;
+      let angle = ((ch % 360) * Math.PI) / 180;
+      let x = Math.cos(angle) * r * 0.15, y = Math.sin(angle) * r * 0.15;
+      g.strokeStyle = 'rgba(25,12,8,0.7)';
+      g.lineWidth = Math.max(0.8, r * 0.055);
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(x, y);
+      const segs = 3 + (ch % 2);
+      for (let i = 0; i < segs; i++) {
+        angle += (((ch >> (i * 3 + 2)) % 7) - 3) * 0.35;
+        const len = r * (0.25 + ((ch >> (i * 2 + 1)) % 4) * 0.08);
+        x += Math.cos(angle) * len;
+        y += Math.sin(angle) * len;
+        g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+    g.restore();
+  }
+
   // Trailing seaweed, same strands-off-a-fixed-anchor technique the Bog
   // itself uses -- the boss "looks like the Bog" in this exact way.
   function drawBossWeed(g, r, seed, t) {
@@ -1827,6 +1943,7 @@
 
       drawBossWeed(g, r, m.seed + i * 13, t);
       drawBossCoralGrowth(g, r, m.seed + i * 13 + 6.5, m.phase2);
+      if (m.phase2) drawBossCracks(g, r, m.seed + i * 13 + 3.2);
 
       g.restore();
     }
@@ -1871,6 +1988,7 @@
     g.shadowBlur = 0;
     drawBossWeed(g, m.radius, m.seed, t);
     drawBossCoralGrowth(g, m.radius, m.seed + 6.5, m.phase2);
+    if (m.phase2) drawBossCracks(g, m.radius, m.seed + 3.2);
 
     // mouth instead of an eye, same convention as the Dig Worm
     drawMonsterMouth(g, m.radius, m.lookDir);
@@ -2252,6 +2370,11 @@
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
+
+    if (!cutscene && boss.phase === 'coralburst') {
+      buildCoralBurstDarkness(camX, camY, zoom);
+      ctx.drawImage(maskCanvas, vx, 0);
+    }
 
     if (intro) {
       drawBossIntroOverlay(vx, now);
