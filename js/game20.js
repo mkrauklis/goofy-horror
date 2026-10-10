@@ -84,6 +84,11 @@
   const VANISH_MIN_ALPHA = 0.06;
   const VANISH_SLAM_RADIUS = BOSS_RADIUS * 1.9;
   const VANISH_RIPPLE_INTERVAL_MS = 450;
+  // Coming back up out of the water throws out a real shockwave -- a ring
+  // expanding from the landing spot out to a full 6 tiles, not just the
+  // tight point-blank slam radius above.
+  const VANISH_SHOCKWAVE_RADIUS = TILE * 6;
+  const VANISH_SHOCKWAVE_MS = 650;
 
   // Attack 3: barrage -- coral balls fired at each player in turn.
   const BARRAGE_DURATION_MS = 5000;
@@ -578,6 +583,7 @@
     wsSubPhase: 'warn', wsWarnUntil: 0, wsUntil: 0, wsAngle: 0, wsDir: 1,
     // vanish
     vSubPhase: 'fade', vPhaseUntil: 0, vStartX: 0, vStartY: 0, vTargetX: 0, vTargetY: 0, vNextRippleAt: 0,
+    vSlamAt: 0, vSlamX: 0, vSlamY: 0, vShockwaveHits: [],
     // barrage
     bNextFireAt: 0, bUntil: 0, bPlayerIndex: 0,
     // wavesplash
@@ -708,6 +714,8 @@
     boss.cbSubPhase = 'approach';
     boss.cbPhaseUntil = 0;
     boss.cbSpots = [];
+    boss.vSlamAt = -Infinity;
+    boss.vShockwaveHits = [];
     bossHealth = BOSS_MAX_HEALTH;
 
     stopBossMusic();
@@ -1120,6 +1128,9 @@
         boss.vPhaseUntil = now + 400;
         boss.alpha = 1;
         boss.vSlamAt = now;
+        boss.vSlamX = boss.x;
+        boss.vSlamY = boss.y;
+        boss.vShockwaveHits = [];
         playChompThud(0);
         bossContactCheck(now, VANISH_SLAM_RADIUS);
       }
@@ -1206,8 +1217,27 @@
     }
   }
 
+  // The shockwave from the vanish attack's landing -- an expanding ring
+  // out to a full 6 tiles from the spot it came back up at, not tied to
+  // boss.phase so it keeps expanding and catching players for its whole
+  // VANISH_SHOCKWAVE_MS even after the attack itself has already finished
+  // and handed control back to updateBossIdle.
+  function updateVanishShockwave(now) {
+    const elapsed = now - boss.vSlamAt;
+    if (elapsed < 0 || elapsed >= VANISH_SHOCKWAVE_MS) return;
+    const ringRadius = VANISH_SHOCKWAVE_RADIUS * (elapsed / VANISH_SHOCKWAVE_MS);
+    players.forEach((p) => {
+      if (p.caught || now < p.invulnerableUntil || boss.vShockwaveHits.includes(p)) return;
+      if (Math.hypot(p.x - boss.vSlamX, p.y - boss.vSlamY) <= ringRadius) {
+        triggerCaught(p, now);
+        boss.vShockwaveHits.push(p);
+      }
+    });
+  }
+
   function updateBoss(now, dt) {
     updateProjectiles(now, dt);
+    updateVanishShockwave(now);
     updateBossSegments(boss, now);
     if (boss.defeated) return;
     switch (boss.phase) {
@@ -1362,6 +1392,33 @@
     g.restore();
   }
 
+  // The vanish attack's landing shockwave -- a bright ring expanding out
+  // from the spot the boss just resurfaced at, out to a full 6 tiles,
+  // fading out as it grows. Driven by boss.vSlamAt/vSlamX/vSlamY rather
+  // than the current attack phase, same as updateVanishShockwave, so it
+  // keeps drawing for its whole lifetime even once the boss has already
+  // moved on to idle.
+  function drawVanishShockwave(g, now) {
+    const elapsed = now - boss.vSlamAt;
+    if (elapsed < 0 || elapsed >= VANISH_SHOCKWAVE_MS) return;
+    const t = elapsed / VANISH_SHOCKWAVE_MS;
+    const r = VANISH_SHOCKWAVE_RADIUS * t;
+    const alpha = 1 - t;
+    g.save();
+    g.translate(boss.vSlamX, boss.vSlamY);
+    g.beginPath();
+    g.arc(0, 0, r, 0, Math.PI * 2);
+    g.strokeStyle = `rgba(200,245,235,${alpha * 0.8})`;
+    g.lineWidth = 7 * (1 - t * 0.6);
+    g.stroke();
+    g.beginPath();
+    g.arc(0, 0, Math.max(0, r - 16), 0, Math.PI * 2);
+    g.strokeStyle = `rgba(255,255,255,${alpha * 0.5})`;
+    g.lineWidth = 2.5;
+    g.stroke();
+    g.restore();
+  }
+
   // Coral-burst attack: a red danger ring pulsing at each picked spot
   // during the 2s warning, replaced by an actual red coral clump once it
   // grows in -- same red CORAL_PALETTE override the boss's own body uses
@@ -1506,6 +1563,7 @@
 
     drawWhirlpool(g, now);
     drawCoralBurst(g, now);
+    drawVanishShockwave(g, now);
     drawBloodSplatters(g);
     drawSpears(g, now);
     drawWaterRipples(g, now);
