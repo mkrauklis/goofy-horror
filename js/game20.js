@@ -99,6 +99,16 @@
 
   const PROJECTILE_HIT_RADIUS = 20;
 
+  // Attack 4: coral burst -- the boss settles at the center, 10 spots
+  // scattered around the arena flash a warning for 2 seconds, then red
+  // coral grows at every one of them and stays, a real hazard, for 3
+  // seconds before the attack ends.
+  const CORALBURST_SPOT_COUNT = 10;
+  const CORALBURST_SPOT_RADIUS = TILE * 1.05; // roughly a 2x2-tile footprint
+  const CORALBURST_MIN_SPOT_DIST = TILE * 2.2;
+  const CORALBURST_WARN_MS = 2000;
+  const CORALBURST_GROWTH_MS = 3000;
+
   // ---- boss intro / phase-2 cutscenes ----
   const BOSS_INTRO_CUTSCENE_MS = 3000;
   const BOSS_INTRO_GRACE_MS = 3000;
@@ -559,7 +569,7 @@
     trail: [], segments: [],
     nextRippleAt: 0,
     alpha: 1,
-    phase: 'idle', // 'idle' | 'wallspin' | 'vanish' | 'barrage' | 'wavesplash'
+    phase: 'idle', // 'idle' | 'wallspin' | 'vanish' | 'barrage' | 'wavesplash' | 'coralburst'
     phase2: false,
     defeated: false,
     lastAttack: null,
@@ -572,6 +582,8 @@
     bNextFireAt: 0, bUntil: 0, bPlayerIndex: 0,
     // wavesplash
     wNextBurstAt: 0, wUntil: 0,
+    // coralburst
+    cbSubPhase: 'approach', cbPhaseUntil: 0, cbSpots: [],
   };
 
   function speedMult(now) {
@@ -693,6 +705,9 @@
     boss.defeated = false;
     boss.lastAttack = null;
     boss.nextIdleUntil = 0;
+    boss.cbSubPhase = 'approach';
+    boss.cbPhaseUntil = 0;
+    boss.cbSpots = [];
     bossHealth = BOSS_MAX_HEALTH;
 
     stopBossMusic();
@@ -967,7 +982,26 @@
   }
 
   // ---- boss attack state machine ----
-  const ALL_ATTACKS = ['wallspin', 'vanish', 'barrage'];
+  const ALL_ATTACKS = ['wallspin', 'vanish', 'barrage', 'coralburst'];
+
+  // 10 spots scattered around the arena for the coral-burst attack,
+  // spread apart (rejection sampling) so they don't cluster into one big
+  // blob, and sampled with sqrt(random()) radius so they're spread evenly
+  // across the whole disk instead of bunching up near the center.
+  function pickCoralSpots() {
+    const spots = [];
+    let tries = 0;
+    while (spots.length < CORALBURST_SPOT_COUNT && tries < 500) {
+      tries++;
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * (ARENA_RADIUS_PX - CORALBURST_SPOT_RADIUS - 10);
+      const x = ARENA_CENTER_X + Math.cos(a) * r;
+      const y = ARENA_CENTER_Y + Math.sin(a) * r;
+      if (spots.some((s) => Math.hypot(s.x - x, s.y - y) < CORALBURST_MIN_SPOT_DIST)) continue;
+      spots.push({ x, y, seed: Math.random() * 1000 });
+    }
+    return spots;
+  }
 
   function pickAttack() {
     const pool = boss.phase2 ? ALL_ATTACKS.concat(['wavesplash']) : ALL_ATTACKS;
@@ -999,6 +1033,9 @@
     } else if (kind === 'wavesplash') {
       boss.wUntil = now + WAVESPLASH_DURATION_MS;
       boss.wNextBurstAt = now;
+    } else if (kind === 'coralburst') {
+      boss.cbSubPhase = 'approach';
+      boss.cbSpots = pickCoralSpots();
     }
   }
 
@@ -1120,6 +1157,39 @@
     if (now >= boss.wUntil) finishAttack(now);
   }
 
+  // Settle at the center, let the 10 picked spots flash a warning, then
+  // let them actually grow into a real hazard for a few seconds before
+  // clearing out and handing control back to updateBossIdle.
+  function updateBossCoralburst(now, dt) {
+    if (boss.cbSubPhase === 'approach') {
+      const arrived = moveToward(boss, ARENA_CENTER_X, ARENA_CENTER_Y, BOSS_IDLE_SPEED, dt, boss.radius);
+      if (arrived) {
+        boss.cbSubPhase = 'warn';
+        boss.cbPhaseUntil = now + CORALBURST_WARN_MS;
+      }
+      return;
+    }
+    if (boss.cbSubPhase === 'warn') {
+      if (now >= boss.cbPhaseUntil) {
+        boss.cbSubPhase = 'grown';
+        boss.cbPhaseUntil = now + CORALBURST_GROWTH_MS;
+        playChompThud(0);
+      }
+      return;
+    }
+    // 'grown' -- the coral itself is the hazard now, not the boss.
+    players.forEach((p) => {
+      if (p.caught || now < p.invulnerableUntil) return;
+      if (boss.cbSpots.some((s) => Math.hypot(p.x - s.x, p.y - s.y) < CORALBURST_SPOT_RADIUS)) {
+        triggerCaught(p, now);
+      }
+    });
+    if (now >= boss.cbPhaseUntil) {
+      boss.cbSpots = [];
+      finishAttack(now);
+    }
+  }
+
   function updateProjectiles(now, dt) {
     for (let i = projectiles.length - 1; i >= 0; i--) {
       const pr = projectiles[i];
@@ -1146,6 +1216,7 @@
       case 'vanish': updateBossVanish(now, dt); break;
       case 'barrage': updateBossBarrage(now, dt); break;
       case 'wavesplash': updateBossWavesplash(now, dt); break;
+      case 'coralburst': updateBossCoralburst(now, dt); break;
     }
   }
 
@@ -1291,6 +1362,62 @@
     g.restore();
   }
 
+  // Coral-burst attack: a red danger ring pulsing at each picked spot
+  // during the 2s warning, replaced by an actual red coral clump once it
+  // grows in -- same red CORAL_PALETTE override the boss's own body uses
+  // in phase 2, just planted in the sand instead of growing on its hide.
+  const CORALBURST_RED = '#ff3b3b';
+  function drawCoralPatch(g, cx, cy, radius, seed, now) {
+    const h = Math.imul(Math.floor(seed * 1000), 2654435761) >>> 0;
+    const branches = 6 + (h % 3);
+    g.save();
+    g.translate(cx, cy);
+    for (let i = 0; i < branches; i++) {
+      const a = (i / branches) * Math.PI * 2 + (h % 100) / 100;
+      const len = radius * (0.55 + ((h >> (i * 3 + 1)) % 10) / 20);
+      const sway = Math.sin(now * 0.002 + i + seed) * 2;
+      const baseX = Math.cos(a) * radius * 0.15, baseY = Math.sin(a) * radius * 0.15;
+      const tipX = Math.cos(a) * len + sway, tipY = Math.sin(a) * len;
+      g.strokeStyle = CORALBURST_RED;
+      g.lineWidth = 3.2;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(baseX, baseY);
+      g.quadraticCurveTo((baseX + tipX) / 2 + sway * 0.4, (baseY + tipY) / 2, tipX, tipY);
+      g.stroke();
+      g.beginPath();
+      g.arc(tipX, tipY, 3, 0, Math.PI * 2);
+      g.fillStyle = CORALBURST_RED;
+      g.fill();
+    }
+    g.beginPath();
+    g.arc(0, 0, radius * 0.22, 0, Math.PI * 2);
+    g.fillStyle = '#b8291f';
+    g.fill();
+    g.restore();
+  }
+
+  function drawCoralBurst(g, now) {
+    if (boss.phase !== 'coralburst') return;
+    if (boss.cbSubPhase === 'warn') {
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.012);
+      boss.cbSpots.forEach((s) => {
+        g.save();
+        g.translate(s.x, s.y);
+        g.beginPath();
+        g.arc(0, 0, CORALBURST_SPOT_RADIUS * (0.9 + pulse * 0.1), 0, Math.PI * 2);
+        g.fillStyle = `rgba(255,50,50,${0.16 + pulse * 0.22})`;
+        g.fill();
+        g.strokeStyle = `rgba(255,100,80,${0.5 + pulse * 0.4})`;
+        g.lineWidth = 2.5;
+        g.stroke();
+        g.restore();
+      });
+    } else if (boss.cbSubPhase === 'grown') {
+      boss.cbSpots.forEach((s) => drawCoralPatch(g, s.x, s.y, CORALBURST_SPOT_RADIUS, s.seed, now));
+    }
+  }
+
   // A swaying clump of 3-4 seaweed strands -- a fixed base position per
   // tile (hashed, like the floor shading) with each strand's sway phase
   // offset so the clump doesn't move as one rigid unit.
@@ -1378,6 +1505,7 @@
     }
 
     drawWhirlpool(g, now);
+    drawCoralBurst(g, now);
     drawBloodSplatters(g);
     drawSpears(g, now);
     drawWaterRipples(g, now);
@@ -1505,24 +1633,53 @@
 
   // Coral balls (barrage) and waves (wavesplash) -- both share the same
   // projectile pool and physics, so one draw pass covers both. A wave
-  // reads as a pale ring of churned water; a coral ball as a solid,
-  // colored orb.
+  // reads as an actual curling crest -- a thick teal band with a bright
+  // foam highlight along its leading edge, open toward the trailing side
+  // so it reads as water curling forward, plus a fading wake behind it
+  // to sell the motion. A coral ball is a solid, colored orb.
   function drawProjectiles(g) {
     projectiles.forEach((pr) => {
       g.save();
       g.translate(pr.x, pr.y);
       if (pr.wave) {
         g.rotate(Math.atan2(pr.dirY, pr.dirX));
-        g.beginPath();
-        g.ellipse(0, 0, 13, 7, 0, 0, Math.PI * 2);
-        g.strokeStyle = 'rgba(210,245,235,0.85)';
-        g.lineWidth = 2.5;
-        g.stroke();
-        g.beginPath();
-        g.ellipse(-3, 0, 7, 4, 0, 0, Math.PI * 2);
-        g.strokeStyle = 'rgba(210,245,235,0.5)';
+
+        // fading wake behind the crest
+        g.strokeStyle = 'rgba(180,230,220,0.28)';
         g.lineWidth = 1.5;
+        g.beginPath();
+        g.arc(-7, 0, 9, -Math.PI * 0.5, Math.PI * 0.5);
         g.stroke();
+        g.strokeStyle = 'rgba(180,230,220,0.16)';
+        g.beginPath();
+        g.arc(-13, 0, 11, -Math.PI * 0.45, Math.PI * 0.45);
+        g.stroke();
+
+        // the crest itself -- a thick curved teal band
+        g.beginPath();
+        g.arc(0, 0, 10, -Math.PI * 0.58, Math.PI * 0.58);
+        g.strokeStyle = 'rgba(110,190,180,0.9)';
+        g.lineWidth = 6;
+        g.lineCap = 'round';
+        g.stroke();
+
+        // a bright foam line along its leading edge
+        g.beginPath();
+        g.arc(0, 0, 10, -Math.PI * 0.5, Math.PI * 0.5);
+        g.strokeStyle = 'rgba(255,255,255,0.95)';
+        g.lineWidth = 2;
+        g.lineCap = 'round';
+        g.stroke();
+
+        // a few foam flecks scattered along the crest
+        for (let i = 0; i < 3; i++) {
+          const a = -Math.PI * 0.38 + i * 0.38;
+          const fx = Math.cos(a) * 10, fy = Math.sin(a) * 10;
+          g.beginPath();
+          g.arc(fx, fy, 1.2, 0, Math.PI * 2);
+          g.fillStyle = 'rgba(255,255,255,0.9)';
+          g.fill();
+        }
       } else {
         const grad = g.createRadialGradient(-3, -3, 1, 0, 0, 9);
         grad.addColorStop(0, '#ffb48a');
