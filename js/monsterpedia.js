@@ -26,6 +26,7 @@
   const greatEelCtx = ctxFor('monster-canvas-greateel');
   const tinyEelsCtx = ctxFor('monster-canvas-tinyeels');
   const cisternCtx = ctxFor('monster-canvas-cistern');
+  const grassDrifterCtx = ctxFor('monster-canvas-grassdrifter');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -266,6 +267,43 @@
     const seed = 47;
     drawTentacles(g, 32, '#1a6a2e', t, seed);
     drawBlobBody(g, 32, '#0f4a1c', '#2f7a3f', seed, t);
+    const angle = -t * 0.0004;
+    drawEye(g, 32, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    g.restore();
+  }
+
+  // Grass sprouting straight out of the body -- the one thing that sets
+  // Level 21's Drifters apart from Level 2's plain ones, same branching
+  // technique as every other body-growth on this site (the Bog's
+  // seaweed, the Cistern's coral), just blades instead of fronds.
+  function drawDrifterGrass(g, radius, seed, t) {
+    const count = 6;
+    for (let i = 0; i < count; i++) {
+      const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const a = (u % 360) * Math.PI / 180;
+      const dist = radius * (0.2 + (u % 6) * 0.1);
+      const bx = Math.cos(a) * dist, by = Math.sin(a) * dist;
+      const height = radius * (0.35 + (u % 4) * 0.08);
+      const sway = Math.sin(t * 0.0018 + i + seed) * radius * 0.08;
+      g.strokeStyle = i % 2 === 0 ? '#4c9436' : '#6ab14a';
+      g.lineWidth = Math.max(1.2, radius * 0.07);
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(bx, by);
+      g.quadraticCurveTo(bx + sway * 0.5, by - height * 0.6, bx + sway, by - height);
+      g.stroke();
+    }
+  }
+
+  function drawGrassDrifter(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 83;
+    drawTentacles(g, 32, '#1a6a2e', t, seed);
+    drawBlobBody(g, 32, '#0f4a1c', '#2f7a3f', seed, t);
+    drawDrifterGrass(g, 32, seed, t);
     const angle = -t * 0.0004;
     drawEye(g, 32, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
     g.restore();
@@ -2067,6 +2105,7 @@
       drawPortraitOrLock(greatEelCtx, drawGreatEel, t);
       drawPortraitOrLock(tinyEelsCtx, drawTinyEels, t);
       drawPortraitOrLock(cisternCtx, drawCistern, t, phase2Shown.has(cisternCtx));
+      drawPortraitOrLock(grassDrifterCtx, drawGrassDrifter, t);
     }
     requestAnimationFrame(loop);
   }

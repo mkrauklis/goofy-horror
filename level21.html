@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 21</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 21 &mdash; The Overgrowth</h1>
+  <p class="objective">The biggest facility yet, grass and vines grown up through every floor and wall. Find the <strong>shears</strong> and cut through the vines choking the one way out &mdash; hold still whenever a creature's close, since they hunt by sound alone.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-shears">Shears: on the ground</span>
+      <span id="hud-door">Vines: blocking</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    The same dark, power-out facility as the very first one, except
+    nothing's been maintained in a long time &mdash; grass pushes up
+    through cracked floors in every room, and vines have swallowed
+    whole doorways. It's also the biggest room count on the site by
+    far, a sprawling lattice bigger than even Level 17's own "giant"
+    layout.
+  </p>
+  <p class="level-description">
+    A single pair of shears is lying somewhere in the facility. Find
+    them and carry them to the one way out, choked floor to ceiling in
+    vines &mdash; get close while still carrying the shears and they
+    cut straight through.
+  </p>
+  <p class="level-description">
+    Ten Drifters patrol the dark this time, not two &mdash; the same
+    sound-hunting cousin of the Crawler from Level 2, grass sprouting
+    straight out of each one's hide now. Stand still, even right next
+    to one, and it has no idea you're there; move while it's in range
+    and it charges at eight times your speed. Item crates can still
+    turn up a radar, a scanner pointing at the shears (or the vine gate
+    once they're picked up), a distracting slab of meat, or a CO2
+    blast that freezes a creature solid.
+  </p>
+  <p class="level-description">
+    Each of you is carrying a shotgun, empty. Find a shell in a crate
+    (you can carry up to 3 at a time) and each one loads automatically
+    &mdash; let something get close while it's hunting you and it goes
+    off on its own, stunning it for 5 seconds.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level21/level.js"></script>
+<script src="js/game21.js"></script>
+</body>
+</html>
