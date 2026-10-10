@@ -1459,8 +1459,8 @@
 
   // Coral-burst attack: a red danger ring pulsing at each picked spot
   // during the 2s warning, replaced by an actual red coral clump once it
-  // grows in -- same red CORAL_PALETTE override the boss's own body uses
-  // in phase 2, just planted in the sand instead of growing on its hide.
+  // grows in -- same red the boss's own body coral turns in phase 2,
+  // just planted in the sand instead of growing on its hide.
   const CORALBURST_RED = '#ff3b3b';
   const CORALBURST_BLUE = '#3ad4ff';
   function drawCoralPatch(g, cx, cy, radius, seed, now, color, coreColor) {
@@ -1734,23 +1734,26 @@
 
   // A single tiny coral nub, in a random spot per segment (hashed from a
   // seed, not live position, so it reads as a stable growth rather than
-  // something drifting around) -- same CORAL_PALETTE as the floor's own
-  // coral, just shrunk down to fit a body a third the usual eel's size.
-  // Coral growths on the boss's own body -- the same branching-clump
-  // technique as the arena floor's own coral, just anchored to a moving
-  // body segment instead of a tile. Phase 2: every patch turns red and
-  // grows to 2x the size.
+  // something drifting around) -- anchored to a moving body segment
+  // instead of a tile, like the arena floor's own coral, but lit: neon
+  // blue and glowing in phase 1, switching to red (still glowing) once
+  // DEHYDRATED, when it also doubles in size.
+  const BOSS_CORAL_BLUE = '#3ad4ff';
+  const BOSS_CORAL_RED = '#ff3b3b';
   function drawBossCoralGrowth(g, r, seed, phase2) {
     const count = 2;
     const sizeMult = phase2 ? 2 : 1;
+    const color = phase2 ? BOSS_CORAL_RED : BOSS_CORAL_BLUE;
     for (let i = 0; i < count; i++) {
       const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
       const u = (h ^ (h >>> 15)) >>> 0;
       const a = (u % 360) * Math.PI / 180;
       const dist = r * (0.3 + (u % 5) * 0.1);
       const bx = Math.cos(a) * dist, by = Math.sin(a) * dist;
-      const color = phase2 ? '#ff3b3b' : CORAL_PALETTE[u % CORAL_PALETTE.length];
       const tipLen = Math.max(1.4, r * 0.32) * sizeMult;
+      g.save();
+      g.shadowColor = color;
+      g.shadowBlur = Math.max(2, r * 0.3) * sizeMult;
       g.strokeStyle = color;
       g.lineWidth = Math.max(1, r * 0.17) * sizeMult;
       g.lineCap = 'round';
@@ -1762,6 +1765,7 @@
       g.arc(bx + Math.cos(a) * tipLen, by + Math.sin(a) * tipLen, Math.max(1, r * 0.15) * sizeMult, 0, Math.PI * 2);
       g.fillStyle = color;
       g.fill();
+      g.restore();
     }
   }
 
