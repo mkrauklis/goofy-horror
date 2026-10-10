@@ -514,7 +514,9 @@
 
   // ---- timer / best time (best is kept per-browser in localStorage, not
   // shared between players or devices) ----
-  const BEST_TIME_KEY = 'goofy-horror-best-level9';
+  // Namespaced by the active save slot (js/story.js) so each slot reads
+  // as its own separate playthrough's record, not one shared globally.
+  const BEST_TIME_KEY = (window.GoofyStory && window.GoofyStory.bestTimeKey(9)) || 'goofy-horror-best-level9';
   let bestMs = (() => {
     const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
     return Number.isFinite(v) ? v : null;

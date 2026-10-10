@@ -24,6 +24,12 @@
 </header>
 
 <div class="wrap">
+  <div id="slot-picker" class="slot-picker" role="group" aria-label="Save slot">
+    <button type="button" class="slot-btn" data-slot="0">Save 1</button>
+    <button type="button" class="slot-btn" data-slot="1">Save 2</button>
+    <button type="button" class="slot-btn" data-slot="2">Save 3</button>
+    <button id="slot-rename" class="story-reset-btn" type="button">Rename save</button>
+  </div>
   <div id="story-cta" class="story-cta">
     <a id="story-continue" class="story-continue-btn" href="level1.html">Start the Story</a>
     <div class="player-mode-toggle" role="group" aria-label="Player count">
@@ -226,19 +232,27 @@
 
 <script src="js/story.js"></script>
 <script>
-  // Best times are saved per-level by each game's own script under
-  // goofy-horror-best-levelN; read-only here, just for display.
-  document.querySelectorAll('.best-time').forEach((el) => {
-    const v = parseFloat(localStorage.getItem('goofy-horror-best-' + el.dataset.level));
-    if (!Number.isFinite(v)) return;
-    const totalSec = Math.max(0, v / 1000);
-    const m = Math.floor(totalSec / 60);
-    const s = totalSec % 60;
-    el.textContent = `— best ${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
-  });
+  // Best times are saved per-level by each game's own script, namespaced
+  // by the currently active save slot (js/story.js: bestTimeKey) --
+  // read-only here, just for display, and re-run on every slot switch
+  // since a different slot means different records entirely.
+  function renderBestTimes() {
+    document.querySelectorAll('.best-time').forEach((el) => {
+      const n = parseInt(el.dataset.level.replace('level', ''), 10);
+      const key = (window.GoofyStory && window.GoofyStory.bestTimeKey(n)) || `goofy-horror-best-${el.dataset.level}`;
+      const v = parseFloat(localStorage.getItem(key));
+      if (!Number.isFinite(v)) { el.textContent = ''; return; }
+      const totalSec = Math.max(0, v / 1000);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      el.textContent = `— best ${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
+    });
+  }
+  renderBestTimes();
 
   // Story mode: levels unlock in order, saved in one localStorage record
-  // (see js/story.js) rather than each level tracking its own "beaten" flag.
+  // per save slot (see js/story.js) rather than each level tracking its
+  // own "beaten" flag.
   function renderStoryState() {
     const story = window.GoofyStory;
     if (!story) return;
@@ -266,9 +280,44 @@
 
   document.getElementById('story-reset').addEventListener('click', () => {
     if (!window.GoofyStory) return;
-    if (!confirm('Reset story progress? This clears which levels are unlocked (best times are kept).')) return;
+    if (!confirm('Reset story progress for this save slot? This clears which levels are unlocked (best times are kept).')) return;
     window.GoofyStory.resetProgress();
     renderStoryState();
+  });
+
+  // Three fixed, rename-able save slots -- each its own story progress
+  // and its own best times (see js/story.js), switched here and read by
+  // every level page from then on until switched again.
+  function renderSlotPicker() {
+    if (!window.GoofyStory) return;
+    const active = window.GoofyStory.getActiveSlot();
+    document.querySelectorAll('.slot-btn').forEach((btn) => {
+      const i = parseInt(btn.dataset.slot, 10);
+      const summary = window.GoofyStory.getSlotSummary(i);
+      btn.textContent = `${window.GoofyStory.getSlotName(i)} (${summary.completed}/${window.GoofyStory.TOTAL_LEVELS})`;
+      btn.classList.toggle('active', i === active);
+    });
+  }
+  renderSlotPicker();
+
+  document.querySelectorAll('.slot-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!window.GoofyStory) return;
+      window.GoofyStory.setActiveSlot(parseInt(btn.dataset.slot, 10));
+      renderSlotPicker();
+      renderStoryState();
+      renderBestTimes();
+    });
+  });
+
+  document.getElementById('slot-rename').addEventListener('click', () => {
+    if (!window.GoofyStory) return;
+    const active = window.GoofyStory.getActiveSlot();
+    const name = prompt('Name this save slot:', window.GoofyStory.getSlotName(active));
+    if (name && name.trim()) {
+      window.GoofyStory.setSlotName(active, name.trim());
+      renderSlotPicker();
+    }
   });
 
   // Picked here, read by every game{N}.js at startup -- not a per-level

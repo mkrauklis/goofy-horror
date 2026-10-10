@@ -1,16 +1,106 @@
 // Story mode progress, shared across every level page and the menu. A
-// single localStorage record (not ten separate "did you beat it" flags)
-// so the whole save lives in one place and resetting the story resets
-// everything at once. Per-level best times still live in their own
-// goofy-horror-best-levelN keys (see index.html) -- this is purely about
-// which levels are unlocked/finished, not how fast you did it.
+// single localStorage record per save slot (not ten separate "did you
+// beat it" flags) so each slot's whole save lives in one place and
+// resetting a slot's story resets everything in it at once. Per-level
+// best times live in their own goofy-horror-best-levelN-slotI keys (see
+// index.html and bestTimeKey below) -- namespaced by slot too, since
+// each slot is meant to read as its own separate playthrough.
 (function () {
-  const KEY = 'goofy-horror-story';
   const TOTAL_LEVELS = 21;
+  const SLOT_COUNT = 3;
+  const LEGACY_KEY = 'goofy-horror-story'; // pre-slots single save, migrated into slot 0 below
+  const SLOTS_NAMES_KEY = 'goofy-horror-slot-names';
+  const ACTIVE_SLOT_KEY = 'goofy-horror-active-slot';
+
+  function storyKeyFor(slot) {
+    return `goofy-horror-story-${slot}`;
+  }
+
+  // A player who already had progress before save slots existed gets it
+  // preserved as slot 0's save, the first time anything asks for slot 0
+  // and finds it empty -- one-time, harmless to repeat, never overwrites
+  // a real slot-0 save that already exists.
+  function migrateLegacyIfNeeded() {
+    try {
+      if (localStorage.getItem(storyKeyFor(0)) !== null) return;
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (legacy === null) return;
+      localStorage.setItem(storyKeyFor(0), legacy);
+    } catch (e) {
+      // private-browsing / storage-full -- nothing to migrate into
+    }
+  }
+  migrateLegacyIfNeeded();
+
+  function getActiveSlot() {
+    try {
+      const v = parseInt(localStorage.getItem(ACTIVE_SLOT_KEY), 10);
+      if (Number.isFinite(v) && v >= 0 && v < SLOT_COUNT) return v;
+    } catch (e) {
+      // fall through to the default slot
+    }
+    return 0;
+  }
+
+  function setActiveSlot(i) {
+    if (!Number.isFinite(i) || i < 0 || i >= SLOT_COUNT) return;
+    try {
+      localStorage.setItem(ACTIVE_SLOT_KEY, String(i));
+    } catch (e) {
+      // private-browsing / storage-full -- stays on whatever slot was active
+    }
+    state = load();
+  }
+
+  function loadSlotNames() {
+    try {
+      const raw = localStorage.getItem(SLOTS_NAMES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt or blocked storage -- fall through to defaults
+    }
+    return [];
+  }
+  let slotNames = loadSlotNames();
+
+  function getSlotName(i) {
+    const custom = slotNames[i];
+    return (typeof custom === 'string' && custom.trim()) || `Save ${i + 1}`;
+  }
+
+  function setSlotName(i, name) {
+    slotNames[i] = name;
+    try {
+      localStorage.setItem(SLOTS_NAMES_KEY, JSON.stringify(slotNames));
+    } catch (e) {
+      // private-browsing / storage-full -- name just won't stick
+    }
+  }
+
+  // A read-only peek at another slot's own progress -- used by the menu's
+  // slot picker to show "3/21 completed" on each button without actually
+  // switching the active slot to read it.
+  function getSlotSummary(i) {
+    try {
+      const raw = localStorage.getItem(storyKeyFor(i));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.completed) && Number.isFinite(parsed.unlocked)) {
+          return { completed: parsed.completed.length, unlocked: parsed.unlocked };
+        }
+      }
+    } catch (e) {
+      // corrupt or blocked storage -- reads as a fresh slot
+    }
+    return { completed: 0, unlocked: 1 };
+  }
 
   function load() {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = localStorage.getItem(storyKeyFor(getActiveSlot()));
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.completed) && Number.isFinite(parsed.unlocked)) return parsed;
@@ -25,7 +115,7 @@
 
   function persist() {
     try {
-      localStorage.setItem(KEY, JSON.stringify(state));
+      localStorage.setItem(storyKeyFor(getActiveSlot()), JSON.stringify(state));
     } catch (e) {
       // private-browsing / storage-full -- story mode just won't persist
     }
@@ -67,6 +157,28 @@
     persist();
   }
 
+  // Each level's best time is namespaced by the currently active slot,
+  // so switching slots genuinely switches to a separate playthrough's
+  // records too, not just its unlock progress. A player who already had
+  // a best time saved under the old global key (from before save slots
+  // existed) has it copied into slot 0's own key the first time slot 0
+  // asks for it, same one-time migration story progress gets above.
+  function bestTimeKey(n) {
+    const slot = getActiveSlot();
+    const key = `goofy-horror-best-level${n}-slot${slot}`;
+    if (slot === 0) {
+      try {
+        if (localStorage.getItem(key) === null) {
+          const legacy = localStorage.getItem(`goofy-horror-best-level${n}`);
+          if (legacy !== null) localStorage.setItem(key, legacy);
+        }
+      } catch (e) {
+        // private-browsing / storage-full -- nothing to migrate
+      }
+    }
+    return key;
+  }
+
   // 1-player or 2-player, picked on the menu and read by every game{N}.js
   // at startup -- one shared key rather than per-level storage, since it's
   // a play-style preference, not level progress. Defaults to 2 (the game's
@@ -90,6 +202,7 @@
 
   window.GoofyStory = {
     TOTAL_LEVELS,
+    SLOT_COUNT,
     isUnlocked,
     isCompleted,
     completeLevel,
@@ -98,6 +211,12 @@
     resetProgress,
     getPlayerMode,
     setPlayerMode,
+    getActiveSlot,
+    setActiveSlot,
+    getSlotName,
+    setSlotName,
+    getSlotSummary,
+    bestTimeKey,
   };
 
   // Each level belongs to a 5-level chapter (Chapter 1 = levels 1-5,

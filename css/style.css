@@ -275,6 +275,36 @@ header.hero p {
   vertical-align: middle;
 }
 
+.slot-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.slot-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.8rem;
+  cursor: pointer;
+}
+
+.slot-btn:hover:not(.active) {
+  color: var(--ink);
+}
+
+.slot-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff2e6;
+}
+
 .story-cta {
   display: flex;
   align-items: center;
