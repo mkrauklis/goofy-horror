@@ -90,10 +90,13 @@
   const VANISH_SHOCKWAVE_RADIUS = TILE * 6;
   const VANISH_SHOCKWAVE_MS = 650;
 
-  // Attack 3: barrage -- coral balls fired at each player in turn.
+  // Attack 3: barrage -- coral balls fired at each player in turn, two
+  // at once in a tight spread, twice as often as the original single shot.
   const BARRAGE_DURATION_MS = 5000;
-  const BARRAGE_FIRE_INTERVAL_MS = 550;
+  const BARRAGE_FIRE_INTERVAL_MS = 275;
   const BARRAGE_PROJECTILE_SPEED = PLAYER_SPEED * 2.2;
+  const BARRAGE_VOLLEY_COUNT = 2;
+  const BARRAGE_VOLLEY_SPREAD = 0.12; // radians between the two balls in a volley
 
   // Phase-2-only attack: wave splash -- a burst of waves in random
   // directions every 2.5s, for 10s straight.
@@ -1147,8 +1150,12 @@
       const target = players[boss.bPlayerIndex % players.length];
       boss.bPlayerIndex++;
       const dx = target.x - boss.x, dy = target.y - boss.y;
-      const d = Math.hypot(dx, dy) || 1;
-      projectiles.push({ x: boss.x, y: boss.y, dirX: dx / d, dirY: dy / d, speed });
+      const baseAngle = Math.atan2(dy, dx);
+      for (let i = 0; i < BARRAGE_VOLLEY_COUNT; i++) {
+        const off = (i - (BARRAGE_VOLLEY_COUNT - 1) / 2) * BARRAGE_VOLLEY_SPREAD;
+        const a = baseAngle + off;
+        projectiles.push({ x: boss.x, y: boss.y, dirX: Math.cos(a), dirY: Math.sin(a), speed, seed: Math.random() * 1000 });
+      }
       boss.bNextFireAt = now + BARRAGE_FIRE_INTERVAL_MS / mult;
       playChompThud(0);
     }
@@ -1694,7 +1701,8 @@
   // reads as an actual curling crest -- a thick teal band with a bright
   // foam highlight along its leading edge, open toward the trailing side
   // so it reads as water curling forward, plus a fading wake behind it
-  // to sell the motion. A coral ball is a solid, colored orb.
+  // to sell the motion. A coral ball is a core sphere with a scatter of
+  // small coral polyps around it, not a plain glowing orb.
   function drawProjectiles(g) {
     projectiles.forEach((pr) => {
       g.save();
@@ -1739,10 +1747,16 @@
           g.fill();
         }
       } else {
+        // An actual knobbly ball of coral -- a core sphere plus a
+        // scatter of small polyps around its surface in the same
+        // CORAL_PALETTE the arena floor's own coral uses, not a plain
+        // glowing lava-orb. The bump layout is hashed from the
+        // projectile's own seed, not its live position, so it stays
+        // fixed as the ball travels instead of flickering every frame.
         const grad = g.createRadialGradient(-3, -3, 1, 0, 0, 9);
         grad.addColorStop(0, '#ffb48a');
-        grad.addColorStop(0.6, '#ff6f4a');
-        grad.addColorStop(1, '#b8341a');
+        grad.addColorStop(0.6, '#c96a3a');
+        grad.addColorStop(1, '#6b3016');
         g.beginPath();
         g.arc(0, 0, 9, 0, Math.PI * 2);
         g.fillStyle = grad;
@@ -1750,6 +1764,18 @@
         g.shadowBlur = 8;
         g.fill();
         g.shadowBlur = 0;
+
+        const h = Math.imul(Math.floor((pr.seed || 0) * 1000), 2654435761) >>> 0;
+        for (let i = 0; i < 4; i++) {
+          const u = ((h >> (i * 5)) >>> 0) % 360;
+          const a = u * Math.PI / 180;
+          const dist = 5 + ((h >> (i * 3 + 1)) % 3);
+          const bx = Math.cos(a) * dist, by = Math.sin(a) * dist;
+          g.beginPath();
+          g.arc(bx, by, 1.6, 0, Math.PI * 2);
+          g.fillStyle = CORAL_PALETTE[(u + i) % CORAL_PALETTE.length];
+          g.fill();
+        }
       }
       g.restore();
     });
