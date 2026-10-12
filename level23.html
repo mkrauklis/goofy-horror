@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 23</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 23 &mdash; The Stalker's Hall</h1>
+  <p class="objective">Same moss, grass and wooden roots as the two wings before it, two big sections joined by one long window-lined hallway lined with shelves. The exit is already open &mdash; just reach it. Two Stalkers always know exactly where you are; keep one lit up in your flashlight or it closes the gap and charges at <strong>4x</strong> your speed.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    Same decor as the wing next door &mdash; moss and grass over 90% of
+    the floor, wooden roots threading the gaps, windows the only fixed
+    light besides your own. Laid out completely differently though: two
+    big sections, one for spawn and one for the exit, joined by a single
+    long hallway with windows down both walls and shelving lining it on
+    either side.
+  </p>
+  <p class="level-description">
+    No lever, no item, no door to unlock this time &mdash; the exit is
+    already open. Just get there.
+  </p>
+  <p class="level-description">
+    Two Stalkers patrol the dark, and they always know exactly where you
+    are &mdash; there's no sneaking past one by staying still or staying
+    quiet. What keeps you safe is your own flashlight: catch one in it
+    and it holds back. Let one go unseen for a full <strong>5
+    seconds</strong> and it commits, charging at <strong>4x</strong> your
+    speed until it reaches you. Only one of the two is ever actively
+    closing in at a time &mdash; the other holds its ground until it's
+    its turn.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level23/level.js"></script>
+<script src="js/game23.js"></script>
+</body>
+</html>

@@ -1168,7 +1168,7 @@
         gameState = 'complete';
         playWinJingle();
         if (window.GoofyStory) window.GoofyStory.completeLevel(22);
-        setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+        setTimeout(() => { window.location.href = 'level23.html'; }, 2000);
       }
     });
 
@@ -2484,7 +2484,7 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'VINES LIT, FACILITY CLEAR &mdash; heading back to the menu&hellip;';
+      messageEl.innerHTML = 'VINES LIT &mdash; warping to Level 23&hellip;';
     } else {
       messageEl.style.display = 'none';
     }

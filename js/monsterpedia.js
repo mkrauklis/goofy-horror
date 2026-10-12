@@ -28,6 +28,7 @@
   const cisternCtx = ctxFor('monster-canvas-cistern');
   const grassDrifterCtx = ctxFor('monster-canvas-grassdrifter');
   const kindlingCtx = ctxFor('monster-canvas-kindling');
+  const stalkerCtx = ctxFor('monster-canvas-stalker');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -392,6 +393,62 @@
     drawBlobBody(g, 32, '#4a3018', '#6b4a26', seed, t);
     drawKindlingSticks(g, 32, seed);
     drawKindlingMouth(g, 32);
+    g.restore();
+  }
+
+  // Long, gaunt reaching limbs -- same technique the Stalker's own
+  // in-game sprite uses (js/game23.js's drawStalkerLimbs).
+  function drawStalkerLimbs(g, radius, seed) {
+    const count = 5;
+    for (let i = 0; i < count; i++) {
+      const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const a = (u % 360) * Math.PI / 180;
+      const dist = radius * (0.25 + (u % 5) * 0.08);
+      const bx = Math.cos(a) * dist, by = Math.sin(a) * dist;
+      const length = radius * (0.7 + (u % 5) * 0.15);
+      const curve = ((u % 2) ? 1 : -1) * radius * 0.2;
+      const tipX = bx + Math.cos(a) * length, tipY = by + Math.sin(a) * length;
+      const midX = bx + Math.cos(a) * length * 0.5 - Math.sin(a) * curve;
+      const midY = by + Math.sin(a) * length * 0.5 + Math.cos(a) * curve;
+      g.strokeStyle = i % 2 === 0 ? '#1f1a26' : '#140f1a';
+      g.lineWidth = Math.max(1, radius * 0.05);
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(bx, by);
+      g.quadraticCurveTo(midX, midY, tipX, tipY);
+      g.stroke();
+    }
+  }
+
+  // A mid-glow watching eye for the portrait -- not mid-charge, not
+  // freshly spotted, just the ambient "always watching" state.
+  function drawStalkerEye(g, radius) {
+    const er = radius * 0.3;
+    g.save();
+    g.shadowColor = '#c93838';
+    g.shadowBlur = 8;
+    g.beginPath();
+    g.arc(0, -radius * 0.1, er, 0, Math.PI * 2);
+    g.fillStyle = '#c93838';
+    g.fill();
+    g.shadowBlur = 0;
+    g.beginPath();
+    g.arc(0, -radius * 0.1, er * 0.4, 0, Math.PI * 2);
+    g.fillStyle = '#050208';
+    g.fill();
+    g.restore();
+  }
+
+  function drawStalker(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 91;
+    drawTentacles(g, 32, '#1f1a26', t, seed);
+    drawBlobBody(g, 32, '#141018', '#2a2032', seed, t);
+    drawStalkerLimbs(g, 32, seed);
+    drawStalkerEye(g, 32);
     g.restore();
   }
 
@@ -2193,6 +2250,7 @@
       drawPortraitOrLock(cisternCtx, drawCistern, t, phase2Shown.has(cisternCtx));
       drawPortraitOrLock(grassDrifterCtx, drawGrassDrifter, t);
       drawPortraitOrLock(kindlingCtx, drawKindling, t);
+      drawPortraitOrLock(stalkerCtx, drawStalker, t);
     }
     requestAnimationFrame(loop);
   }
