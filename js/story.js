@@ -118,14 +118,69 @@
     return unlockedGuns.indexOf(id) !== -1;
   }
 
-  function unlockGun(id) {
-    if (isGunUnlocked(id)) return;
-    unlockedGuns.push(id);
+  function persistLoadout() {
     try {
       localStorage.setItem(LOADOUT_KEY, JSON.stringify(unlockedGuns));
     } catch (e) {
       // private-browsing / storage-full -- unlock just won't stick
     }
+  }
+
+  function unlockGun(id) {
+    if (isGunUnlocked(id)) return;
+    unlockedGuns.push(id);
+    persistLoadout();
+    equipGun(id); // found = equipped, until you say otherwise
+    renderLoadout();
+  }
+
+  // Which unlocked guns are actually active right now -- a gun you've
+  // found still sits in the Loadout, but an unequipped one drops no ammo
+  // and never auto-fires, same as if you'd never found it. Equipped by
+  // default the moment it's found (see unlockGun above).
+  const EQUIPPED_KEY = 'goofy-horror-loadout-equipped';
+  function loadEquipped() {
+    try {
+      const raw = localStorage.getItem(EQUIPPED_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt or blocked storage -- reads as nothing equipped
+    }
+    return [];
+  }
+  let equippedGuns = loadEquipped();
+
+  function isGunEquipped(id) {
+    return isGunUnlocked(id) && equippedGuns.indexOf(id) !== -1;
+  }
+
+  function persistEquipped() {
+    try {
+      localStorage.setItem(EQUIPPED_KEY, JSON.stringify(equippedGuns));
+    } catch (e) {
+      // private-browsing / storage-full -- equip choice just won't stick
+    }
+  }
+
+  function equipGun(id) {
+    if (equippedGuns.indexOf(id) !== -1) return;
+    equippedGuns.push(id);
+    persistEquipped();
+  }
+
+  function unequipGun(id) {
+    const i = equippedGuns.indexOf(id);
+    if (i === -1) return;
+    equippedGuns.splice(i, 1);
+    persistEquipped();
+  }
+
+  function toggleGunEquipped(id) {
+    if (!isGunUnlocked(id)) return;
+    if (isGunEquipped(id)) unequipGun(id); else equipGun(id);
     renderLoadout();
   }
 
@@ -141,6 +196,10 @@
     loadoutEl.id = 'loadout-overlay';
     loadoutEl.className = 'loadout-overlay';
     loadoutEl.style.display = 'none';
+    loadoutEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-gun-toggle]');
+      if (btn) toggleGunEquipped(btn.dataset.gunToggle);
+    });
     document.body.appendChild(loadoutEl);
     renderLoadout();
   }
@@ -149,10 +208,16 @@
     if (!loadoutEl) return;
     const rows = GUNS.map((g) => {
       const unlocked = isGunUnlocked(g.id);
-      return `<div class="loadout-row ${unlocked ? 'unlocked' : 'locked'}">`
+      const equipped = isGunEquipped(g.id);
+      const state = !unlocked ? 'LOCKED' : equipped ? 'EQUIPPED' : 'UNEQUIPPED';
+      const toggleBtn = unlocked
+        ? `<button type="button" class="loadout-toggle-btn" data-gun-toggle="${g.id}">${equipped ? 'Unequip' : 'Equip'}</button>`
+        : '';
+      return `<div class="loadout-row ${unlocked ? (equipped ? 'unlocked' : 'unequipped') : 'locked'}">`
         + `<span class="loadout-name">${g.name}</span>`
-        + `<span class="loadout-state">${unlocked ? 'UNLOCKED' : 'LOCKED'}</span>`
+        + `<span class="loadout-state">${state}</span>`
         + `<span class="loadout-hint">${unlocked ? `Level ${g.level}` : g.hint}</span>`
+        + toggleBtn
         + `</div>`;
     }).join('');
     loadoutEl.innerHTML = `<div class="loadout-panel panel">`
@@ -184,6 +249,8 @@
     setPlayerMode,
     isGunUnlocked,
     unlockGun,
+    isGunEquipped,
+    toggleGunEquipped,
   };
 
   // Each level belongs to a 5-level chapter (Chapter 1 = levels 1-5,

@@ -726,9 +726,10 @@
   // still closed (see drawCrates).
   function rollCrateContents() {
     if (Math.random() < MIMIC_CRATE_CHANCE) return { item: null, isMimic: true };
-    // Revolver ammo only turns up once the revolver itself has actually
-    // been found -- no point dropping shells for a gun you don't have.
-    const pool = (window.GoofyStory && window.GoofyStory.isGunUnlocked('revolver'))
+    // Revolver ammo only turns up once the revolver's actually equipped --
+    // no point dropping shells for a gun you don't have, or don't currently
+    // want active (see the Loadout's Equip/Unequip button).
+    const pool = (window.GoofyStory && window.GoofyStory.isGunEquipped('revolver'))
       ? CRATE_ITEMS.concat(['revolver-ammo'])
       : CRATE_ITEMS;
     return { item: pool[Math.floor(Math.random() * pool.length)], isMimic: false };
@@ -1407,6 +1408,7 @@
   // ammo pool from the shotgun and a shorter stun (REVOLVER_STUN_MS vs
   // SHOTGUN_STUN_MS).
   function updateRevolverDefense(now) {
+    if (!(window.GoofyStory && window.GoofyStory.isGunEquipped('revolver'))) return;
     players.forEach((p) => {
       if (p.caught) return;
       monsters.forEach((m) => {
@@ -2455,6 +2457,7 @@
   // show at once -- a revolver cylinder instead of a shell.
   function drawRevolverHud(vx, p) {
     if (p.revolverAmmo <= 0) return;
+    if (!(window.GoofyStory && window.GoofyStory.isGunEquipped('revolver'))) return;
     const cx = vx + VIEW_W - 34, cy = 98;
     ctx.save();
     ctx.beginPath();

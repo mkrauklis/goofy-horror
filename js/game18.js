@@ -694,7 +694,7 @@
     doorUnlocked = false;
 
     crates = (LEVEL.crateSpawns || []).map((c) => {
-      const pool = (window.GoofyStory && window.GoofyStory.isGunUnlocked('watergun'))
+      const pool = (window.GoofyStory && window.GoofyStory.isGunEquipped('watergun'))
         ? CRATE_ITEMS.concat(['watergun-ammo'])
         : CRATE_ITEMS;
       return { x: c.x, y: c.y, item: pool[Math.floor(Math.random() * pool.length)], opened: false, openedAt: 0 };
@@ -1325,6 +1325,7 @@
   // interrupt the eel's own perception/pathing, just halves its speed
   // for WATERGUN_SLOW_MS).
   function updateWaterGunDefense(now) {
+    if (!(window.GoofyStory && window.GoofyStory.isGunEquipped('watergun'))) return;
     players.forEach((p) => {
       if (p.caught) return;
       if (p.watergunAmmo <= 0) return;
@@ -2329,6 +2330,7 @@
   // both can show at once -- a water droplet instead of a shell.
   function drawWaterGunHud(vx, p) {
     if (p.watergunAmmo <= 0) return;
+    if (!(window.GoofyStory && window.GoofyStory.isGunEquipped('watergun'))) return;
     const cx = vx + VIEW_W - 34, cy = 98;
     ctx.save();
     ctx.beginPath();
