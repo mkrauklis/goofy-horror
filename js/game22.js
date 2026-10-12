@@ -56,14 +56,9 @@
   const SMOKE_FUSE_MS = 3000;
   const SMOKE_DURATION_MS = 10000;
   const SMOKE_RADIUS = 70;
-  const DECOY_SPEED = PLAYER_SPEED * 0.8;
-  const DECOY_CATCH_RADIUS = 24;
-  // Monsters only chase the decoy once it's within 20 tiles -- far enough
-  // away and it goes unnoticed, same as any other sound-based lure.
-  const DECOY_LURE_RADIUS = TILE * 20;
   const NVG_DURATION_MS = 10000;
   const NVG_RANGE_MULT = 2;
-  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke', 'decoy', 'nightvision', 'shotgun-ammo', 'energy'];
+  const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke', 'nightvision', 'shotgun-ammo', 'energy'];
   const SHOTGUN_STUN_MS = 5000;
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
@@ -784,7 +779,6 @@
   let scannerUntil = 0;
   let superRadarUntil = 0;
   let smokeBombs = [];
-  let decoy = null; // { x, y, angle, turnAt }
   let nvgUntil = 0;
   let floatingTexts = [];
   let monsterBullets = []; // { x, y, dx, dy } -- the Kindling's own shotgun
@@ -831,7 +825,6 @@
     scannerUntil = 0;
     superRadarUntil = 0;
     smokeBombs = [];
-    decoy = null;
     nvgUntil = 0;
     floatingTexts = [];
     resetExploration();
@@ -1077,10 +1070,6 @@
       smokeBombs.push({ x, y, armAt: now + SMOKE_FUSE_MS, exploded: false, endsAt: 0 });
       spawnFloatingText(x, y, 'SMOKE BOMB');
       playItemChime(500);
-    } else if (item === 'decoy') {
-      decoy = { x, y, angle: Math.random() * Math.PI * 2, turnAt: 0 };
-      spawnFloatingText(x, y, 'DECOY');
-      playItemChime(340);
     } else if (item === 'nightvision') {
       nvgUntil = now + NVG_DURATION_MS;
       spawnFloatingText(x, y, 'NIGHT VISION');
@@ -1104,30 +1093,6 @@
 
   function isInSmoke(p, now) {
     return smokeBombs.some((b) => b.exploded && now < b.endsAt && Math.hypot(p.x - b.x, p.y - b.y) < SMOKE_RADIUS);
-  }
-
-  function updateDecoy(now, dt) {
-    if (!decoy) return;
-    if (now > decoy.turnAt) {
-      decoy.angle += (Math.random() - 0.5) * 2.2;
-      decoy.turnAt = now + 500 + Math.random() * 900;
-    }
-    const step = DECOY_SPEED * dt;
-    const dx = Math.cos(decoy.angle) * step, dy = Math.sin(decoy.angle) * step;
-    if (canStandAt(decoy.x + dx, decoy.y)) decoy.x += dx; else decoy.angle = Math.PI - decoy.angle;
-    if (canStandAt(decoy.x, decoy.y + dy)) decoy.y += dy; else decoy.angle = -decoy.angle;
-
-    monsters.forEach((m) => {
-      if (Math.hypot(m.x - decoy.x, m.y - decoy.y) > DECOY_LURE_RADIUS) return;
-      m.luredState = 'lured';
-      m.lureTarget = { x: decoy.x, y: decoy.y };
-    });
-
-    if (monsters.some((m) => Math.hypot(m.x - decoy.x, m.y - decoy.y) < DECOY_CATCH_RADIUS)) {
-      spawnFloatingText(decoy.x, decoy.y, 'CAUGHT!');
-      decoy = null;
-      monsters.forEach((m) => { m.luredState = 'none'; m.path = []; m.pathIndex = 0; m.nextRepathAt = 0; });
-    }
   }
 
   function updateSmokeBombs(now) {
@@ -1163,25 +1128,6 @@
       g.lineWidth = 2;
       g.stroke();
     });
-  }
-
-  function drawDecoy(g, now) {
-    if (!decoy) return;
-    const pulse = 0.6 + 0.4 * Math.sin(now / 130);
-    g.save();
-    g.translate(decoy.x, decoy.y);
-    g.beginPath();
-    g.arc(0, 0, 10 + pulse * 2, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,220,80,0.35)';
-    g.fill();
-    g.beginPath();
-    g.arc(0, 0, 6, 0, Math.PI * 2);
-    g.fillStyle = '#ffd84d';
-    g.shadowColor = '#ffd84d';
-    g.shadowBlur = 8;
-    g.fill();
-    g.shadowBlur = 0;
-    g.restore();
   }
 
   function updateCrates(now) {
@@ -2358,7 +2304,6 @@
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY, now);
     drawSmokeBombs(ctx, now);
-    drawDecoy(ctx, now);
     monsters.forEach((m) => drawMonster(ctx, now, m));
     drawMonsterBullets(ctx);
     drawPlayers(ctx);
@@ -2580,7 +2525,6 @@
       updateTriggers();
       updateCrates(now);
       updateSmokeBombs(now);
-      updateDecoy(now, dt);
       monsters.forEach((m) => updateMonster(m, now, dt));
       updateMonsterBullets(now, dt);
       updateShotgunDefense(now);
