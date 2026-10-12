@@ -52,6 +52,9 @@
   const SMOKE_RADIUS = 70;
   const DECOY_SPEED = PLAYER_SPEED * 0.8;
   const DECOY_CATCH_RADIUS = 24;
+  // The monster only chases the decoy once it's within 20 tiles -- far
+  // enough away and it goes unnoticed, same as any other sound-based lure.
+  const DECOY_LURE_RADIUS = TILE * 20;
   const NVG_DURATION_MS = 10000;
   const NVG_RANGE_MULT = 2;
   const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'super-radar', 'smoke', 'decoy', 'nightvision', 'shotgun-ammo', 'energy'];
@@ -967,8 +970,10 @@
     if (canStandAt(decoy.x + dx, decoy.y)) decoy.x += dx; else decoy.angle = Math.PI - decoy.angle;
     if (canStandAt(decoy.x, decoy.y + dy)) decoy.y += dy; else decoy.angle = -decoy.angle;
 
-    monster.luredState = 'lured';
-    monster.lureTarget = { x: decoy.x, y: decoy.y };
+    if (Math.hypot(monster.x - decoy.x, monster.y - decoy.y) <= DECOY_LURE_RADIUS) {
+      monster.luredState = 'lured';
+      monster.lureTarget = { x: decoy.x, y: decoy.y };
+    }
 
     if (Math.hypot(monster.x - decoy.x, monster.y - decoy.y) < DECOY_CATCH_RADIUS) {
       spawnFloatingText(decoy.x, decoy.y, 'CAUGHT!');
