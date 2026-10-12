@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 22</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 22 &mdash; The Greenhouse</h1>
+  <p class="objective">A different wing of the same overgrown facility, moss and grass and wooden roots everywhere, windows along the outer walls finally letting real light in. Find the <strong>lighter</strong> in the storage room and burn through the vines choking the one way out &mdash; something brown and twig-covered is hunting with a shotgun of its own.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-lighter">Lighter: on the ground</span>
+      <span id="hud-door">Vines: blocking</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    Same moss, grass and wooden roots as the wing next door, but laid out
+    completely differently &mdash; a sprawling, irregular building of
+    randomly-sized rooms linked by winding corridors instead of a clean
+    grid, with exactly one path to any given room. Windows punched into
+    the outer walls are a fixed light source of their own, a real beam
+    spilling a few tiles into whichever room they sit in, on top of
+    whatever your own flashlight reaches. A handful of rooms also have
+    solid 2x2 crates blocking line of sight &mdash; real cover, not just
+    set dressing.
+  </p>
+  <p class="level-description">
+    A lighter is sitting in the facility's storage room. Find it and carry
+    it to the one way out, choked floor to ceiling in vines &mdash; get
+    close while still carrying it and the vines go up in flame.
+  </p>
+  <p class="level-description">
+    Five creatures patrol the dark &mdash; the same sight-hunting cousin
+    of the Crawler from Level 1, sticks jutting out of its hide and its
+    whole body gone brown. It doesn't bother with a slow patrol and a fast
+    charge: it's always closing at a steady 1.1x your speed the instant it
+    can see you. Worse, it's carrying its own shotgun &mdash; every 5
+    seconds it fires at whichever of you it can currently see that's
+    closest, the bullet itself covering ground at 3x your speed.
+  </p>
+  <p class="level-description">
+    Item crates can still turn up a radar, a scanner pointing at the
+    lighter (or the vine gate once it's picked up), a distracting slab of
+    meat, or a CO2 blast that freezes a creature solid. Each of you is
+    also carrying your own shotgun, empty &mdash; find a shell in a crate
+    (up to 3 at a time) and it loads automatically, stunning anything that
+    gets close while hunting you for 5 seconds.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level22/level.js"></script>
+<script src="js/game22.js"></script>
+</body>
+</html>

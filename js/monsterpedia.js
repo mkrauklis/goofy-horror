@@ -27,6 +27,7 @@
   const tinyEelsCtx = ctxFor('monster-canvas-tinyeels');
   const cisternCtx = ctxFor('monster-canvas-cistern');
   const grassDrifterCtx = ctxFor('monster-canvas-grassdrifter');
+  const kindlingCtx = ctxFor('monster-canvas-kindling');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -306,6 +307,91 @@
     drawDrifterGrass(g, 32, seed, t);
     const angle = -t * 0.0004;
     drawEye(g, 32, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 });
+    g.restore();
+  }
+
+  // Rigid sticks jutting out of the Kindling's hide, each with a short
+  // side-twig -- unlike the Drifter's grass, these don't sway, same
+  // rigid/swaying distinction Level 22's own game code draws.
+  function drawKindlingSticks(g, radius, seed) {
+    const count = 6;
+    for (let i = 0; i < count; i++) {
+      const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const a = (u % 360) * Math.PI / 180;
+      const dist = radius * (0.2 + (u % 6) * 0.1);
+      const bx = Math.cos(a) * dist, by = Math.sin(a) * dist;
+      const length = radius * (0.45 + (u % 4) * 0.12);
+      const tipX = bx + Math.cos(a) * length, tipY = by + Math.sin(a) * length;
+      g.strokeStyle = i % 2 === 0 ? '#6b4a26' : '#5a3d1f';
+      g.lineWidth = Math.max(1.3, radius * 0.075);
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(bx, by);
+      g.lineTo(tipX, tipY);
+      g.stroke();
+
+      const midX = bx + (tipX - bx) * 0.55, midY = by + (tipY - by) * 0.55;
+      const branchA = a + ((u % 2) ? 0.7 : -0.7);
+      g.lineWidth = Math.max(1, radius * 0.05);
+      g.beginPath();
+      g.moveTo(midX, midY);
+      g.lineTo(midX + Math.cos(branchA) * length * 0.3, midY + Math.sin(branchA) * length * 0.3);
+      g.stroke();
+    }
+  }
+
+  // A toothy maw instead of the usual single eye -- same technique the
+  // Kindling's own in-game sprite uses (js/game22.js's drawMonsterMouth).
+  function drawKindlingMouth(g, radius) {
+    const mx = radius * 0.64, my = radius * 0.4;
+    g.save();
+    g.beginPath();
+    g.ellipse(0, 0, mx, my, 0, 0, Math.PI * 2);
+    g.clip();
+    g.fillStyle = '#1a0806';
+    g.fillRect(-mx, -my, mx * 2, my * 2);
+    const glow = g.createRadialGradient(0, 0, 1, 0, 0, mx);
+    glow.addColorStop(0, 'rgba(120,20,15,0.55)');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = glow;
+    g.fillRect(-mx, -my, mx * 2, my * 2);
+    const teeth = 7;
+    const toothW = (mx * 2) / teeth;
+    g.fillStyle = '#e8ddc8';
+    for (let i = 0; i < teeth; i++) {
+      const tx = -mx + (i + 0.5) * toothW;
+      const th = my * 0.58;
+      g.beginPath();
+      g.moveTo(tx - toothW * 0.4, -my);
+      g.lineTo(tx + toothW * 0.4, -my);
+      g.lineTo(tx, -my + th);
+      g.closePath();
+      g.fill();
+      g.beginPath();
+      g.moveTo(tx - toothW * 0.4, my);
+      g.lineTo(tx + toothW * 0.4, my);
+      g.lineTo(tx, my - th);
+      g.closePath();
+      g.fill();
+    }
+    g.restore();
+    g.beginPath();
+    g.ellipse(0, 0, mx, my, 0, 0, Math.PI * 2);
+    g.strokeStyle = 'rgba(15,4,4,0.7)';
+    g.lineWidth = 1.5;
+    g.stroke();
+  }
+
+  function drawKindling(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 47;
+    drawTentacles(g, 32, '#5a3d1f', t, seed);
+    drawBlobBody(g, 32, '#4a3018', '#6b4a26', seed, t);
+    drawKindlingSticks(g, 32, seed);
+    drawKindlingMouth(g, 32);
     g.restore();
   }
 
@@ -2106,6 +2192,7 @@
       drawPortraitOrLock(tinyEelsCtx, drawTinyEels, t);
       drawPortraitOrLock(cisternCtx, drawCistern, t, phase2Shown.has(cisternCtx));
       drawPortraitOrLock(grassDrifterCtx, drawGrassDrifter, t);
+      drawPortraitOrLock(kindlingCtx, drawKindling, t);
     }
     requestAnimationFrame(loop);
   }
