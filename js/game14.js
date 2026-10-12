@@ -952,7 +952,7 @@
       // automatic stun the next time something gets close, one at a time.
       if (p.shotgunAmmo < SHOTGUN_AMMO_MAX) {
         p.shotgunAmmo++;
-        spawnFloatingText(x, y, `SHOTGUN LOADED (${p.shotgunAmmo}/${SHOTGUN_AMMO_MAX})`);
+        spawnFloatingText(x, y, `TRANQUILIZER LOADED (${p.shotgunAmmo}/${SHOTGUN_AMMO_MAX})`);
         playItemChime(760);
       } else {
         spawnFloatingText(x, y, 'AMMO FULL');
