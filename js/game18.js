@@ -56,6 +56,16 @@
   const SHOTGUN_STUN_MS = 5000;
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
+  // The water gun -- found once at the far end of the long hallway off the
+  // north spoke room, unlocked forever after via GoofyStory. Doesn't stun
+  // like the tranquilizer gun; it just slows the eel to half speed for a
+  // few seconds, so it's a crowd-control tool, not a hard counter.
+  const WATERGUN_SLOW_MS = 3000;
+  const WATERGUN_SLOW_MULT = 0.5;
+  const WATERGUN_AMMO_MAX = 10;
+  const WATERGUN_AMMO_PER_PICKUP = 2;
+  const WATERGUN_RANGE = 70;
+  const WATERGUN_FIND_RADIUS = 28;
 
   // ---- sprint / stamina ----
   const DOUBLE_TAP_MS = 300;
@@ -494,6 +504,9 @@
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
+  // Whether the water gun is still sitting at the end of the hallway this
+  // run -- false immediately if a previous run already found it.
+  let waterGunAtEnd = false;
 
   // The two pressure plates and the giant wheel they turn, straight from
   // the level data rather than scanned off the grid -- unlike the pipes
@@ -543,6 +556,7 @@
       stamina: STAMINA_MAX, moveState: 'normal', exhaustedUntil: 0, sprintActive: false,
       walkPhase: 0,
       shotgunAmmo: 0,
+      watergunAmmo: 0,
       nextRippleAt: 0,
     };
   }
@@ -565,6 +579,7 @@
     alertTargetTile: null,
     patrolIndex: 0,
     frozenUntil: 0,
+    slowedUntil: 0,
     luredState: 'none', // 'none' | 'lured' | 'eating'
     lureTarget: null,
     eatingUntil: 0,
@@ -662,23 +677,28 @@
       p.exhaustedUntil = 0;
       p.sprintActive = false;
       p.shotgunAmmo = 0;
+      p.watergunAmmo = 0;
       p.nextRippleAt = 0;
     });
+    waterGunAtEnd = !(window.GoofyStory && window.GoofyStory.isGunUnlocked('watergun'));
 
     const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
     monster.x = m.x; monster.y = m.y;
     monster.path = []; monster.pathIndex = 0; monster.nextRepathAt = 0;
     monster.state = 'patrol'; monster.alertUntil = 0; monster.alertTargetTile = null; monster.patrolIndex = 0;
-    monster.frozenUntil = 0; monster.luredState = 'none'; monster.lureTarget = null; monster.eatingUntil = 0;
+    monster.frozenUntil = 0; monster.slowedUntil = 0; monster.luredState = 'none'; monster.lureTarget = null; monster.eatingUntil = 0;
     monster.trail = []; monster.segments = []; monster.nextRippleAt = 0;
 
     wheelHeldMs = 0;
     wheelSolved = false;
     doorUnlocked = false;
 
-    crates = (LEVEL.crateSpawns || []).map((c) => ({
-      x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
-    }));
+    crates = (LEVEL.crateSpawns || []).map((c) => {
+      const pool = (window.GoofyStory && window.GoofyStory.isGunUnlocked('watergun'))
+        ? CRATE_ITEMS.concat(['watergun-ammo'])
+        : CRATE_ITEMS;
+      return { x: c.x, y: c.y, item: pool[Math.floor(Math.random() * pool.length)], opened: false, openedAt: 0 };
+    });
     radarUntil = 0;
     energyUntil = 0;
     scannerUntil = 0;
@@ -699,7 +719,7 @@
   function isWallForPlayer(tx, ty) {
     const ch = tileChar(tx, ty);
     if (ch === '#') return true;
-    if (ch === 'D') return !doorUnlocked;
+    if (ch === 'D' || ch === 'W') return !doorUnlocked;
     return false;
   }
 
@@ -937,6 +957,14 @@
       } else {
         spawnFloatingText(x, y, 'AMMO FULL');
       }
+    } else if (item === 'watergun-ammo') {
+      if (p.watergunAmmo < WATERGUN_AMMO_MAX) {
+        p.watergunAmmo = Math.min(WATERGUN_AMMO_MAX, p.watergunAmmo + WATERGUN_AMMO_PER_PICKUP);
+        spawnFloatingText(x, y, `WATER GUN LOADED (${p.watergunAmmo}/${WATERGUN_AMMO_MAX})`);
+        playItemChime(500);
+      } else {
+        spawnFloatingText(x, y, 'AMMO FULL');
+      }
     } else if (item === 'energy') {
       energyUntil = now + ENERGY_DURATION_MS;
       spawnFloatingText(x, y, 'ENERGY');
@@ -1044,13 +1072,22 @@
         if (window.GoofyStory) window.GoofyStory.completeLevel(18);
         setTimeout(() => { window.location.href = 'level19.html'; }, 2000);
       }
+      if (waterGunAtEnd) {
+        const c = tileCenter(LEVEL.waterGun.x, LEVEL.waterGun.y);
+        if (Math.hypot(p.x - c.x, p.y - c.y) < WATERGUN_FIND_RADIUS) {
+          waterGunAtEnd = false;
+          if (window.GoofyStory) window.GoofyStory.unlockGun('watergun');
+          spawnFloatingText(c.x, c.y, 'WATER GUN FOUND!');
+          playDoorUnlockChime();
+        }
+      }
     });
   }
 
   // ---- monster AI ----
   function monsterCanOccupy(ch) {
     if (ch === '#' || ch === 'S') return false;
-    if (ch === 'D') return doorUnlocked;
+    if (ch === 'D' || ch === 'W') return doorUnlocked;
     return true;
   }
 
@@ -1242,7 +1279,8 @@
       }
     }
 
-    const speed = monster.state === 'alert' ? EEL_CHARGE_SPEED : EEL_ROAM_SPEED;
+    const baseSpeed = monster.state === 'alert' ? EEL_CHARGE_SPEED : EEL_ROAM_SPEED;
+    const speed = now < monster.slowedUntil ? baseSpeed * WATERGUN_SLOW_MULT : baseSpeed;
     if (monster.path && monster.pathIndex < monster.path.length) {
       const step = speed * dt;
       const target = tileTargetWithOffset(monster.path[monster.pathIndex]);
@@ -1277,6 +1315,24 @@
         monster.frozenUntil = now + SHOTGUN_STUN_MS;
         p.shotgunAmmo--;
         spawnFloatingText(monster.x, monster.y, 'STUNNED!');
+        playShotgunBlast();
+      }
+    });
+  }
+
+  // The water gun's own version of the same automatic defense -- a
+  // separate ammo pool, and a slow instead of a hard freeze (doesn't
+  // interrupt the eel's own perception/pathing, just halves its speed
+  // for WATERGUN_SLOW_MS).
+  function updateWaterGunDefense(now) {
+    players.forEach((p) => {
+      if (p.caught) return;
+      if (p.watergunAmmo <= 0) return;
+      if (now < monster.slowedUntil || monster.state !== 'alert') return;
+      if (Math.hypot(p.x - monster.x, p.y - monster.y) < WATERGUN_RANGE) {
+        monster.slowedUntil = now + WATERGUN_SLOW_MS;
+        p.watergunAmmo--;
+        spawnFloatingText(monster.x, monster.y, 'SLOWED!');
         playShotgunBlast();
       }
     });
@@ -1452,6 +1508,30 @@
     }
   }
 
+  // A water gun resting at the end of the hallway, behind its own door --
+  // gone for good the moment it's found, same one-time convention the
+  // revolver's wall crack uses on Level 4.
+  function drawWaterGunPickup(g, now) {
+    if (!waterGunAtEnd) return;
+    const c = tileCenter(LEVEL.waterGun.x, LEVEL.waterGun.y);
+    const bob = Math.sin(now * 0.003) * 3;
+    g.save();
+    g.translate(c.x, c.y + bob);
+    g.fillStyle = '#4ac9ff';
+    g.strokeStyle = '#1a6a90';
+    g.lineWidth = 1.5;
+    g.shadowColor = '#4ac9ff';
+    g.shadowBlur = 8;
+    g.beginPath();
+    g.moveTo(0, -10);
+    g.quadraticCurveTo(7, 0, 0, 10);
+    g.quadraticCurveTo(-7, 0, 0, -10);
+    g.fill();
+    g.stroke();
+    g.shadowBlur = 0;
+    g.restore();
+  }
+
   function drawTiles(g, camX, camY, now) {
     const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
     const maxTX = Math.min(COLS - 1, Math.ceil((camX + VIEW_W / 2) / TILE) + 1);
@@ -1467,6 +1547,7 @@
           case 'S': color = floorShade(x, y); break;
           case 'E': color = '#15283c'; break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#1e3a50'; break;
+          case 'W': color = doorUnlocked ? floorShade(x, y) : '#1e3a50'; break;
           default: color = floorShade(x, y);
         }
         g.fillStyle = color;
@@ -1475,6 +1556,11 @@
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+        }
+        if (ch === 'W' && !doorUnlocked) {
+          g.strokeStyle = 'rgba(255,190,60,0.5)';
+          g.lineWidth = 2;
+          g.strokeRect(px + 4, py + 4, TILE - 8, TILE - 8);
         }
 
         // A faint drifting light-caustic streak across every bit of open
@@ -1493,6 +1579,8 @@
         if (ch === 'R') drawCoral(g, px, py, x, y, now);
       }
     }
+
+    drawWaterGunPickup(g, now);
 
     const dx0 = doorBounds.x0 * TILE, dy0 = doorBounds.y0 * TILE;
     const dw = (doorBounds.x1 - doorBounds.x0 + 1) * TILE;
@@ -2200,6 +2288,7 @@
     drawRadar(vx, p, now);
     drawScanner(vx, p, now);
     drawShotgunHud(vx, p);
+    drawWaterGunHud(vx, p);
     const minimapH = drawMinimap(vx, now);
     drawStaminaBar(vx, p, minimapH);
 
@@ -2233,6 +2322,35 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffd27a';
     ctx.fillText(`${p.shotgunAmmo}x`, cx + 3, cy + 4);
+    ctx.restore();
+  }
+
+  // Same badge convention as the tranquilizer gun's, offset below it so
+  // both can show at once -- a water droplet instead of a shell.
+  function drawWaterGunHud(vx, p) {
+    if (p.watergunAmmo <= 0) return;
+    const cx = vx + VIEW_W - 34, cy = 98;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10,25,40,0.75)';
+    ctx.fill();
+    ctx.strokeStyle = '#4ac9ff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(cx - 6, cy);
+    ctx.fillStyle = '#4ac9ff';
+    ctx.beginPath();
+    ctx.moveTo(0, -6);
+    ctx.quadraticCurveTo(4, 0, 0, 6);
+    ctx.quadraticCurveTo(-4, 0, 0, -6);
+    ctx.fill();
+    ctx.restore();
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#bfe9ff';
+    ctx.fillText(`${p.watergunAmmo}x`, cx + 3, cy + 4);
     ctx.restore();
   }
 
@@ -2412,6 +2530,7 @@
       updateFish(now, dt);
       updateMonster(now, dt);
       updateShotgunDefense(now);
+      updateWaterGunDefense(now);
       updateCatch(now);
       updateCutscenes(now);
       updateExploration();

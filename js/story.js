@@ -97,6 +97,7 @@
   const GUNS = [
     { id: 'revolver', name: 'Revolver', level: 4, hint: 'Find it in a crack in the wall.' },
     { id: 'flamethrower', name: 'Flamethrower', level: 14, hint: 'Hidden behind the melted snow wall.' },
+    { id: 'watergun', name: 'Water Gun', level: 18, hint: 'Down the long hallway, past the door the wheel opens.' },
   ];
 
   function loadLoadout() {
