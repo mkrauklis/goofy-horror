@@ -56,6 +56,16 @@
   const SHOTGUN_STUN_MS = 5000;
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
+  // The revolver -- found once in the wall crack (see REVOLVER_CRACK),
+  // unlocked forever after via GoofyStory. Same automatic "carrying ammo
+  // + something hunting you gets close" defense the shotgun uses, just
+  // its own ammo pool and a shorter stun.
+  const REVOLVER_STUN_MS = 2000;
+  const REVOLVER_AMMO_MAX = 6;
+  const REVOLVER_AMMO_PER_PICKUP = 2;
+  const REVOLVER_RANGE = 70;
+  const REVOLVER_CRACK = { x: 182, y: 98 };
+  const REVOLVER_FIND_RADIUS = 28;
   const MIMIC_CRATE_CHANCE = 0.12;
   const MIMIC_CHASE_SPEED = PLAYER_SPEED * 2.2;
   const MIMIC_TIMEOUT_MS = 8000;
@@ -621,6 +631,10 @@
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
+  // Whether the wall crack still has the revolver in it this run -- false
+  // immediately if a previous run already found it (GoofyStory), since
+  // there's nothing left to find.
+  let revolverAtCrack = false;
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
@@ -630,6 +644,7 @@
       stamina: STAMINA_MAX, moveState: 'normal', exhaustedUntil: 0, sprintActive: false,
       walkPhase: 0,
       shotgunAmmo: 0,
+      revolverAmmo: 0,
     };
   }
 
@@ -711,7 +726,12 @@
   // still closed (see drawCrates).
   function rollCrateContents() {
     if (Math.random() < MIMIC_CRATE_CHANCE) return { item: null, isMimic: true };
-    return { item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], isMimic: false };
+    // Revolver ammo only turns up once the revolver itself has actually
+    // been found -- no point dropping shells for a gun you don't have.
+    const pool = (window.GoofyStory && window.GoofyStory.isGunUnlocked('revolver'))
+      ? CRATE_ITEMS.concat(['revolver-ammo'])
+      : CRATE_ITEMS;
+    return { item: pool[Math.floor(Math.random() * pool.length)], isMimic: false };
   }
 
   function resetLevel() {
@@ -725,7 +745,9 @@
       p.exhaustedUntil = 0;
       p.sprintActive = false;
       p.shotgunAmmo = 0;
+      p.revolverAmmo = 0;
     });
+    revolverAtCrack = !(window.GoofyStory && window.GoofyStory.isGunUnlocked('revolver'));
 
     const spawns = LEVEL.monsterSpawns;
     monsters.forEach((mon, i) => {
@@ -1009,6 +1031,14 @@
       } else {
         spawnFloatingText(x, y, 'AMMO FULL');
       }
+    } else if (item === 'revolver-ammo') {
+      if (p.revolverAmmo < REVOLVER_AMMO_MAX) {
+        p.revolverAmmo = Math.min(REVOLVER_AMMO_MAX, p.revolverAmmo + REVOLVER_AMMO_PER_PICKUP);
+        spawnFloatingText(x, y, `REVOLVER LOADED (${p.revolverAmmo}/${REVOLVER_AMMO_MAX})`);
+        playItemChime(600);
+      } else {
+        spawnFloatingText(x, y, 'AMMO FULL');
+      }
     } else if (item === 'energy') {
       energyUntil = now + ENERGY_DURATION_MS;
       spawnFloatingText(x, y, 'ENERGY');
@@ -1123,6 +1153,15 @@
         playWinJingle();
         if (window.GoofyStory) window.GoofyStory.completeLevel(4);
         setTimeout(() => { window.location.href = 'level5.html'; }, 2000);
+      }
+      if (revolverAtCrack) {
+        const c = tileCenter(REVOLVER_CRACK.x, REVOLVER_CRACK.y);
+        if (Math.hypot(p.x - c.x, p.y - c.y) < REVOLVER_FIND_RADIUS) {
+          revolverAtCrack = false;
+          if (window.GoofyStory) window.GoofyStory.unlockGun('revolver');
+          spawnFloatingText(c.x, c.y, 'REVOLVER FOUND!');
+          playDoorUnlockChime();
+        }
       }
     });
   }
@@ -1364,6 +1403,25 @@
     });
   }
 
+  // The revolver's own version of the same automatic defense, a separate
+  // ammo pool from the shotgun and a shorter stun (REVOLVER_STUN_MS vs
+  // SHOTGUN_STUN_MS).
+  function updateRevolverDefense(now) {
+    players.forEach((p) => {
+      if (p.caught) return;
+      monsters.forEach((m) => {
+        if (p.revolverAmmo <= 0) return;
+        if (now < m.frozenUntil || !(m.state === 'alert')) return;
+        if (Math.hypot(p.x - m.x, p.y - m.y) < REVOLVER_RANGE) {
+          m.frozenUntil = now + REVOLVER_STUN_MS;
+          p.revolverAmmo--;
+          spawnFloatingText(m.x, m.y, 'STUNNED!');
+          playShotgunBlast();
+        }
+      });
+    });
+  }
+
   function updateCatch(now) {
     monsters.forEach((m) => {
       if (now < m.frozenUntil) return;
@@ -1527,6 +1585,38 @@
     return fires.map((f) => tileCenter(f.x, f.y));
   }
 
+  // A jagged crack in the wall at REVOLVER_CRACK, the revolver's handle
+  // just visible inside it -- gone for good (drawRevolverCrack becomes a
+  // no-op) the moment it's found, same "one-time, then nothing left
+  // there" convention the lighter/shears pickups on other levels use.
+  function drawRevolverCrack(g) {
+    if (!revolverAtCrack) return;
+    const c = tileCenter(REVOLVER_CRACK.x, REVOLVER_CRACK.y);
+    g.save();
+    g.translate(c.x, c.y);
+    g.strokeStyle = '#0a0a0c';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(-10, -12);
+    g.lineTo(-3, -2);
+    g.lineTo(-7, 4);
+    g.lineTo(2, 12);
+    g.lineTo(9, 2);
+    g.lineTo(3, -6);
+    g.lineTo(11, -11);
+    g.stroke();
+    g.shadowColor = '#c9c9d4';
+    g.shadowBlur = 6;
+    g.strokeStyle = '#8a8a90';
+    g.lineWidth = 2.4;
+    g.beginPath();
+    g.moveTo(-1, -3);
+    g.lineTo(1, 5);
+    g.stroke();
+    g.shadowBlur = 0;
+    g.restore();
+  }
+
   // ---- rendering ----
   const doorBounds = (() => {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -1594,6 +1684,7 @@
     }
 
     drawFires(g, now);
+    drawRevolverCrack(g);
 
     const dx0 = doorBounds.x0 * TILE, dy0 = doorBounds.y0 * TILE;
     const dw = (doorBounds.x1 - doorBounds.x0 + 1) * TILE;
@@ -2320,6 +2411,7 @@
     drawRadar(vx, p, now, nearest);
     drawScanner(vx, p, now);
     drawShotgunHud(vx, p);
+    drawRevolverHud(vx, p);
     const minimapH = drawMinimap(vx, now);
     drawStaminaBar(vx, p, minimapH);
 
@@ -2356,6 +2448,40 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffd27a';
     ctx.fillText(`${p.shotgunAmmo}x`, cx + 3, cy + 4);
+    ctx.restore();
+  }
+
+  // Same badge convention as the shotgun's, offset below it so both can
+  // show at once -- a revolver cylinder instead of a shell.
+  function drawRevolverHud(vx, p) {
+    if (p.revolverAmmo <= 0) return;
+    const cx = vx + VIEW_W - 34, cy = 98;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(40,20,10,0.75)';
+    ctx.fill();
+    ctx.strokeStyle = '#c9c9d4';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(cx - 6, cy);
+    ctx.fillStyle = '#5a5a60';
+    ctx.beginPath();
+    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * 3.2, Math.sin(a) * 3.2, 1.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#e8e8ee';
+    ctx.fillText(`${p.revolverAmmo}x`, cx + 3, cy + 4);
     ctx.restore();
   }
 
@@ -2533,6 +2659,7 @@
       updateMimicSpawns(now, dt);
       monsters.forEach((m) => updateMonster(m, now, dt));
       updateShotgunDefense(now);
+      updateRevolverDefense(now);
       updateCatch(now);
       updateCutscenes(now);
       updateExploration();

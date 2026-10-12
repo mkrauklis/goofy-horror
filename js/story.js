@@ -88,6 +88,89 @@
     }
   }
 
+  // Guns found once, in a specific level, and kept forever after -- a
+  // completely separate save from story progress, since finding one isn't
+  // tied to beating a level. One shared key, a small array of unlocked
+  // ids, so a new gun is just a new entry in GUNS below plus a call to
+  // unlockGun(id) wherever it's actually found.
+  const LOADOUT_KEY = 'goofy-horror-loadout';
+  const GUNS = [
+    { id: 'revolver', name: 'Revolver', level: 4, hint: 'Find it in a crack in the wall.' },
+    { id: 'flamethrower', name: 'Flamethrower', level: 14, hint: 'Hidden behind the melted snow wall.' },
+  ];
+
+  function loadLoadout() {
+    try {
+      const raw = localStorage.getItem(LOADOUT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt or blocked storage -- reads as nothing unlocked
+    }
+    return [];
+  }
+  let unlockedGuns = loadLoadout();
+
+  function isGunUnlocked(id) {
+    return unlockedGuns.indexOf(id) !== -1;
+  }
+
+  function unlockGun(id) {
+    if (isGunUnlocked(id)) return;
+    unlockedGuns.push(id);
+    try {
+      localStorage.setItem(LOADOUT_KEY, JSON.stringify(unlockedGuns));
+    } catch (e) {
+      // private-browsing / storage-full -- unlock just won't stick
+    }
+    renderLoadout();
+  }
+
+  // The Loadout overlay: press R any time during a level to see which guns
+  // you've found so far. Built once per page load (not per level, since
+  // this lives in the one shared story.js every level page already
+  // includes) and toggled by visibility rather than add/remove, so it
+  // doesn't fight each level's own canvas rendering.
+  let loadoutEl = null;
+  function buildLoadoutOverlay() {
+    if (loadoutEl || !document.body) return;
+    loadoutEl = document.createElement('div');
+    loadoutEl.id = 'loadout-overlay';
+    loadoutEl.className = 'loadout-overlay';
+    loadoutEl.style.display = 'none';
+    document.body.appendChild(loadoutEl);
+    renderLoadout();
+  }
+
+  function renderLoadout() {
+    if (!loadoutEl) return;
+    const rows = GUNS.map((g) => {
+      const unlocked = isGunUnlocked(g.id);
+      return `<div class="loadout-row ${unlocked ? 'unlocked' : 'locked'}">`
+        + `<span class="loadout-name">${g.name}</span>`
+        + `<span class="loadout-state">${unlocked ? 'UNLOCKED' : 'LOCKED'}</span>`
+        + `<span class="loadout-hint">${unlocked ? `Level ${g.level}` : g.hint}</span>`
+        + `</div>`;
+    }).join('');
+    loadoutEl.innerHTML = `<div class="loadout-panel panel">`
+      + `<h2>Loadout</h2>`
+      + rows
+      + `<p class="loadout-close">Press R to close</p>`
+      + `</div>`;
+  }
+
+  function toggleLoadout() {
+    if (!loadoutEl) return;
+    const showing = loadoutEl.style.display !== 'none';
+    loadoutEl.style.display = showing ? 'none' : 'flex';
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'r' || e.key === 'R') toggleLoadout();
+  });
+
   window.GoofyStory = {
     TOTAL_LEVELS,
     isUnlocked,
@@ -98,6 +181,8 @@
     resetProgress,
     getPlayerMode,
     setPlayerMode,
+    isGunUnlocked,
+    unlockGun,
   };
 
   // Each level belongs to a 5-level chapter (Chapter 1 = levels 1-5,
@@ -179,4 +264,5 @@
   onReady(injectChapterLabel);
   onReady(setupFullscreenToggle);
   onReady(applyPlayerModeHint);
+  onReady(buildLoadoutOverlay);
 })();
