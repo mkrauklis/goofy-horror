@@ -545,9 +545,7 @@
 
   // ---- game state ----
 
-  // Namespaced by the active save slot (js/story.js) so each slot reads
-  // as its own separate playthrough's record, not one shared globally.
-  const BEST_TIME_KEY = (window.GoofyStory && window.GoofyStory.bestTimeKey(20)) || 'goofy-horror-best-level20';
+  const BEST_TIME_KEY = 'goofy-horror-best-level20';
   let bestMs = (() => {
     const v = parseFloat(localStorage.getItem(BEST_TIME_KEY));
     return Number.isFinite(v) ? v : null;
