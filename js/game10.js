@@ -23,6 +23,9 @@
   const PLAYER_MODE = (window.GoofyStory && window.GoofyStory.getPlayerMode()) || 2;
   const VIEW_W = PLAYER_MODE === 1 ? 920 : 460;
   const VIEW_H = 340;
+  // Solo play is down a player, so every hit on the boss counts for more --
+  // 1.5x damage in 1-player mode, nowhere else.
+  const SOLO_DAMAGE_MULT = PLAYER_MODE === 1 ? 1.5 : 1;
   // Chosen so the WHOLE arena fits on screen at once -- VISIBLE_HALF_W/H
   // both end up bigger than half the world, so the clamp() in
   // renderViewport's camera math collapses to a fixed center point instead
@@ -1289,9 +1292,9 @@
         if (dt_.x !== t.x || dt_.y !== t.y) continue;
         dynamiteSticks.splice(i, 1);
         const stunned = boss.phase === 'stunned';
-        const dmg = stunned ? DYNAMITE_DAMAGE_STUNNED : DYNAMITE_DAMAGE_NORMAL;
+        const dmg = (stunned ? DYNAMITE_DAMAGE_STUNNED : DYNAMITE_DAMAGE_NORMAL) * SOLO_DAMAGE_MULT;
         bossHealth = Math.max(0, bossHealth - dmg);
-        spawnFloatingText(d.x, d.y, stunned ? `BOOM! -${DYNAMITE_DAMAGE_STUNNED}` : `boom -${DYNAMITE_DAMAGE_NORMAL}`);
+        spawnFloatingText(d.x, d.y, stunned ? `BOOM! -${dmg}` : `boom -${dmg}`);
         playBombBlast();
 
         if (!boss.phase2 && bossHealth > 0 && bossHealth <= PHASE2_HEALTH_THRESHOLD) {

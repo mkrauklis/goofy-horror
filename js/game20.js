@@ -936,8 +936,12 @@
     });
   }
 
+  // Solo play is down a player, so every hit on the boss counts for more --
+  // 1.5x damage in 1-player mode, nowhere else.
+  const SOLO_DAMAGE_MULT = 1.5;
   function damageBoss(amount, x, y, now) {
     if (boss.defeated) return;
+    if (PLAYER_MODE === 1) amount *= SOLO_DAMAGE_MULT;
     bossHealth = Math.max(0, bossHealth - amount);
     spawnFloatingText(x, y, `-${amount}`);
     if (!boss.phase2 && bossHealth > 0 && bossHealth <= PHASE2_HEALTH_THRESHOLD) {

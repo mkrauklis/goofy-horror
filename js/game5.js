@@ -23,6 +23,9 @@
   const PLAYER_MODE = (window.GoofyStory && window.GoofyStory.getPlayerMode()) || 2;
   const VIEW_W = PLAYER_MODE === 1 ? 920 : 460;
   const VIEW_H = 340;
+  // Solo play is down a player, so every hit on the boss counts for more --
+  // 1.5x damage in 1-player mode, nowhere else.
+  const SOLO_DAMAGE_MULT = PLAYER_MODE === 1 ? 1.5 : 1;
   // The arena is huge and the boss is the whole point of the level, so the
   // camera sits noticeably further back than the other levels' 1:1 view --
   // enough to see the boss's full patrol loop at once instead of just
@@ -1400,9 +1403,9 @@
         if (bt.x !== t.x || bt.y !== t.y) continue;
         bombs.splice(i, 1);
         const stunned = boss.phase === 'stunned';
-        const dmg = stunned ? BOMB_DAMAGE_STUNNED : BOMB_DAMAGE_NORMAL;
+        const dmg = (stunned ? BOMB_DAMAGE_STUNNED : BOMB_DAMAGE_NORMAL) * SOLO_DAMAGE_MULT;
         bossHealth = Math.max(0, bossHealth - dmg);
-        spawnFloatingText(b.x, b.y, stunned ? `BOOM! -${BOMB_DAMAGE_STUNNED}` : `boom -${BOMB_DAMAGE_NORMAL}`);
+        spawnFloatingText(b.x, b.y, stunned ? `BOOM! -${dmg}` : `boom -${dmg}`);
         playBombBlast();
         if (bossHealth <= 0) {
           boss.defeated = true;

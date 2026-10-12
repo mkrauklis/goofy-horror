@@ -23,6 +23,9 @@
   const PLAYER_MODE = (window.GoofyStory && window.GoofyStory.getPlayerMode()) || 2;
   const VIEW_W = PLAYER_MODE === 1 ? 920 : 460;
   const VIEW_H = 340;
+  // Solo play is down a player, so every hit on the boss counts for more --
+  // 1.5x damage in 1-player mode, nowhere else.
+  const SOLO_DAMAGE_MULT = PLAYER_MODE === 1 ? 1.5 : 1;
   // Chosen so the WHOLE arena fits on screen at once in phase 1 --
   // VISIBLE_HALF_W/H both end up bigger than half the arena, so the
   // clamp() in renderViewport's camera math collapses to a fixed center
@@ -1485,8 +1488,9 @@
           if (pt) pt.nextAt = now + TORCH_RESPAWN_MS;
         }
 
-        bossHealth = Math.max(0, bossHealth - TORCH_DAMAGE);
-        spawnFloatingText(tr.x, tr.y, `-${TORCH_DAMAGE}`);
+        const dmg = TORCH_DAMAGE * SOLO_DAMAGE_MULT;
+        bossHealth = Math.max(0, bossHealth - dmg);
+        spawnFloatingText(tr.x, tr.y, `-${dmg}`);
         playBombBlast();
 
         if (!boss.phase2 && bossHealth > 0 && bossHealth <= PHASE2_HEALTH_THRESHOLD) {
