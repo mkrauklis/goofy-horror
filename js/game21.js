@@ -476,9 +476,102 @@
     return FLOOR_SHADES[idx];
   }
 
+  // Most of the original facility floor has rotted away entirely -- 90% of
+  // plain floor tiles (hashed stable per-tile, its own seed so the pattern
+  // doesn't line up with floorShade's) are "missing" and mossed over rather
+  // than intact concrete; only a scattered 10% of tiles are still the real
+  // floor underneath.
+  const MOSS_TILE_CHANCE = 90;
+  function isMossTile(x, y) {
+    const h = Math.imul(x, 1274126177) ^ Math.imul(y, 2516582981);
+    const u = (h ^ (h >>> 15)) >>> 0;
+    return (u % 100) < MOSS_TILE_CHANCE;
+  }
+
+  // The "missing tile" look: a flat, mottled moss carpet where the floor
+  // used to be -- a handful of near-identical dark greens picked per-tile
+  // by hashing its coordinates, the same convention floorShade uses for
+  // plain concrete, so it reads as one continuous overgrown surface rather
+  // than a scatter of individual blobs.
+  const MOSS_SHADES = ['#1f3018', '#223420', '#1a2b16', '#25371f', '#20331c'];
+  function drawMossPatch(g, px, py, x, y) {
+    const h = Math.imul(x, 1274126177) ^ Math.imul(y, 2516582981);
+    const idx = ((h ^ (h >>> 13)) >>> 0) % MOSS_SHADES.length;
+    g.fillStyle = MOSS_SHADES[idx];
+    g.fillRect(px, py, TILE, TILE);
+  }
+
+  // Gnarled wooden roots threading between a sparse set of "root node"
+  // tiles (own low-probability hash, independent of how much of the floor
+  // is mossed over) so they read as a few winding veins crossing the
+  // facility rather than a dense mesh covering nearly every tile. Only
+  // walkable, non-door tiles link up, and each edge is only drawn once
+  // (checking the right/down neighbor) to avoid doubling up.
+  const ROOT_NODE_CHANCE = 14;
+  function isRootNode(x, y) {
+    const h = Math.imul(x, 2246822519) ^ Math.imul(y, 3266489917);
+    const u = (h ^ (h >>> 15)) >>> 0;
+    return (u % 100) < ROOT_NODE_CHANCE;
+  }
+  const ROOT_COLORS = ['#6b4a26', '#5a3d1f'];
+  function isRootFloor(ch) {
+    return ch !== '#' && ch !== 'C' && ch !== 'D';
+  }
+  function drawWoodenRoots(g, minTX, maxTX, minTY, maxTY) {
+    for (let y = minTY; y <= maxTY; y++) {
+      for (let x = minTX; x <= maxTX; x++) {
+        const ch = LEVEL.grid[y][x];
+        if (!isRootFloor(ch) || !isRootNode(x, y)) continue;
+        const c0 = tileCenter(x, y);
+        let joined = false;
+        [[1, 0], [0, 1]].forEach(([ddx, ddy]) => {
+          const nx = x + ddx, ny = y + ddy;
+          if (nx >= COLS || ny >= ROWS) return;
+          const nch = LEVEL.grid[ny][nx];
+          if (!isRootFloor(nch) || !isRootNode(nx, ny)) return;
+          const c1 = tileCenter(nx, ny);
+          const h = Math.imul(x * 7 + ddx + 1, 2654435761) ^ Math.imul(y * 13 + ddy + 1, 40503);
+          const u = (h ^ (h >>> 15)) >>> 0;
+          const bow = (u % 11) - 5;
+          const midx = (c0.x + c1.x) / 2 + (ddy ? bow : 0);
+          const midy = (c0.y + c1.y) / 2 + (ddx ? bow : 0);
+          g.strokeStyle = ROOT_COLORS[u % ROOT_COLORS.length];
+          g.lineWidth = 2.2 + (u % 3);
+          g.lineCap = 'round';
+          g.beginPath();
+          g.moveTo(c0.x, c0.y);
+          g.quadraticCurveTo(midx, midy, c1.x, c1.y);
+          g.stroke();
+          joined = true;
+        });
+        if (joined) {
+          g.fillStyle = '#4a3216';
+          g.beginPath();
+          g.arc(c0.x, c0.y, 2.2, 0, Math.PI * 2);
+          g.fill();
+        }
+      }
+    }
+  }
+
+  // Grass now covers 90% of the floor (own hash, independent of the moss
+  // and root patterns -- all three overlap freely, grass growing straight
+  // out of the moss the way the level's own premise describes), not just
+  // the grid's sparse hand-placed 'G' tiles.
+  const GRASS_TILE_CHANCE = 90;
+  function hasGrassAt(x, y) {
+    const h = Math.imul(x, 668265261) ^ Math.imul(y, 1274126177);
+    const u = (h ^ (h >>> 15)) >>> 0;
+    return (u % 100) < GRASS_TILE_CHANCE;
+  }
+
   // A tuft of 3-4 grass blades pushing up through the facility floor --
   // fixed per tile (hashed, like the floor shading itself), swaying very
-  // slightly so it doesn't read as a static texture.
+  // slightly so it doesn't read as a static texture. Each blade is 4x its
+  // original height, for a tall, overgrown look -- grass now covers 90% of
+  // the floor (see hasGrassAt above) instead of relying on blade count
+  // alone to read as "grown all over the place".
+  const GRASS_LENGTH_MULT = 4;
   function drawGrassTuft(g, px, py, x, y, now) {
     const h = Math.imul(x, 2654435761) ^ Math.imul(y, 40503);
     const u = (h ^ (h >>> 15)) >>> 0;
@@ -486,7 +579,7 @@
     const baseX = px + 6 + (u % 20);
     for (let i = 0; i < blades; i++) {
       const bx = baseX + i * 4 - blades * 2;
-      const height = 8 + ((u >> (i * 3)) % 7);
+      const height = (8 + ((u >> (i * 3)) % 7)) * GRASS_LENGTH_MULT;
       const sway = Math.sin(now * 0.0017 + i + (u % 10)) * 2;
       g.strokeStyle = i % 2 === 0 ? '#3a7a2a' : '#4c9436';
       g.lineWidth = 1.6;
@@ -1464,26 +1557,34 @@
       for (let x = minTX; x <= maxTX; x++) {
         const ch = LEVEL.grid[y][x];
         const px = x * TILE, py = y * TILE;
-        let color;
+        let color = null;
         switch (ch) {
           case '#': color = '#262629'; break;
           case 'C': color = '#2a1f14'; break;
           case 'S': color = floorShade(x, y); break;
           case 'E': color = '#3a301f'; break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#1f3320'; break;
-          default: color = floorShade(x, y);
+          default: break; // plain floor ('.'/'G') -- mossed over or intact, decided below
         }
-        g.fillStyle = color;
-        g.fillRect(px, py, TILE, TILE);
+        if (color !== null) {
+          g.fillStyle = color;
+          g.fillRect(px, py, TILE, TILE);
+        } else if (isMossTile(x, y)) {
+          drawMossPatch(g, px, py, x, y);
+        } else {
+          g.fillStyle = floorShade(x, y);
+          g.fillRect(px, py, TILE, TILE);
+        }
 
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
         }
-        if (ch === 'G') drawGrassTuft(g, px, py, x, y, now);
+        if (isRootFloor(ch) && (ch === 'G' || hasGrassAt(x, y))) drawGrassTuft(g, px, py, x, y, now);
       }
     }
 
+    drawWoodenRoots(g, minTX, maxTX, minTY, maxTY);
     drawBigCrates(g);
 
     const dx0 = doorBounds.x0 * TILE, dy0 = doorBounds.y0 * TILE;
