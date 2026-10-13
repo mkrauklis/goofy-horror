@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 24</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 24 &mdash; The Gearworks</h1>
+  <p class="objective">Same moss, grass and wooden roots as the wing next door, now with wildflowers growing through it and slow conveyor belts cutting across both sections. Spin all <strong>3</strong> gears (<strong>5 seconds</strong> held at each) to open the exit. Two Sentries sweep a laser around themselves &mdash; cross it once and it fires a missile at <strong>3x</strong> your speed; cross it again and the Sentry itself charges at <strong>1.5x</strong> your speed.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <span id="hud-gears">Gears: 0/3</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    Same decor as the wing next door &mdash; moss and grass over 90% of
+    the floor, wooden roots threading the gaps, windows the only fixed
+    light besides your own &mdash; except wildflowers now grow up through
+    the grass too, and a few conveyor belts run across each section,
+    carrying anyone standing on them along at half your walking speed.
+  </p>
+  <p class="level-description">
+    No lever, no item this time &mdash; 3 gears, one in each section and
+    one in the hallway between them. Stand at one for a full
+    <strong>5 seconds</strong> to spin it; step away and it slowly winds
+    back down. Spin all 3 and the exit opens.
+  </p>
+  <p class="level-description">
+    Two Sentries &mdash; tentacled, gear-studded machines with one red
+    eye &mdash; hold their ground and sweep a laser around themselves in
+    a slow circle. Walk through it once and it fires a missile straight
+    at you at <strong>3x</strong> your speed. Walk through it again and
+    the Sentry itself tears free and charges at <strong>1.5x</strong>
+    your speed until it catches you or loses the trail.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level24/level.js"></script>
+<script src="js/game24.js"></script>
+</body>
+</html>

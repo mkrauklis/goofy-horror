@@ -1115,7 +1115,7 @@
         gameState = 'complete';
         playWinJingle();
         if (window.GoofyStory) window.GoofyStory.completeLevel(23);
-        setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+        setTimeout(() => { window.location.href = 'level24.html'; }, 2000);
       }
     });
   }
@@ -2243,7 +2243,7 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'VINES LIT, FACILITY CLEAR &mdash; heading back to the menu&hellip;';
+      messageEl.innerHTML = 'EXIT REACHED &mdash; heading to the next wing&hellip;';
     } else {
       messageEl.style.display = 'none';
     }

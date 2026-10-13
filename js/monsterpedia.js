@@ -29,6 +29,7 @@
   const grassDrifterCtx = ctxFor('monster-canvas-grassdrifter');
   const kindlingCtx = ctxFor('monster-canvas-kindling');
   const stalkerCtx = ctxFor('monster-canvas-stalker');
+  const sentryCtx = ctxFor('monster-canvas-sentry');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -449,6 +450,83 @@
     drawBlobBody(g, 32, '#141018', '#2a2032', seed, t);
     drawStalkerLimbs(g, 32, seed);
     drawStalkerEye(g, 32);
+    g.restore();
+  }
+
+  // Small gears studded around the hide, same convention as the in-game
+  // sprite uses (js/game24.js's drawRobotGears).
+  function drawSentryGears(g, radius, seed) {
+    const count = 5;
+    for (let i = 0; i < count; i++) {
+      const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const a = (u % 360) * Math.PI / 180;
+      const dist = radius * (0.45 + (u % 5) * 0.08);
+      const gx = Math.cos(a) * dist, gy = Math.sin(a) * dist;
+      const gr = radius * (0.12 + (u % 3) * 0.03);
+      const teeth = 6;
+      g.save();
+      g.translate(gx, gy);
+      g.rotate(seed + i);
+      g.beginPath();
+      for (let j = 0; j < teeth; j++) {
+        const a0 = (j / teeth) * Math.PI * 2;
+        const a1 = a0 + (Math.PI * 2) / teeth * 0.5;
+        g.moveTo(Math.cos(a0) * gr, Math.sin(a0) * gr);
+        g.lineTo(Math.cos(a0) * (gr + gr * 0.35), Math.sin(a0) * (gr + gr * 0.35));
+        g.lineTo(Math.cos(a1) * (gr + gr * 0.35), Math.sin(a1) * (gr + gr * 0.35));
+        g.lineTo(Math.cos(a1) * gr, Math.sin(a1) * gr);
+      }
+      g.closePath();
+      g.fillStyle = '#6a6a5e';
+      g.fill();
+      g.beginPath();
+      g.arc(0, 0, gr * 0.5, 0, Math.PI * 2);
+      g.fillStyle = '#3a3a32';
+      g.fill();
+      g.restore();
+    }
+  }
+
+  // A steady red lens eye for the portrait, plus a short sweeping laser
+  // line so it reads as "scanning" even standing still.
+  function drawSentryEye(g, radius, t) {
+    const er = radius * 0.3;
+    g.save();
+    g.shadowColor = '#c93838';
+    g.shadowBlur = 8;
+    g.beginPath();
+    g.arc(0, -radius * 0.1, er, 0, Math.PI * 2);
+    g.fillStyle = '#c93838';
+    g.fill();
+    g.shadowBlur = 0;
+    g.beginPath();
+    g.arc(0, -radius * 0.1, er * 0.4, 0, Math.PI * 2);
+    g.fillStyle = '#050208';
+    g.fill();
+    g.restore();
+
+    const angle = t * 0.0011;
+    const lx = Math.cos(angle) * radius * 1.8, ly = Math.sin(angle) * radius * 1.8;
+    g.save();
+    g.strokeStyle = 'rgba(255,40,30,0.5)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(0, 0);
+    g.lineTo(lx, ly);
+    g.stroke();
+    g.restore();
+  }
+
+  function drawSentry(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 47;
+    drawTentacles(g, 32, '#1f1a26', t, seed);
+    drawBlobBody(g, 32, '#141018', '#2a2032', seed, t);
+    drawSentryGears(g, 32, seed);
+    drawSentryEye(g, 32, t);
     g.restore();
   }
 
@@ -2251,6 +2329,7 @@
       drawPortraitOrLock(grassDrifterCtx, drawGrassDrifter, t);
       drawPortraitOrLock(kindlingCtx, drawKindling, t);
       drawPortraitOrLock(stalkerCtx, drawStalker, t);
+      drawPortraitOrLock(sentryCtx, drawSentry, t);
     }
     requestAnimationFrame(loop);
   }
