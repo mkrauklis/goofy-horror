@@ -148,17 +148,16 @@
       const stutters = 1 + Math.floor(Math.random() * 2);
       for (let i = 0; i < stutters; i++) {
         tt += 0.05 + Math.random() * 0.04;
-        safeGlitchGain.gain.setValueAtTime(0.22, tt);
+        safeGlitchGain.gain.setValueAtTime(0.4, tt);
         tt += 0.04 + Math.random() * 0.04;
         safeGlitchGain.gain.setValueAtTime(1, tt);
       }
-      if (Math.random() < 0.55) {
-        const dipTo = 0.945 + Math.random() * 0.04;
+      if (Math.random() < 0.4) {
         safeVoices.forEach((osc) => {
           const base = osc.frequency.value;
           osc.frequency.cancelScheduledValues(t);
           osc.frequency.setValueAtTime(base, t);
-          osc.frequency.linearRampToValueAtTime(base * dipTo, t + 0.09);
+          osc.frequency.linearRampToValueAtTime(base * 0.975, t + 0.09);
           osc.frequency.linearRampToValueAtTime(base, t + 0.22);
         });
       }
@@ -225,10 +224,10 @@
     addDroneVoice(660, 'triangle', 0.05, 0.02, 40); // faint distant ringing
 
     // Gentle chord pad that fades in while a player is resting in the safe
-    // zone -- dark-ambient/hauntology leaning (slow tape-warble "wow" on
-    // top of the faster vibrato, a constant filtered-noise hiss, a darker
-    // lowpass) so it reads as a half-degraded transmission rather than
-    // clean "elevator music" -- creepy but still calming, not harsh.
+    // zone -- pitched down a bit, softly bitcrushed and lightly echoed for
+    // a lower, dreamier "liminal elevator music" character, with an
+    // occasional subtle flutter (see scheduleSafeMusicGlitch) rather than
+    // anything harsh.
     safeMusicGain = audioCtx.createGain();
     safeMusicGain.gain.value = 0.0001;
     safeMusicGain.connect(musicMasterGain);
@@ -239,8 +238,8 @@
 
     const safeFilter = audioCtx.createBiquadFilter();
     safeFilter.type = 'lowpass';
-    safeFilter.frequency.value = 1200;
-    safeFilter.Q.value = 0.5;
+    safeFilter.frequency.value = 1600;
+    safeFilter.Q.value = 0.3;
 
     // A soft echo gives the pad some room/space instead of sounding dry
     // and flat, like a real elevator's reverberant little box.
@@ -263,7 +262,7 @@
     safeFilter.connect(safeDelay);
 
     safeVoices = [];
-    [220.0, 261.63, 329.63, 415.30].map((f) => f * 0.8).forEach((freq, i) => {
+    [261.6, 329.6, 392.0, 523.2].map((f) => f * 0.8).forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
       osc.type = 'sine';
       osc.frequency.value = freq;
@@ -276,40 +275,11 @@
       vibrato.connect(vibratoGain);
       vibratoGain.connect(osc.frequency);
       vibrato.start();
-      // A second, much slower LFO under the fast vibrato -- a deeper,
-      // draggier "wow" like a tape mechanism struggling, not just a
-      // clean chorus-y wobble.
-      const wow = audioCtx.createOscillator();
-      wow.frequency.value = 0.045 + i * 0.015;
-      const wowGain = audioCtx.createGain();
-      wowGain.gain.value = 2.4;
-      wow.connect(wowGain);
-      wowGain.connect(osc.frequency);
-      wow.start();
       osc.connect(voiceGain);
       voiceGain.connect(safeGlitchGain);
       osc.start();
       safeVoices.push(osc);
     });
-
-    // A faint, constant filtered-noise hiss under the pad -- the
-    // transmission/tape-hiss half of the hauntology texture, always
-    // there at a steady low level rather than reacting to anything.
-    const hissBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
-    const hissData = hissBuffer.getChannelData(0);
-    for (let hi = 0; hi < hissData.length; hi++) hissData[hi] = Math.random() * 2 - 1;
-    const hissSource = audioCtx.createBufferSource();
-    hissSource.buffer = hissBuffer;
-    hissSource.loop = true;
-    const hissFilter = audioCtx.createBiquadFilter();
-    hissFilter.type = 'highpass';
-    hissFilter.frequency.value = 2600;
-    const hissGain = audioCtx.createGain();
-    hissGain.gain.value = 0.018;
-    hissSource.connect(hissFilter);
-    hissFilter.connect(hissGain);
-    hissGain.connect(safeMusicGain);
-    hissSource.start();
     scheduleSafeMusicGlitch();
   }
 
