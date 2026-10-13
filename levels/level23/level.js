@@ -84,7 +84,8 @@
     exitTrigger: {"x": 114, "y": 53},
     monsterSpawns: [
       {"x": 38, "y": 51},
-      {"x": 82, "y": 8}
+      {"x": 82, "y": 8},
+      {"x": 60, "y": 29}
     ],
     patrolPoints: [
       {"x": 23, "y": 29},

@@ -31,14 +31,14 @@
   // took longer than usual (e.g. a big tile grid redraw).
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  // The Stalker ignores the usual patrol/alert detection model entirely --
-  // it always knows exactly where the nearest player is (STALKER_SNEAK_SPEED
-  // below) and only cares whether it's currently lit up by a player's own
-  // flashlight (see STALKER_WATCH_MS and isStalkerLit).
-  const STALKER_SNEAK_SPEED = PLAYER_SPEED * 0.4;
-  const STALKER_CHARGE_SPEED = PLAYER_SPEED * 4;
-  const STALKER_WATCH_MS = 5000; // unseen this long and it charges
-  const STALKER_LIGHT_RADIUS = 230; // same radius a player's own flashlight dim-ring uses
+  // The Stalker keeps its look but not its old always-aware sneak/charge
+  // AI -- it's the conventional sight-based patrol/alert model every other
+  // monster here uses (same structure as Level 4's Mimic), just its own
+  // speeds and sight radius.
+  const STALKER_ROAM_SPEED = PLAYER_SPEED * 1.8;
+  const STALKER_CHASE_SPEED = PLAYER_SPEED * 2.5;
+  const STALKER_SIGHT_RADIUS = 230;
+  const ALERT_GRACE_MS = 2500;
   const LURE_SPEED = PLAYER_SPEED * 0.6;
   const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
@@ -701,11 +701,6 @@
   }
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
-  // Only one Stalker is ever actively sneaking/charging at a time -- the
-  // other sits dormant. Whichever one is closest to any player claims this
-  // once it's null, and holds it until it's spotted back to passive or a
-  // charge resolves.
-  let activeStalker = null;
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
@@ -722,7 +717,7 @@
     ? [makePlayer(LEVEL.spawn1, '#ff8a3d')]
     : [makePlayer(LEVEL.spawn1, '#ff8a3d'), makePlayer(LEVEL.spawn2, '#3ddc84')];
 
-  function makeMonster() {
+  function makeMonster(patrolStartIndex) {
     return {
       x: 0,
       y: 0,
@@ -733,20 +728,21 @@
       nextRepathAt: 0,
       lookDir: { x: 1, y: 0 },
       tentacleTargets: [],
+      state: 'patrol', // 'patrol' | 'alert'
+      alertUntil: 0,
+      alertTargetTile: null,
+      patrolIndex: patrolStartIndex,
       frozenUntil: 0,
       luredState: 'none', // 'none' | 'lured' | 'eating'
       lureTarget: null,
       eatingUntil: 0,
-      unseenMs: 0, // ms since any player's flashlight last reached it
-      charging: false,
-      chargeTarget: null,
     };
   }
 
-  // Exactly 2 Stalkers, as requested -- only one is ever active at a time
-  // (see updateActiveStalker), so this is a tense 1-on-1, not a swarm.
-  const MONSTER_COUNT = 2;
-  const monsters = Array.from({ length: MONSTER_COUNT }, () => makeMonster());
+  // 3 Stalkers, spread evenly around the patrol route.
+  const MONSTER_COUNT = 3;
+  const monsters = Array.from({ length: MONSTER_COUNT }, (_, i) =>
+    makeMonster(Math.floor(i * LEVEL.patrolPoints.length / MONSTER_COUNT)));
 
   let crates = [];
   let radarUntil = 0;
@@ -780,12 +776,9 @@
       const m = tileCenter(spawn.x, spawn.y);
       mon.x = m.x; mon.y = m.y;
       mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
+      mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
       mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.eatingUntil = 0;
-      mon.unseenMs = 0;
-      mon.charging = false;
-      mon.chargeTarget = null;
     });
-    activeStalker = null;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
       x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
@@ -1181,38 +1174,25 @@
   }
 
   // The Stalker always knows exactly where the nearest player is -- no
-  // detection radius, no line-of-sight gate for noticing you. The only
-  // thing that matters is whether a player's own flashlight currently
-  // reaches it: lit, and it holds off; unseen for the full
-  // STALKER_WATCH_MS straight, and it charges.
-  function isStalkerLit(m, now) {
-    return players.some((p) => {
-      if (p.caught || isHidden(p) || isInSmoke(p, now)) return false;
-      return Math.hypot(p.x - m.x, p.y - m.y) <= STALKER_LIGHT_RADIUS && hasLineOfSight(p.x, p.y, m.x, m.y);
-    });
-  }
-
-  function nearestPlayer(m) {
-    let best = players[0], bestD = Infinity;
-    players.forEach((p) => {
-      if (p.caught) return;
+  // detection radius -- the same sight-based patrol/alert model Level 4's
+  // Mimic uses: a still player is just as visible as a moving one, as
+  // long as it's within STALKER_SIGHT_RADIUS and there's a clear line to
+  // it. isHidden already keeps a safe-zone player off this radar entirely.
+  function updateDetection(m, now) {
+    for (const p of players) {
+      if (p.caught || isHidden(p) || isInSmoke(p, now)) continue;
       const d = Math.hypot(p.x - m.x, p.y - m.y);
-      if (d < bestD) { bestD = d; best = p; }
-    });
-    return best;
-  }
-
-  // Only one Stalker is ever actively sneaking or charging at once -- once
-  // the slot opens up, whichever one is currently closest to a player
-  // claims it, so both get a turn instead of the same one always winning.
-  function updateActiveStalker() {
-    if (activeStalker) return;
-    let best = null, bestD = Infinity;
-    monsters.forEach((m) => {
-      const d = Math.hypot(nearestPlayer(m).x - m.x, nearestPlayer(m).y - m.y);
-      if (d < bestD) { bestD = d; best = m; }
-    });
-    activeStalker = best;
+      if (d <= STALKER_SIGHT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+        m.state = 'alert';
+        m.alertUntil = now + ALERT_GRACE_MS;
+        m.alertTargetTile = worldToTile(p.x, p.y);
+      }
+    }
+    if (m.state === 'alert' && now >= m.alertUntil) {
+      m.state = 'patrol';
+      m.path = [];
+      m.pathIndex = 0;
+    }
   }
 
   function updateMonster(m, now, dt) {
@@ -1258,62 +1238,29 @@
       return;
     }
 
-    // Dormant: not this one's turn, so it holds perfectly still and its
-    // watch timer doesn't advance -- "only 1 of them on you at a time".
-    if (activeStalker !== m) return;
-
-    if (m.charging) {
-      const target = (m.chargeTarget && !m.chargeTarget.caught) ? m.chargeTarget : nearestPlayer(m);
-      const step = STALKER_CHARGE_SPEED * dt;
-      const dx = target.x - m.x, dy = target.y - m.y;
-      const d = Math.hypot(dx, dy);
-      if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
-      if (d > step) {
-        m.x += (dx / d) * step;
-        m.y += (dy / d) * step;
-      } else {
-        m.x = target.x; m.y = target.y;
-      }
-      if (!target.caught && now >= target.invulnerableUntil && Math.hypot(target.x - m.x, target.y - m.y) < CATCH_RADIUS) {
-        triggerCaught(target, now);
-        m.charging = false;
-        m.unseenMs = 0;
-        activeStalker = null;
-      }
-      return;
-    }
-
-    if (isStalkerLit(m, now)) {
-      // Spotted -- backs off the hunt entirely and lets the other Stalker
-      // have a turn.
-      m.unseenMs = 0;
-      m.path = []; m.pathIndex = 0;
-      activeStalker = null;
-      return;
-    }
-
-    m.unseenMs += dt * 1000;
-    if (m.unseenMs >= STALKER_WATCH_MS) {
-      m.charging = true;
-      m.chargeTarget = nearestPlayer(m);
-      spawnFloatingText(m.x, m.y - m.radius, '!');
-      playCatchSting();
-      return;
-    }
+    updateDetection(m, now);
 
     if (now >= m.nextRepathAt) {
       m.nextRepathAt = now + REPATH_MS;
       const startTile = worldToTile(m.x, m.y);
-      const goalTile = worldToTile(nearestPlayer(m).x, nearestPlayer(m).y);
+      const goalTile = m.state === 'alert' ? m.alertTargetTile : LEVEL.patrolPoints[m.patrolIndex];
       const graph = buildMonsterGraph();
       const path = bfsPath(graph, startTile, goalTile);
-      m.path = path && path.length > 1 ? path.slice(1) : [];
-      m.pathIndex = 0;
+      if (path && path.length > 1) {
+        m.path = path.slice(1);
+        m.pathIndex = 0;
+      } else {
+        m.path = [];
+        m.pathIndex = 0;
+        if (m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        }
+      }
       updateTentacleTargets(m, startTile);
     }
 
     if (m.path && m.pathIndex < m.path.length) {
-      const step = STALKER_SNEAK_SPEED * dt;
+      const step = (m.state === 'alert' ? STALKER_CHASE_SPEED : STALKER_ROAM_SPEED) * dt;
       const target = tileTargetWithOffset(m.path[m.pathIndex]);
       const dx = target.x - m.x, dy = target.y - m.y;
       const d = Math.hypot(dx, dy);
@@ -1321,6 +1268,9 @@
       if (d < step) {
         m.x = target.x; m.y = target.y;
         m.pathIndex++;
+        if (m.pathIndex >= m.path.length && m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        }
       } else {
         m.x += (dx / d) * step;
         m.y += (dy / d) * step;
@@ -1337,12 +1287,9 @@
       if (p.caught) return;
       monsters.forEach((m) => {
         if (p.shotgunAmmo <= 0) return;
-        if (now < m.frozenUntil || !m.charging) return;
+        if (now < m.frozenUntil || m.state !== 'alert') return;
         if (Math.hypot(p.x - m.x, p.y - m.y) < SHOTGUN_RANGE) {
           m.frozenUntil = now + SHOTGUN_STUN_MS;
-          m.charging = false;
-          m.unseenMs = 0;
-          if (activeStalker === m) activeStalker = null;
           p.shotgunAmmo--;
           spawnFloatingText(m.x, m.y, 'STUNNED!');
           playShotgunBlast();
@@ -1351,13 +1298,11 @@
     });
   }
 
-  // The charge itself is the catch -- see updateMonster's charging branch.
-  // This just handles the (rare) case of simply walking into a sneaking
-  // Stalker you never noticed.
   function updateCatch(now) {
     monsters.forEach((m) => {
       if (now < m.frozenUntil) return;
       if (m.luredState !== 'none') return;
+      if (m.state !== 'alert') return;
       players.forEach((p) => {
         if (p.caught) return;
         if (isHidden(p) || isInSmoke(p, now)) return;
@@ -1846,15 +1791,13 @@
   // hot red the longer it's gone unseen, flaring solid white-hot the
   // instant it commits to a charge. The tension cue IS the tell.
   function drawStalkerEye(g, m, t) {
-    const watchFrac = m.charging ? 1 : Math.min(1, m.unseenMs / STALKER_WATCH_MS);
+    const alert = m.state === 'alert';
     const er = m.radius * 0.3;
-    const from = [70, 70, 90], to = [255, 40, 30];
-    const lerp = (i) => Math.round(from[i] + (to[i] - from[i]) * watchFrac);
-    const glowColor = m.charging ? '#fff2e0' : `rgb(${lerp(0)},${lerp(1)},${lerp(2)})`;
+    const glowColor = alert ? '#ff2820' : '#464659';
 
     g.save();
     g.shadowColor = glowColor;
-    g.shadowBlur = 4 + watchFrac * 12;
+    g.shadowBlur = alert ? 16 : 4;
     g.beginPath();
     g.arc(0, -m.radius * 0.1, er, 0, Math.PI * 2);
     g.fillStyle = glowColor;
@@ -2333,7 +2276,6 @@
       updateTriggers();
       updateCrates(now);
       updateSmokeBombs(now);
-      updateActiveStalker();
       monsters.forEach((m) => updateMonster(m, now, dt));
       updateShotgunDefense(now);
       updateCatch(now);
