@@ -31,19 +31,15 @@
   // took longer than usual (e.g. a big tile grid redraw).
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  // A stationary tentacled robot, not a patroller: it doesn't move at all
-  // until charging. A rotating laser sweeps around it instead of a sight
-  // cone -- the first trip through it fires a missile at whoever tripped
-  // it, the next trip (now that it's already fired) sends the robot
-  // itself charging.
-  const ROBOT_SCAN_SPEED = 1.1; // radians/second the laser sweeps at
-  const ROBOT_LASER_RANGE = 260;
-  const ROBOT_LASER_HIT_RADIUS = 10; // how close to the beam line counts as "in it"
-  const ROBOT_TRIP_COOLDOWN_MS = 900; // one trip per sweep pass, not one per frame
-  const ROBOT_MISSILE_SPEED = PLAYER_SPEED * 3;
-  const ROBOT_MISSILE_HIT_RADIUS = 14;
-  const ROBOT_CHARGE_SPEED = PLAYER_SPEED * 1.5;
-  const ROBOT_CHARGE_TIMEOUT_MS = 9000; // gives up and resets if it never catches anyone
+  // Same traits as Level 22's Kindling (sight-based patrol/chase, its own
+  // shotgun firing every 5s at the closest visible player), just 15%
+  // slower -- direct request. Kindling's own speed is PLAYER_SPEED*1.1.
+  const MONSTER_SPEED = PLAYER_SPEED * 1.1 * 0.85;
+  const MONSTER_SIGHT_RADIUS = 230;
+  const ALERT_GRACE_MS = 2500;
+  const MONSTER_SHOTGUN_INTERVAL_MS = 5000;
+  const MONSTER_SHOTGUN_BULLET_SPEED = PLAYER_SPEED * 3;
+  const MONSTER_BULLET_HIT_RADIUS = 10;
   const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
   const PROXIMITY_WARNING_RADIUS = 400;
@@ -140,8 +136,7 @@
   // Every several seconds, a brief, gentle flutter in the safe-room music's
   // volume and a soft pitch dip on a couple of voices -- runs continuously
   // in the background; it's inaudible whenever safeMusicGain itself is
-  // faded near zero. Subtle on purpose: enough to read as "not quite
-  // right" without undercutting the calming point of the music.
+  // faded near zero.
   function scheduleSafeMusicGlitch() {
     const delay = 3000 + Math.random() * 4500;
     setTimeout(() => {
@@ -153,17 +148,16 @@
       const stutters = 1 + Math.floor(Math.random() * 2);
       for (let i = 0; i < stutters; i++) {
         tt += 0.05 + Math.random() * 0.04;
-        safeGlitchGain.gain.setValueAtTime(0.22, tt);
+        safeGlitchGain.gain.setValueAtTime(0.4, tt);
         tt += 0.04 + Math.random() * 0.04;
         safeGlitchGain.gain.setValueAtTime(1, tt);
       }
-      if (Math.random() < 0.55) {
-        const dipTo = 0.945 + Math.random() * 0.04;
+      if (Math.random() < 0.4) {
         safeVoices.forEach((osc) => {
           const base = osc.frequency.value;
           osc.frequency.cancelScheduledValues(t);
           osc.frequency.setValueAtTime(base, t);
-          osc.frequency.linearRampToValueAtTime(base * dipTo, t + 0.09);
+          osc.frequency.linearRampToValueAtTime(base * 0.975, t + 0.09);
           osc.frequency.linearRampToValueAtTime(base, t + 0.22);
         });
       }
@@ -230,10 +224,10 @@
     addDroneVoice(660, 'triangle', 0.05, 0.02, 40); // faint distant ringing
 
     // Gentle chord pad that fades in while a player is resting in the safe
-    // zone -- dark-ambient/hauntology leaning (slow tape-warble "wow" on
-    // top of the faster vibrato, a constant filtered-noise hiss, a darker
-    // lowpass) so it reads as a half-degraded transmission rather than
-    // clean "elevator music" -- creepy but still calming, not harsh.
+    // zone -- pitched down a bit, softly bitcrushed and lightly echoed for
+    // a lower, dreamier "liminal elevator music" character, with an
+    // occasional subtle flutter (see scheduleSafeMusicGlitch) rather than
+    // anything harsh.
     safeMusicGain = audioCtx.createGain();
     safeMusicGain.gain.value = 0.0001;
     safeMusicGain.connect(musicMasterGain);
@@ -244,8 +238,8 @@
 
     const safeFilter = audioCtx.createBiquadFilter();
     safeFilter.type = 'lowpass';
-    safeFilter.frequency.value = 1200;
-    safeFilter.Q.value = 0.5;
+    safeFilter.frequency.value = 1600;
+    safeFilter.Q.value = 0.3;
 
     // A soft echo gives the pad some room/space instead of sounding dry
     // and flat, like a real elevator's reverberant little box.
@@ -268,7 +262,7 @@
     safeFilter.connect(safeDelay);
 
     safeVoices = [];
-    [220.0, 261.63, 329.63, 415.30].map((f) => f * 0.8).forEach((freq, i) => {
+    [261.6, 329.6, 392.0, 523.2].map((f) => f * 0.8).forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
       osc.type = 'sine';
       osc.frequency.value = freq;
@@ -281,40 +275,11 @@
       vibrato.connect(vibratoGain);
       vibratoGain.connect(osc.frequency);
       vibrato.start();
-      // A second, much slower LFO under the fast vibrato -- a deeper,
-      // draggier "wow" like a tape mechanism struggling, not just a
-      // clean chorus-y wobble.
-      const wow = audioCtx.createOscillator();
-      wow.frequency.value = 0.045 + i * 0.015;
-      const wowGain = audioCtx.createGain();
-      wowGain.gain.value = 2.4;
-      wow.connect(wowGain);
-      wowGain.connect(osc.frequency);
-      wow.start();
       osc.connect(voiceGain);
       voiceGain.connect(safeGlitchGain);
       osc.start();
       safeVoices.push(osc);
     });
-
-    // A faint, constant filtered-noise hiss under the pad -- the
-    // transmission/tape-hiss half of the hauntology texture, always
-    // there at a steady low level rather than reacting to anything.
-    const hissBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
-    const hissData = hissBuffer.getChannelData(0);
-    for (let hi = 0; hi < hissData.length; hi++) hissData[hi] = Math.random() * 2 - 1;
-    const hissSource = audioCtx.createBufferSource();
-    hissSource.buffer = hissBuffer;
-    hissSource.loop = true;
-    const hissFilter = audioCtx.createBiquadFilter();
-    hissFilter.type = 'highpass';
-    hissFilter.frequency.value = 2600;
-    const hissGain = audioCtx.createGain();
-    hissGain.gain.value = 0.018;
-    hissSource.connect(hissFilter);
-    hissFilter.connect(hissGain);
-    hissGain.connect(safeMusicGain);
-    hissSource.start();
     scheduleSafeMusicGlitch();
   }
 
@@ -645,6 +610,9 @@
     const u = (h ^ (h >>> 15)) >>> 0;
     return (u % 100) < FLOWER_TILE_CHANCE;
   }
+  // Petals share one fillStyle, so they're batched into a single
+  // beginPath/fill instead of one pair per petal -- a meaningful draw-call
+  // cut given how many grass tiles end up with a flower on them.
   function drawFlowerCluster(g, px, py, x, y) {
     const h = Math.imul(x, 3266489917) ^ Math.imul(y, 2246822519);
     const u = (h ^ (h >>> 13)) >>> 0;
@@ -652,13 +620,14 @@
     const fx = px + 4 + (u % (TILE - 8));
     const fy = py + 4 + ((u >> 4) % (TILE - 8));
     const petals = 4;
+    g.beginPath();
     for (let i = 0; i < petals; i++) {
       const a = (i / petals) * Math.PI * 2;
-      g.beginPath();
+      g.moveTo(fx + Math.cos(a) * 2.2 + 1.8, fy + Math.sin(a) * 2.2);
       g.arc(fx + Math.cos(a) * 2.2, fy + Math.sin(a) * 2.2, 1.8, 0, Math.PI * 2);
-      g.fillStyle = color;
-      g.fill();
     }
+    g.fillStyle = color;
+    g.fill();
     g.beginPath();
     g.arc(fx, fy, 1.4, 0, Math.PI * 2);
     g.fillStyle = '#f0c23d';
@@ -791,7 +760,7 @@
     ? [makePlayer(LEVEL.spawn1, '#ff8a3d')]
     : [makePlayer(LEVEL.spawn1, '#ff8a3d'), makePlayer(LEVEL.spawn2, '#3ddc84')];
 
-  function makeRobot() {
+  function makeRobot(patrolStartIndex) {
     return {
       x: 0,
       y: 0,
@@ -802,21 +771,22 @@
       nextRepathAt: 0,
       lookDir: { x: 1, y: 0 },
       tentacleTargets: [],
-      state: 'scan', // 'scan' | 'charging'
-      scanAngle: Math.random() * Math.PI * 2,
-      hasFired: false,
-      chargeTargetTile: null,
-      chargeUntil: 0,
-      tripCooldownUntil: 0,
+      state: 'patrol', // 'patrol' | 'alert'
+      alertUntil: 0,
+      alertTargetTile: null,
+      patrolIndex: patrolStartIndex,
       frozenUntil: 0,
+      nextShotAt: 0,
     };
   }
 
-  // One per section -- fixed in place, each sweeping its own laser.
+  // One per section, same as Level 22's Kindling count convention scaled
+  // down for this level's smaller cast.
   const MONSTER_COUNT = LEVEL.monsterSpawns.length;
-  const monsters = Array.from({ length: MONSTER_COUNT }, () => makeRobot());
+  const monsters = Array.from({ length: MONSTER_COUNT }, (_, i) =>
+    makeRobot(Math.floor(i * LEVEL.patrolPoints.length / MONSTER_COUNT)));
 
-  let missiles = [];
+  let monsterBullets = []; // { x, y, dx, dy } -- each Sentry's own shotgun
   let gears = (LEVEL.gearSpawns || []).map((g) => ({ x: g.x, y: g.y, heldMs: 0, solved: false }));
   const conveyorByTile = new Map();
   (LEVEL.conveyorSpawns || []).forEach((c) => conveyorByTile.set(`${c.x},${c.y}`, c.dir));
@@ -853,12 +823,11 @@
       const m = tileCenter(spawn.x, spawn.y);
       mon.x = m.x; mon.y = m.y;
       mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
-      mon.state = 'scan'; mon.scanAngle = Math.random() * Math.PI * 2;
-      mon.hasFired = false; mon.chargeTargetTile = null; mon.chargeUntil = 0; mon.tripCooldownUntil = 0;
+      mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
       mon.frozenUntil = 0;
-      updateTentacleTargets(mon, worldToTile(mon.x, mon.y));
+      mon.nextShotAt = performance.now() + MONSTER_SHOTGUN_INTERVAL_MS;
     });
-    missiles = [];
+    monsterBullets = [];
     gears.forEach((g) => { g.heldMs = 0; g.solved = false; });
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
@@ -1254,97 +1223,107 @@
     m.tentacleTargets = targets.slice(0, 3);
   }
 
-  // Perpendicular distance from (px,py) to the segment (x0,y0)-(x1,y1),
-  // plus how far along it the closest point falls (as a 0..1 fraction) --
-  // used to tell whether a player is standing "in" the robot's laser.
-  function pointSegmentDistance(px, py, x0, y0, x1, y1) {
-    const dx = x1 - x0, dy = y1 - y0;
-    const lenSq = dx * dx + dy * dy;
-    let t = lenSq > 0 ? ((px - x0) * dx + (py - y0) * dy) / lenSq : 0;
-    t = clamp(t, 0, 1);
-    const cx = x0 + dx * t, cy = y0 + dy * t;
-    return { dist: Math.hypot(px - cx, py - cy), t };
-  }
-
-  // The laser sweeps continuously regardless of state (purely visual while
-  // charging). A clean trip -- within ROBOT_LASER_HIT_RADIUS of the beam,
-  // inside its range, off cooldown -- either fires a missile (first trip)
-  // or sends the robot charging (any trip after that).
-  function updateRobotScan(m, now, dt) {
-    m.scanAngle = (m.scanAngle + ROBOT_SCAN_SPEED * dt) % (Math.PI * 2);
-    if (m.state === 'charging' || now < m.tripCooldownUntil) return;
-    const ex = m.x + Math.cos(m.scanAngle) * ROBOT_LASER_RANGE;
-    const ey = m.y + Math.sin(m.scanAngle) * ROBOT_LASER_RANGE;
+  // Same sight-based patrol/alert model Level 22's Kindling uses: a still
+  // player is just as visible as a moving one, as long as it's within
+  // MONSTER_SIGHT_RADIUS and there's a clear line to it.
+  function updateDetection(m, now) {
     for (const p of players) {
       if (p.caught || isHidden(p) || isInSmoke(p, now)) continue;
-      const { dist, t } = pointSegmentDistance(p.x, p.y, m.x, m.y, ex, ey);
-      if (dist > ROBOT_LASER_HIT_RADIUS || t <= 0) continue;
-      m.tripCooldownUntil = now + ROBOT_TRIP_COOLDOWN_MS;
-      if (!m.hasFired) {
-        m.hasFired = true;
-        const dx = p.x - m.x, dy = p.y - m.y;
-        const d = Math.hypot(dx, dy) || 1;
-        missiles.push({ x: m.x, y: m.y, dx: (dx / d) * ROBOT_MISSILE_SPEED, dy: (dy / d) * ROBOT_MISSILE_SPEED });
-        playShotgunBlast();
-      } else {
-        m.state = 'charging';
-        m.chargeTargetTile = worldToTile(p.x, p.y);
-        m.chargeUntil = now + ROBOT_CHARGE_TIMEOUT_MS;
-        m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
+      const d = Math.hypot(p.x - m.x, p.y - m.y);
+      if (d <= MONSTER_SIGHT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+        m.state = 'alert';
+        m.alertUntil = now + ALERT_GRACE_MS;
+        m.alertTargetTile = worldToTile(p.x, p.y);
       }
-      break;
+    }
+    if (m.state === 'alert' && now >= m.alertUntil) {
+      m.state = 'patrol';
+      m.path = [];
+      m.pathIndex = 0;
     }
   }
 
-  function updateMissiles(now, dt) {
-    for (let i = missiles.length - 1; i >= 0; i--) {
-      const b = missiles[i];
+  // The closest currently-visible player, for the shotgun to aim at --
+  // null if nothing is in sight right now.
+  function closestVisiblePlayer(m, now) {
+    let best = null, bestD = Infinity;
+    for (const p of players) {
+      if (p.caught || isHidden(p) || isInSmoke(p, now)) continue;
+      const d = Math.hypot(p.x - m.x, p.y - m.y);
+      if (d <= MONSTER_SIGHT_RADIUS && d < bestD && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+        best = p;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  // Fires once every 5 seconds at whichever player it can currently see
+  // that's closest to it -- independent of patrol/alert state, so it's a
+  // threat even while just on its usual route.
+  function updateMonsterShotgun(m, now) {
+    if (now < m.nextShotAt) return;
+    const target = closestVisiblePlayer(m, now);
+    if (!target) return;
+    m.nextShotAt = now + MONSTER_SHOTGUN_INTERVAL_MS;
+    const dx = target.x - m.x, dy = target.y - m.y;
+    const d = Math.hypot(dx, dy) || 1;
+    monsterBullets.push({
+      x: m.x, y: m.y, dx: (dx / d) * MONSTER_SHOTGUN_BULLET_SPEED, dy: (dy / d) * MONSTER_SHOTGUN_BULLET_SPEED,
+    });
+    playShotgunBlast();
+  }
+
+  function updateMonsterBullets(now, dt) {
+    for (let i = monsterBullets.length - 1; i >= 0; i--) {
+      const b = monsterBullets[i];
       b.x += b.dx * dt;
       b.y += b.dy * dt;
       const t = worldToTile(b.x, b.y);
       const ch = tileChar(t.x, t.y);
       if (ch === '#' || ch === 'N' || ch === 'C' || ch === 'F') {
-        missiles.splice(i, 1);
+        monsterBullets.splice(i, 1);
         continue;
       }
       let hit = false;
       players.forEach((p) => {
         if (hit || p.caught || now < p.invulnerableUntil) return;
-        if (Math.hypot(p.x - b.x, p.y - b.y) < ROBOT_MISSILE_HIT_RADIUS) {
+        if (Math.hypot(p.x - b.x, p.y - b.y) < MONSTER_BULLET_HIT_RADIUS) {
           triggerCaught(p, now);
           hit = true;
         }
       });
-      if (hit) missiles.splice(i, 1);
+      if (hit) monsterBullets.splice(i, 1);
     }
   }
 
   function updateMonster(m, now, dt) {
-    if (now < m.frozenUntil) return; // frozen solid: no movement, no perception, laser off
+    if (now < m.frozenUntil) return; // frozen solid: no movement, no perception
 
-    updateRobotScan(m, now, dt);
-
-    if (m.state !== 'charging') return; // stationary otherwise -- the whole threat is the laser
-
-    if (now >= m.chargeUntil) {
-      m.state = 'scan';
-      m.hasFired = false;
-      m.path = []; m.pathIndex = 0;
-      return;
-    }
+    updateMonsterShotgun(m, now);
+    updateDetection(m, now);
 
     if (now >= m.nextRepathAt) {
       m.nextRepathAt = now + REPATH_MS;
       const startTile = worldToTile(m.x, m.y);
+      const goalTile = m.state === 'alert' ? m.alertTargetTile : LEVEL.patrolPoints[m.patrolIndex];
       const graph = buildMonsterGraph();
-      const path = bfsPath(graph, startTile, m.chargeTargetTile);
-      m.path = path && path.length > 1 ? path.slice(1) : [];
-      m.pathIndex = 0;
+      const path = bfsPath(graph, startTile, goalTile);
+      if (path && path.length > 1) {
+        m.path = path.slice(1);
+        m.pathIndex = 0;
+      } else {
+        m.path = [];
+        m.pathIndex = 0;
+        if (m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        }
+      }
       updateTentacleTargets(m, startTile);
     }
 
     if (m.path && m.pathIndex < m.path.length) {
-      const step = ROBOT_CHARGE_SPEED * dt;
+      const step = MONSTER_SPEED * dt;
       const target = tileTargetWithOffset(m.path[m.pathIndex]);
       const dx = target.x - m.x, dy = target.y - m.y;
       const d = Math.hypot(dx, dy);
@@ -1352,6 +1331,9 @@
       if (d < step) {
         m.x = target.x; m.y = target.y;
         m.pathIndex++;
+        if (m.pathIndex >= m.path.length && m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        }
       } else {
         m.x += (dx / d) * step;
         m.y += (dy / d) * step;
@@ -1400,7 +1382,7 @@
       if (p.caught) return;
       monsters.forEach((m) => {
         if (p.shotgunAmmo <= 0) return;
-        if (now < m.frozenUntil || m.state !== 'charging') return;
+        if (now < m.frozenUntil || m.state !== 'alert') return;
         if (Math.hypot(p.x - m.x, p.y - m.y) < SHOTGUN_RANGE) {
           m.frozenUntil = now + SHOTGUN_STUN_MS;
           p.shotgunAmmo--;
@@ -1414,10 +1396,11 @@
   function updateCatch(now) {
     monsters.forEach((m) => {
       if (now < m.frozenUntil) return;
-      if (m.state !== 'charging') return;
+      if (m.state !== 'alert') return;
       players.forEach((p) => {
         if (p.caught) return;
         if (isHidden(p) || isInSmoke(p, now)) return;
+        if (!p.isMoving) return; // standing still keeps you safe even once it's alerted
         if (now < p.invulnerableUntil) return;
         if (Math.hypot(p.x - m.x, p.y - m.y) < CATCH_RADIUS) triggerCaught(p, now);
       });
@@ -1616,21 +1599,22 @@
 
   // Conveyor belts: a dark metal strip with pale chevrons animated along
   // 'dir' so the direction reads at a glance, independent of the tile's
-  // own base fill drawn in drawTiles.
+  // own base fill drawn in drawTiles. One shared strokeStyle/lineWidth and
+  // no per-tile save/clip/restore -- the chevron geometry already stays
+  // inside the tile, so clipping was just extra canvas-state overhead on
+  // every one of these every frame.
   function drawConveyors(g, now) {
-    (LEVEL.conveyorSpawns || []).forEach((c) => {
+    const list = LEVEL.conveyorSpawns;
+    if (!list || !list.length) return;
+    g.strokeStyle = 'rgba(200,200,210,0.5)';
+    g.lineWidth = 2;
+    const offset = (now * 0.03) % (TILE / 2);
+    g.beginPath();
+    list.forEach((c) => {
       const px = c.x * TILE, py = c.y * TILE;
       const vec = CONVEYOR_DIR_VEC[c.dir];
-      const offset = (now * 0.03) % (TILE / 2);
-      g.save();
-      g.beginPath();
-      g.rect(px, py, TILE, TILE);
-      g.clip();
-      g.strokeStyle = 'rgba(200,200,210,0.5)';
-      g.lineWidth = 2;
       for (let i = -1; i <= 2; i++) {
         const base = i * (TILE / 2) + offset;
-        g.beginPath();
         if (vec.x !== 0) {
           const cx = px + ((base * vec.x) % TILE + TILE) % TILE;
           g.moveTo(cx, py + 3); g.lineTo(cx + vec.x * 5, py + TILE / 2); g.lineTo(cx, py + TILE - 3);
@@ -1638,10 +1622,9 @@
           const cy = py + ((base * vec.y) % TILE + TILE) % TILE;
           g.moveTo(px + 3, cy); g.lineTo(px + TILE / 2, cy + vec.y * 5); g.lineTo(px + TILE - 3, cy);
         }
-        g.stroke();
       }
-      g.restore();
     });
+    g.stroke();
   }
 
   // Gears: a ring of teeth that fills in (green) as it's held, with a
@@ -1688,29 +1671,24 @@
     });
   }
 
-  // The robot's own missiles -- a small bright body with a short flame
-  // trail behind it, rotated to face its travel direction.
-  function drawMissiles(g) {
-    missiles.forEach((b) => {
-      const angle = Math.atan2(b.dy, b.dx);
-      g.save();
-      g.translate(b.x, b.y);
-      g.rotate(angle);
-      g.fillStyle = 'rgba(255,140,40,0.55)';
-      g.beginPath();
-      g.moveTo(-14, -2); g.lineTo(-22, 0); g.lineTo(-14, 2);
-      g.closePath();
-      g.fill();
-      g.fillStyle = '#d93c2a';
-      g.fillRect(-6, -3, 12, 6);
-      g.beginPath();
-      g.arc(7, 0, 3, 0, Math.PI * 2);
-      g.fillStyle = '#ffcf5c';
-      g.shadowColor = '#ffcf5c';
+  // Each Sentry's own shotgun bullets -- a short bright tracer along the
+  // direction of travel, since they're fast (3x player speed) and easy to
+  // lose as a plain dot at this frame rate. Same convention as Level 22's
+  // Kindling.
+  function drawMonsterBullets(g) {
+    monsterBullets.forEach((b) => {
+      const d = Math.hypot(b.dx, b.dy) || 1;
+      const tailX = b.x - (b.dx / d) * 14, tailY = b.y - (b.dy / d) * 14;
+      g.strokeStyle = '#ffb347';
+      g.lineWidth = 3;
+      g.lineCap = 'round';
+      g.shadowColor = '#ff8a2a';
       g.shadowBlur = 6;
-      g.fill();
+      g.beginPath();
+      g.moveTo(tailX, tailY);
+      g.lineTo(b.x, b.y);
+      g.stroke();
       g.shadowBlur = 0;
-      g.restore();
     });
   }
 
@@ -1775,7 +1753,7 @@
     drawCorpses(g);
     drawBloodSplatters(g);
     drawCrates(g);
-    drawMissiles(g);
+    drawMonsterBullets(g);
     drawFloatingTexts(g);
   }
 
@@ -1888,7 +1866,6 @@
     drawBlobBody(g, m.radius, '#141018', '#2a2032', m.seed, t);
     drawRobotGears(g, m.radius, m.seed);
     drawRobotEye(g, m, t);
-    if (m.state === 'scan' && t >= m.frozenUntil) drawRobotLaser(g, m, t);
 
     if (t < m.frozenUntil) {
       const points = 12;
@@ -2000,19 +1977,18 @@
     g.restore();
   }
 
-  // One red lens-eye, flaring brighter and faster-pulsing once it's
-  // actually charging rather than just scanning -- the same tension cue
-  // every other level's "tell" eye uses, just always some shade of red
-  // since this one's a machine, not a watcher waiting to be noticed.
+  // One red lens-eye, flaring brighter once it's actually alert and
+  // chasing rather than just patrolling -- the same tension cue every
+  // other level's "tell" eye uses, just always some shade of red since
+  // this one's a machine, not a watcher waiting to be noticed.
   function drawRobotEye(g, m, t) {
-    const charging = m.state === 'charging';
+    const alert = m.state === 'alert';
     const er = m.radius * 0.3;
-    const pulse = charging ? 0.7 + 0.3 * Math.sin(t * 0.02) : 1;
-    const glowColor = charging ? '#ff2820' : '#8a2a22';
+    const glowColor = alert ? '#ff2820' : '#8a2a22';
 
     g.save();
     g.shadowColor = glowColor;
-    g.shadowBlur = (charging ? 16 : 6) * pulse;
+    g.shadowBlur = alert ? 16 : 6;
     g.beginPath();
     g.arc(0, -m.radius * 0.1, er, 0, Math.PI * 2);
     g.fillStyle = glowColor;
@@ -2022,29 +1998,6 @@
     g.beginPath();
     g.arc(0, -m.radius * 0.1, er * 0.4, 0, Math.PI * 2);
     g.fillStyle = '#050208';
-    g.fill();
-    g.restore();
-  }
-
-  // The sweeping laser itself -- a thin bright line from the robot out to
-  // ROBOT_LASER_RANGE at its current scanAngle, with a small bright dot
-  // at the tip. Only drawn while actually scanning (see drawMonster).
-  function drawRobotLaser(g, m, t) {
-    const ex = Math.cos(m.scanAngle) * ROBOT_LASER_RANGE;
-    const ey = Math.sin(m.scanAngle) * ROBOT_LASER_RANGE;
-    g.save();
-    g.strokeStyle = 'rgba(255,40,30,0.55)';
-    g.lineWidth = 2;
-    g.shadowColor = '#ff2820';
-    g.shadowBlur = 6;
-    g.beginPath();
-    g.moveTo(0, 0);
-    g.lineTo(ex, ey);
-    g.stroke();
-    g.shadowBlur = 0;
-    g.beginPath();
-    g.arc(ex, ey, 3, 0, Math.PI * 2);
-    g.fillStyle = '#ff6a5c';
     g.fill();
     g.restore();
   }
@@ -2522,7 +2475,7 @@
       updateConveyors(dt);
       updateGears(now, dt);
       monsters.forEach((m) => updateMonster(m, now, dt));
-      updateMissiles(now, dt);
+      updateMonsterBullets(now, dt);
       updateShotgunDefense(now);
       updateCatch(now);
       updateCutscenes(now);
