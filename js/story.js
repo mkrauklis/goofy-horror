@@ -6,7 +6,7 @@
 // which levels are unlocked/finished, not how fast you did it.
 (function () {
   const KEY = 'goofy-horror-story';
-  const TOTAL_LEVELS = 25;
+  const TOTAL_LEVELS = 26;
 
   function load() {
     try {

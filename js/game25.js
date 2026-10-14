@@ -1225,9 +1225,7 @@
     }
     playWinJingle();
     if (window.GoofyStory) window.GoofyStory.completeLevel(25);
-    // Level 26 doesn't exist yet -- back to the menu, the current finale,
-    // same convention every level here follows until the next one ships.
-    setTimeout(() => { window.location.href = 'index.html'; }, 800);
+    setTimeout(() => { window.location.href = 'level26.html'; }, 800);
   }
 
   function resetExploration() {

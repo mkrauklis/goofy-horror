@@ -31,6 +31,7 @@
   const stalkerCtx = ctxFor('monster-canvas-stalker');
   const sentryCtx = ctxFor('monster-canvas-sentry');
   const cultivatorCtx = ctxFor('monster-canvas-cultivator');
+  const reacherCtx = ctxFor('monster-canvas-reacher');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -710,6 +711,70 @@
       g.fill();
     });
     g.restore();
+    g.restore();
+  }
+
+  // A mottled violet blob with a crown of short, constantly-waving idle
+  // tentacles and a slit red eye -- the same body drawReacher() builds in
+  // js/game26.js, just a static pose (its signature long-reach lash is a
+  // level mechanic, not part of the creature's own portrait).
+  function drawReacher(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const radius = 32, seed = 41;
+
+    const stubCount = 7;
+    for (let i = 0; i < stubCount; i++) {
+      const a = (i / stubCount) * Math.PI * 2 + seed;
+      const len = radius * (1.3 + 0.3 * Math.sin(t * 0.0015 + i * 2 + seed));
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
+      const wob = Math.sin(t * 0.003 + i + seed) * radius * 0.3;
+      const midX = Math.cos(a) * len * 0.5 - Math.sin(a) * wob;
+      const midY = Math.sin(a) * len * 0.5 + Math.cos(a) * wob;
+      drawTaperedTentacle(g, tx, ty, midX, midY, radius * 0.18, '#6a2a80');
+    }
+
+    const grad = g.createRadialGradient(-radius * 0.3, -radius * 0.3, 2, 0, 0, radius);
+    grad.addColorStop(0, '#8a3aa0');
+    grad.addColorStop(1, '#231228');
+    g.beginPath();
+    g.arc(0, 0, radius, 0, Math.PI * 2);
+    g.fillStyle = grad;
+    g.shadowColor = '#000';
+    g.shadowBlur = 12;
+    g.fill();
+    g.shadowBlur = 0;
+    g.strokeStyle = '#130a16';
+    g.lineWidth = 2.5;
+    g.stroke();
+
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + seed * 0.5;
+      const bx = Math.cos(a) * radius * 0.65, by = Math.sin(a) * radius * 0.65;
+      g.beginPath();
+      g.arc(bx, by, radius * 0.14, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(0,0,0,0.2)';
+      g.fill();
+    }
+
+    const er = radius * 0.32;
+    g.beginPath();
+    g.arc(0, 0, er * 1.3, 0, Math.PI * 2);
+    g.fillStyle = '#0c0410';
+    g.fill();
+    g.shadowColor = '#8a2a40';
+    g.shadowBlur = 6;
+    g.beginPath();
+    g.ellipse(0, 0, er, er * 0.6, 0, 0, Math.PI * 2);
+    g.fillStyle = '#8a2a40';
+    g.fill();
+    g.shadowBlur = 0;
+    g.beginPath();
+    g.ellipse(0, 0, er * 0.3, er * 0.6, 0, 0, Math.PI * 2);
+    g.fillStyle = '#050208';
+    g.fill();
+
     g.restore();
   }
 
@@ -2514,6 +2579,7 @@
       drawPortraitOrLock(stalkerCtx, drawStalker, t);
       drawPortraitOrLock(sentryCtx, drawSentry, t);
       drawPortraitOrLock(cultivatorCtx, drawCultivator, t);
+      drawPortraitOrLock(reacherCtx, drawReacher, t);
     }
     requestAnimationFrame(loop);
   }

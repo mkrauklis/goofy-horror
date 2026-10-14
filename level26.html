@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 26</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 26 &mdash; Rooftops</h1>
+  <p class="objective">Six rooftops, boardwalks slung across the gaps between them. Get <strong>3</strong> generators running (hold each for <strong>5 seconds</strong>) to open the gate on the far roof. Something lives at the center of it all &mdash; a single tentacled thing, rooted in place, its reach stretching clean across the gaps to whichever roof you're standing on.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <span id="hud-generators">Generators: 0/3</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    No hallways this time &mdash; six separate rooftops laid out in a
+    grid, each one only reachable by crossing a narrow wooden boardwalk
+    slung over the drop to the next building. Every roof connects to at
+    least two others, so there's always more than one way across.
+  </p>
+  <p class="level-description">
+    Three generators are scattered across three of the far rooftops.
+    Stand at one for a full <strong>5 seconds</strong> to get it running;
+    step away and it winds back down. Get all three going and the gate on
+    the exit roof swings open.
+  </p>
+  <p class="level-description">
+    The thing living here doesn't chase &mdash; it doesn't have to. It
+    sits rooted at the center of the rooftops, and every few seconds one
+    of its tentacles rears up, winds back, and snaps clean across the
+    gap toward whichever roof you're standing on. Watch for the ring it
+    telegraphs before it lands and you have time to move; stand still in
+    it and that's the end of you. Wander too close to the thing itself
+    and its shorter, idle tentacles will do the job instead.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level26/level.js"></script>
+<script src="js/game26.js"></script>
+</body>
+</html>
