@@ -489,33 +489,101 @@
     }
   }
 
-  // A steady red lens eye for the portrait, plus a short sweeping laser
-  // line so it reads as "scanning" even standing still.
-  function drawSentryEye(g, radius, t) {
-    const er = radius * 0.3;
+  // A rigid, riveted metal chassis, same convention as the in-game sprite
+  // (js/game24.js's drawRobotChassis) -- flat polygon panels instead of
+  // an organic wobbling blob, so the portrait actually reads as a
+  // machine rather than a creature with gears bolted on.
+  function drawSentryChassis(g, radius, seed) {
+    const sides = 8;
+    const path = [];
+    for (let i = 0; i < sides; i++) {
+      const a = (i / sides) * Math.PI * 2 + seed * 0.3;
+      const h = Math.imul(Math.floor(seed * 1000) + i * 131, 2654435761);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const r = radius * (0.92 + (u % 10) * 0.012);
+      path.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    const trace = () => {
+      g.beginPath();
+      path.forEach(([px, py], i) => { if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+      g.closePath();
+    };
+    trace();
+    const base = g.createLinearGradient(-radius, -radius, radius, radius);
+    base.addColorStop(0, '#5a5f5a');
+    base.addColorStop(0.5, '#363a36');
+    base.addColorStop(1, '#1c1f1c');
+    g.fillStyle = base;
+    g.shadowColor = '#000';
+    g.shadowBlur = Math.min(radius * 0.3, 14);
+    g.fill();
+    g.shadowBlur = 0;
+    g.strokeStyle = '#111311';
+    g.lineWidth = 2.5;
+    g.stroke();
     g.save();
+    trace();
+    g.clip();
+    g.strokeStyle = 'rgba(0,0,0,0.4)';
+    g.lineWidth = 1.5;
+    for (let i = 0; i < sides; i++) {
+      const [px, py] = path[i];
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(px, py); g.stroke();
+    }
+    g.restore();
+    g.fillStyle = '#121412';
+    for (let i = 0; i < sides; i += 2) {
+      const [px, py] = path[i];
+      g.beginPath();
+      g.arc(px * 0.9, py * 0.9, radius * 0.045, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+
+  // A turret head unit, same convention as the in-game sprite (js/game24
+  // .js's drawRobotHead) -- the red lens housed in a bezel with a short
+  // antenna, instead of an eye floating directly on the body.
+  function drawSentryHead(g, radius) {
+    const hr = radius * 0.42;
+    const hy = -radius * 0.55;
+    g.save();
+    g.translate(0, hy);
+    g.fillStyle = '#44483f';
+    g.beginPath();
+    g.rect(-hr, -hr * 0.6, hr * 2, hr * 1.2);
+    g.fill();
+    g.strokeStyle = '#121412';
+    g.lineWidth = 2;
+    g.strokeRect(-hr, -hr * 0.6, hr * 2, hr * 1.2);
+
+    const er = hr * 0.5;
+    g.beginPath();
+    g.arc(0, 0, er * 1.25, 0, Math.PI * 2);
+    g.fillStyle = '#1c1e1c';
+    g.fill();
     g.shadowColor = '#c93838';
     g.shadowBlur = 8;
     g.beginPath();
-    g.arc(0, -radius * 0.1, er, 0, Math.PI * 2);
+    g.arc(0, 0, er, 0, Math.PI * 2);
     g.fillStyle = '#c93838';
     g.fill();
     g.shadowBlur = 0;
     g.beginPath();
-    g.arc(0, -radius * 0.1, er * 0.4, 0, Math.PI * 2);
+    g.arc(0, 0, er * 0.4, 0, Math.PI * 2);
     g.fillStyle = '#050208';
     g.fill();
-    g.restore();
 
-    const angle = t * 0.0011;
-    const lx = Math.cos(angle) * radius * 1.8, ly = Math.sin(angle) * radius * 1.8;
-    g.save();
-    g.strokeStyle = 'rgba(255,40,30,0.5)';
-    g.lineWidth = 2;
+    g.strokeStyle = '#2a2d2a';
+    g.lineWidth = hr * 0.16;
+    g.lineCap = 'round';
     g.beginPath();
-    g.moveTo(0, 0);
-    g.lineTo(lx, ly);
+    g.moveTo(hr * 0.6, -hr * 0.6);
+    g.lineTo(hr * 0.75, -hr * 1.5);
     g.stroke();
+    g.beginPath();
+    g.arc(hr * 0.75, -hr * 1.5, hr * 0.12, 0, Math.PI * 2);
+    g.fillStyle = '#5a5f5a';
+    g.fill();
     g.restore();
   }
 
@@ -525,9 +593,9 @@
     g.translate(w / 2, h / 2);
     const seed = 47;
     drawTentacles(g, 32, '#1f1a26', t, seed);
-    drawBlobBody(g, 32, '#141018', '#2a2032', seed, t);
+    drawSentryChassis(g, 32, seed);
     drawSentryGears(g, 32, seed);
-    drawSentryEye(g, 32, t);
+    drawSentryHead(g, 32);
     g.restore();
   }
 

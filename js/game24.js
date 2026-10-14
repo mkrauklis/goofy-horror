@@ -1864,9 +1864,9 @@
       drawTaperedTentacle(g, tx, ty, midX, midY, m.radius * 0.22, '#5a3d1f');
     });
 
-    drawBlobBody(g, m.radius, '#141018', '#2a2032', m.seed, t);
+    drawRobotChassis(g, m.radius, m.seed);
     drawRobotGears(g, m.radius, m.seed);
-    drawRobotEye(g, m, t);
+    drawRobotHead(g, m, t);
 
     if (t < m.frozenUntil) {
       const points = 12;
@@ -1924,19 +1924,19 @@
     }
   }
 
-  // A fleshy, lit blob body: an irregular two-octave silhouette, an offset
-  // gradient for volume, one soft specular highlight and a couple of veins,
-  // all clipped to the silhouette. Kept deliberately light on draw calls --
-  // this runs per monster, per frame.
-  function drawBlobBody(g, radius, fillColor, shadowColor, seed, t, opts) {
-    opts = opts || {};
-    const points = 14;
+  // A rigid, riveted metal chassis -- flat-shaded polygon panels instead
+  // of an organic wobbling silhouette, so it actually reads as a machine
+  // body rather than a creature with gears bolted on. Fixed per monster
+  // (hashed from its seed), not animated -- a robot's plating doesn't
+  // breathe.
+  function drawRobotChassis(g, radius, seed) {
+    const sides = 8;
     const path = [];
-    for (let i = 0; i <= points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const r = radius
-        + Math.sin(t * 0.006 + i * 1.7 + seed) * radius * 0.1
-        + Math.sin(t * 0.0021 + i * 3.3 + seed * 1.7) * radius * 0.04;
+    for (let i = 0; i < sides; i++) {
+      const a = (i / sides) * Math.PI * 2 + seed * 0.3;
+      const h = Math.imul(Math.floor(seed * 1000) + i * 131, 2654435761);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const r = radius * (0.92 + (u % 10) * 0.012);
       path.push([Math.cos(a) * r, Math.sin(a) * r]);
     }
     const trace = () => {
@@ -1946,59 +1946,97 @@
     };
 
     trace();
-    const base = g.createRadialGradient(-radius * 0.25, -radius * 0.3, radius * 0.1, 0, 0, radius * 1.05);
-    base.addColorStop(0, opts.core || shade(fillColor, 0.22));
-    base.addColorStop(0.55, fillColor);
-    base.addColorStop(1, opts.rim || shade(fillColor, -0.35));
+    const base = g.createLinearGradient(-radius, -radius, radius, radius);
+    base.addColorStop(0, '#5a5f5a');
+    base.addColorStop(0.5, '#363a36');
+    base.addColorStop(1, '#1c1f1c');
     g.fillStyle = base;
-    g.shadowColor = shadowColor;
-    g.shadowBlur = Math.min(radius * 0.4, 18);
+    g.shadowColor = '#000';
+    g.shadowBlur = Math.min(radius * 0.3, 14);
     g.fill();
     g.shadowBlur = 0;
+    g.strokeStyle = '#111311';
+    g.lineWidth = 2.5;
+    g.stroke();
 
+    // panel seams -- straight struts from a shared hub, not veins
     g.save();
     trace();
     g.clip();
-
-    g.beginPath();
-    g.ellipse(-radius * 0.32, -radius * 0.38, radius * 0.5, radius * 0.32, -0.5, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,255,0.14)';
-    g.fill();
-
-    g.strokeStyle = opts.veinColor || 'rgba(0,0,0,0.2)';
-    g.lineWidth = 1.3;
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2 + seed;
+    g.strokeStyle = 'rgba(0,0,0,0.4)';
+    g.lineWidth = 1.5;
+    for (let i = 0; i < sides; i++) {
+      const [px, py] = path[i];
       g.beginPath();
-      g.moveTo(Math.cos(a) * radius * 0.15, Math.sin(a) * radius * 0.15);
-      g.lineTo(Math.cos(a) * radius * 0.88, Math.sin(a) * radius * 0.88);
+      g.moveTo(0, 0);
+      g.lineTo(px, py);
       g.stroke();
     }
-
+    g.beginPath();
+    g.ellipse(-radius * 0.3, -radius * 0.35, radius * 0.4, radius * 0.22, -0.5, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.1)';
+    g.fill();
     g.restore();
+
+    // rivets at every other panel vertex
+    g.fillStyle = '#121412';
+    for (let i = 0; i < sides; i += 2) {
+      const [px, py] = path[i];
+      g.beginPath();
+      g.arc(px * 0.9, py * 0.9, radius * 0.045, 0, Math.PI * 2);
+      g.fill();
+    }
   }
 
-  // One red lens-eye, flaring brighter once it's actually alert and
-  // chasing rather than just patrolling -- the same tension cue every
-  // other level's "tell" eye uses, just always some shade of red since
-  // this one's a machine, not a watcher waiting to be noticed.
-  function drawRobotEye(g, m, t) {
+  // A small turret head unit mounted on top of the chassis, the red lens
+  // housed in a proper bezel instead of floating directly on the body --
+  // flares brighter once it's actually alert and chasing rather than
+  // just patrolling, same tension cue every other level's "tell" eye
+  // uses.
+  function drawRobotHead(g, m, t) {
     const alert = m.state === 'alert';
-    const er = m.radius * 0.3;
-    const glowColor = alert ? '#ff2820' : '#8a2a22';
+    const hr = m.radius * 0.42;
+    const hy = -m.radius * 0.55;
 
     g.save();
+    g.translate(0, hy);
+    g.fillStyle = '#44483f';
+    g.beginPath();
+    g.rect(-hr, -hr * 0.6, hr * 2, hr * 1.2);
+    g.fill();
+    g.strokeStyle = '#121412';
+    g.lineWidth = 2;
+    g.strokeRect(-hr, -hr * 0.6, hr * 2, hr * 1.2);
+
+    const er = hr * 0.5;
+    const glowColor = alert ? '#ff2820' : '#8a2a22';
+    g.beginPath();
+    g.arc(0, 0, er * 1.25, 0, Math.PI * 2);
+    g.fillStyle = '#1c1e1c';
+    g.fill();
     g.shadowColor = glowColor;
     g.shadowBlur = alert ? 16 : 6;
     g.beginPath();
-    g.arc(0, -m.radius * 0.1, er, 0, Math.PI * 2);
+    g.arc(0, 0, er, 0, Math.PI * 2);
     g.fillStyle = glowColor;
     g.fill();
     g.shadowBlur = 0;
-
     g.beginPath();
-    g.arc(0, -m.radius * 0.1, er * 0.4, 0, Math.PI * 2);
+    g.arc(0, 0, er * 0.4, 0, Math.PI * 2);
     g.fillStyle = '#050208';
+    g.fill();
+
+    // a short antenna, since a lone red eye alone still reads as organic
+    g.strokeStyle = '#2a2d2a';
+    g.lineWidth = hr * 0.16;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(hr * 0.6, -hr * 0.6);
+    g.lineTo(hr * 0.75, -hr * 1.5);
+    g.stroke();
+    g.beginPath();
+    g.arc(hr * 0.75, -hr * 1.5, hr * 0.12, 0, Math.PI * 2);
+    g.fillStyle = alert ? glowColor : '#5a5f5a';
     g.fill();
     g.restore();
   }
