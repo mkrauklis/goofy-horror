@@ -1161,7 +1161,7 @@
           gameState = 'complete';
           playWinJingle();
           if (window.GoofyStory) window.GoofyStory.completeLevel(24);
-          setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+          setTimeout(() => { window.location.href = 'level25.html'; }, 2000);
         } else if (now - lastGearHintAt > 2000) {
           lastGearHintAt = now;
           spawnFloatingText(tileCenter(t.x, t.y).x, tileCenter(t.x, t.y).y, 'SPIN ALL 3 GEARS FIRST');
@@ -2435,7 +2435,7 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'ALL GEARS SPUN &mdash; heading back to the menu&hellip;';
+      messageEl.innerHTML = 'ALL GEARS SPUN &mdash; heading to the next wing&hellip;';
     } else {
       messageEl.style.display = 'none';
     }

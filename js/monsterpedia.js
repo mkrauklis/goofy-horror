@@ -30,6 +30,7 @@
   const kindlingCtx = ctxFor('monster-canvas-kindling');
   const stalkerCtx = ctxFor('monster-canvas-stalker');
   const sentryCtx = ctxFor('monster-canvas-sentry');
+  const cultivatorCtx = ctxFor('monster-canvas-cultivator');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -527,6 +528,95 @@
     drawBlobBody(g, 32, '#141018', '#2a2032', seed, t);
     drawSentryGears(g, 32, seed);
     drawSentryEye(g, 32, t);
+    g.restore();
+  }
+
+  // The Cultivator's portrait -- a compact standalone version of its
+  // in-game look (js/game25.js's drawCultivatorBody/drawRobotGears/
+  // drawMoss/drawBossEye/drawMushroomCap), not phase-2 aware since this
+  // portrait doesn't toggle.
+  function drawCultivatorGears(g, radius, seed) {
+    const count = 6;
+    for (let i = 0; i < count; i++) {
+      const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const a = (u % 360) * Math.PI / 180;
+      const dist = radius * (0.45 + (u % 5) * 0.08);
+      const gx = Math.cos(a) * dist, gy = Math.sin(a) * dist;
+      const gr = radius * (0.1 + (u % 3) * 0.025);
+      g.save();
+      g.translate(gx, gy);
+      g.rotate(seed + i);
+      const teeth = 6;
+      g.beginPath();
+      for (let j = 0; j < teeth; j++) {
+        const a0 = (j / teeth) * Math.PI * 2, a1 = a0 + (Math.PI * 2 / teeth) * 0.5;
+        g.moveTo(Math.cos(a0) * gr, Math.sin(a0) * gr);
+        g.lineTo(Math.cos(a0) * (gr * 1.35), Math.sin(a0) * (gr * 1.35));
+        g.lineTo(Math.cos(a1) * (gr * 1.35), Math.sin(a1) * (gr * 1.35));
+        g.lineTo(Math.cos(a1) * gr, Math.sin(a1) * gr);
+      }
+      g.closePath();
+      g.fillStyle = '#6a6a5e';
+      g.fill();
+      g.restore();
+    }
+  }
+  function drawCultivatorMoss(g, radius, seed) {
+    const count = 10;
+    for (let i = 0; i < count; i++) {
+      const h = Math.imul(Math.floor(seed * 777) + i * 53, 2246822519);
+      const u = (h ^ (h >>> 15)) >>> 0;
+      const a = (u % 360) * Math.PI / 180;
+      const dist = radius * (0.3 + (u % 6) * 0.1);
+      g.beginPath();
+      g.arc(Math.cos(a) * dist, Math.sin(a) * dist, radius * (0.08 + (u % 3) * 0.03), 0, Math.PI * 2);
+      g.fillStyle = 'rgba(80,180,70,0.6)';
+      g.fill();
+    }
+  }
+  function drawCultivator(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const radius = 30, seed = 63;
+    g.fillStyle = '#4a5248';
+    g.fillRect(-radius, -radius, radius * 2, radius * 2);
+    g.strokeStyle = '#2a3a2a';
+    g.lineWidth = 3;
+    g.strokeRect(-radius, -radius, radius * 2, radius * 2);
+    g.strokeStyle = 'rgba(0,0,0,0.35)';
+    g.lineWidth = 1.5;
+    for (let i = 1; i < 3; i++) {
+      g.beginPath();
+      g.moveTo(-radius + (radius * 2 / 3) * i, -radius); g.lineTo(-radius + (radius * 2 / 3) * i, radius);
+      g.moveTo(-radius, -radius + (radius * 2 / 3) * i); g.lineTo(radius, -radius + (radius * 2 / 3) * i);
+      g.stroke();
+    }
+    drawCultivatorGears(g, radius, seed);
+    drawCultivatorMoss(g, radius, seed);
+    g.save();
+    g.shadowColor = '#4ab0ff'; g.shadowBlur = 8;
+    g.beginPath(); g.arc(0, -radius * 0.05, radius * 0.22, 0, Math.PI * 2);
+    g.fillStyle = '#4ab0ff'; g.fill(); g.shadowBlur = 0;
+    g.beginPath(); g.arc(0, -radius * 0.05, radius * 0.09, 0, Math.PI * 2);
+    g.fillStyle = '#050208'; g.fill();
+    g.restore();
+    g.save();
+    g.translate(0, -radius * 1.15);
+    g.strokeStyle = '#d9d2c0'; g.lineWidth = radius * 0.18;
+    g.beginPath(); g.moveTo(0, radius * 0.1); g.lineTo(0, -radius * 0.25); g.stroke();
+    g.beginPath();
+    g.ellipse(0, -radius * 0.32, radius * 0.5, radius * 0.32, 0, Math.PI, 0);
+    g.fillStyle = '#c94a6a';
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.5)';
+    [[-0.2, -0.1], [0.15, -0.2], [0.3, 0]].forEach(([dx, dy]) => {
+      g.beginPath();
+      g.arc(dx * radius, -radius * 0.32 + dy * radius, radius * 0.06, 0, Math.PI * 2);
+      g.fill();
+    });
+    g.restore();
     g.restore();
   }
 
@@ -2330,6 +2420,7 @@
       drawPortraitOrLock(kindlingCtx, drawKindling, t);
       drawPortraitOrLock(stalkerCtx, drawStalker, t);
       drawPortraitOrLock(sentryCtx, drawSentry, t);
+      drawPortraitOrLock(cultivatorCtx, drawCultivator, t);
     }
     requestAnimationFrame(loop);
   }

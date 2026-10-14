@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 25</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 25 &mdash; The Spore Engine</h1>
+  <p class="objective">A grassy, window-lined boss arena, the whole thing visible on screen at once. The Cultivator &mdash; a 3x3 robot grown over with grass and crowned with one giant mushroom &mdash; has 25 HP. Find coal scattered around the room and feed the furnace on the south wall, one damage per coal, to bring it down.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-boss">Boss: 25/25 HP</span>
+      <span id="hud-coal">Coal: 0 on the field</span>
+      <span id="hud-phase">Phase: 1</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    A wide, grassy arena with windows on all four walls, the whole room
+    visible on screen at once &mdash; nothing to scroll past, every
+    attack readable the moment it starts. Coal piles respawn around the
+    room's edges; carry one to the furnace built into the south wall and
+    it costs the boss 1 of its 25 HP. There's no other way to hurt it.
+  </p>
+  <p class="level-description">
+    Four attacks while it's healthy. <strong>Gear throw</strong>: a gear
+    launches at whoever's closest every 2 seconds for 10 seconds
+    straight, flying at <strong>2x</strong> your speed and ricocheting
+    off the walls instead of stopping. <strong>Spore bloom</strong>: it
+    shakes its head and roughly 20 spores drift out from the mushroom,
+    floating for 3 seconds before landing, swelling into mushrooms of
+    their own, and bursting in a blast about 2 tiles across.
+    <strong>Mycelium chase</strong>: both extendo-arms plant into the
+    ground and tunnel after whoever's nearest at <strong>1.3x</strong>
+    your speed, leaving a trail of mounds behind each hand &mdash; the
+    mounds themselves are harmless, only the hand is lethal.
+    <strong>Rocket cannon</strong>: a cannon rises from its back and
+    fires 8 rockets in a spread, each one exploding the instant it hits
+    you, a wall, or a crate.
+  </p>
+  <p class="level-description">
+    At 15 HP its grass turns yellow, its plating starts rusting, and it
+    gains two more attacks on top of the first four.
+    <strong>Fire breath</strong>: its mouth opens and a jet of fire
+    reaches <strong>5 tiles</strong> out in whatever direction it's
+    facing. <strong>Stalk walk</strong>: every window in the room seals
+    shut over 1 second, the mushroom starts flashing neon green every
+    1.5 seconds, and it bears straight down on whoever's nearest at
+    <strong>1.4x</strong> your speed &mdash; while it does, your own
+    flashlight shrinks to barely a tile around you and the boss drops
+    off your minimap entirely.
+  </p>
+  <p class="level-description">
+    Each of you is carrying a tranquilizer gun, empty. Find a shell in a
+    crate (up to 3 at a time) and it loads automatically &mdash; get
+    close enough while it's bearing down on you during stalk walk and it
+    goes off on its own, stunning it for a few seconds.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level25/level.js"></script>
+<script src="js/game25.js"></script>
+</body>
+</html>
