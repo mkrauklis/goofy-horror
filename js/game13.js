@@ -45,6 +45,7 @@
   const ENERGY_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
+  const FREEZE_RADIUS_TILES = 15; // freezes only reach monsters this close to where the item was used
   const EAT_DURATION_MS = 3000;
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
@@ -933,7 +934,7 @@
       spawnFloatingText(x, y, 'MEAT');
       playItemChime(220);
     } else if (item === 'co2') {
-      monsters.forEach((m) => { m.frozenUntil = now + FREEZE_DURATION_MS; });
+      monsters.forEach((m) => { if (Math.hypot(m.x - x, m.y - y) <= FREEZE_RADIUS_TILES * TILE) m.frozenUntil = now + FREEZE_DURATION_MS; });
       spawnFloatingText(x, y, 'FROZEN');
       playItemChime(1200);
     } else if (item === 'scanner') {

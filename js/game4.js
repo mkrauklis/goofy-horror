@@ -43,6 +43,7 @@
   const SCANNER_DURATION_MS = 10000;
   const SUPER_RADAR_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
+  const FREEZE_RADIUS_TILES = 15; // freezes only reach monsters this close to where the item was used
   const EAT_DURATION_MS = 3000;
   const LURE_TIMEOUT_MS = 15000; // give up on a lure that's taking too long to reach, rather than staying revealed forever
   const CRATE_RESPAWN_MS = 30000; // half of the other levels' 60s
@@ -1003,7 +1004,7 @@
       spawnFloatingText(x, y, 'MEAT');
       playItemChime(220);
     } else if (item === 'co2') {
-      monsters.forEach((m) => { m.frozenUntil = now + FREEZE_DURATION_MS; });
+      monsters.forEach((m) => { if (Math.hypot(m.x - x, m.y - y) <= FREEZE_RADIUS_TILES * TILE) m.frozenUntil = now + FREEZE_DURATION_MS; });
       spawnFloatingText(x, y, 'FROZEN');
       playItemChime(1200);
     } else if (item === 'scanner') {
