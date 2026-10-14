@@ -62,15 +62,14 @@
   const GEAR_HIT_RADIUS = 16;
   const GEAR_LIFETIME_MS = 7000;
 
-  // 2. Spore bloom: a head-shake windup, then ~20 spores drift outward
-  // from the mushroom for 3s, land, swell into a mushroom over a short
-  // fuse, then burst in a 2x2-tile blast.
+  // 2. Spore bloom: a head-shake windup, then ~20 spores scatter out to
+  // random points across the whole arena over 3s, land, swell into a
+  // mushroom over a short fuse, then burst in a 2x2-tile blast.
   const SPOREBLOOM_WINDUP_MS = 900;
   const SPORE_COUNT = 20;
   const SPORE_FLOAT_MS = 3000;
   const SPORE_FUSE_MS = 1400;
   const SPORE_BLAST_RADIUS = TILE * 1.2; // ~2x2 tiles across
-  const SPORE_DRIFT_SPEED = 26;
 
   // 3. Mycelium chase: two extendo-arms plant into the ground and tunnel
   // after whoever's nearest, leaving a trail of harmless mounds behind
@@ -103,8 +102,8 @@
   // tile around them.
   const STALKWALK_SEAL_MS = 1000;
   const STALKWALK_DURATION_MS = 7000;
-  const STALKWALK_SPEED = PLAYER_SPEED * 1.4;
-  const STALKWALK_FLASH_PERIOD_MS = 1500;
+  const STALKWALK_SPEED = PLAYER_SPEED * 1;
+  const STALKWALK_FLASH_PERIOD_MS = 2000;
   const STALKWALK_LIGHT_RADIUS = TILE * 0.9;
 
   // The furnace: the only way to actually hurt this boss. Each coal
@@ -112,7 +111,7 @@
   const FURNACE_TRIGGER_RADIUS = 46;
   const COAL_PICKUP_RADIUS = 20;
   const COAL_RESPAWN_MS = 14000;
-  const COAL_CARRY_MAX = 5;
+  const COAL_CARRY_MAX = 1;
 
   // Death: a short stumble-back, then a tumble out through the nearest
   // window before the level hands off.
@@ -122,7 +121,9 @@
   const RADAR_DURATION_MS = 10000;
   const ENERGY_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
-  const FREEZE_DURATION_MS = 8000;
+  // The freeze item (CO2) has no effect on this boss at all -- see
+  // applyItemEffect's 'co2' branch -- but the tranquilizer shotgun's own
+  // stun still uses frozenUntil/this multiplier.
   const FROZEN_SPEED_MULT = 0.75;
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
@@ -582,6 +583,11 @@
       stalkSubPhase: 'sealing', // 'sealing' | 'walking'
       stalkStartedAt: 0,
       stalkUntil: 0,
+
+      // magnet pull
+      magnetPullTarget: null,
+      magnetPullUntil: 0,
+      magnetActiveUntil: 0, // just drives the arm's visual pulse
     };
   }
   const boss = makeBoss();
@@ -618,6 +624,7 @@
 
   function updateCoalPiles(now) {
     players.forEach((p) => {
+      if (p.caught) return;
       coalPiles.forEach((pile) => {
         if (!pile.live) {
           if (now >= pile.nextSpawnAt) pile.live = true;
@@ -641,6 +648,7 @@
     if (boss.defeated) return;
     const c = furnaceCenter();
     players.forEach((p) => {
+      if (p.caught) return;
       if (p.coalCount <= 0) return;
       if (Math.hypot(p.x - c.x, p.y - c.y) > FURNACE_TRIGGER_RADIUS) return;
       p.coalCount--;
@@ -698,6 +706,9 @@
     boss.phase = 'idle'; boss.phaseStartedAt = 0;
     boss.nextIdleUntil = performance.now() + BOSS_INTRO_GRACE_MS;
     boss.lastAttack = null;
+    boss.magnetPullTarget = null;
+    boss.magnetPullUntil = 0;
+    boss.magnetActiveUntil = 0;
 
     gears = []; spores = []; myceliumArms = []; rockets = []; explosions = [];
     bossHealth = BOSS_MAX_HEALTH;
@@ -744,8 +755,9 @@
       radarUntil = now + RADAR_DURATION_MS;
       spawnFloatingText(x, y, 'RADAR'); playItemChime(880);
     } else if (item === 'co2') {
-      if (Math.hypot(boss.x - x, boss.y - y) <= TILE * 15) boss.frozenUntil = now + FREEZE_DURATION_MS;
-      spawnFloatingText(x, y, 'FROZEN'); playItemChime(1200);
+      // The Cultivator shrugs this off entirely -- a boss fight's own
+      // tranquilizer-gun stun still works, just not the freeze item.
+      spawnFloatingText(x, y, 'NO EFFECT'); playItemChime(300);
     } else if (item === 'scanner') {
       scannerUntil = now + SCANNER_DURATION_MS;
       spawnFloatingText(x, y, 'SCANNER'); playItemChime(660);
@@ -818,10 +830,10 @@
     p.caught = true; p.caughtAt = now;
     p.invulnerableUntil = now + CATCH_CUTSCENE_MS + 1200;
   }
+  // Once caught, a player stays down for the rest of the run -- no
+  // respawn after the cutscene the way every other level works. Only
+  // once EVERY player is caught does the group actually wipe.
   function updateCutscenes(now) {
-    players.forEach((p) => {
-      if (p.caught && now - p.caughtAt >= CATCH_CUTSCENE_MS) { respawnPlayer(p); p.caught = false; }
-    });
     if (gameState === 'playing' && players.every((p) => p.caught)) gameState = 'wiped';
   }
 
@@ -886,7 +898,7 @@
   }
 
   // ======================= THE ATTACK CYCLE =======================
-  const PHASE1_ATTACKS = ['gearthrow', 'sporebloom', 'mycelium', 'rocketcannon'];
+  const PHASE1_ATTACKS = ['gearthrow', 'sporebloom', 'mycelium', 'rocketcannon', 'magnetpull'];
   const PHASE2_ONLY_ATTACKS = ['firebreath', 'stalkwalk'];
 
   function attackPool() {
@@ -931,6 +943,11 @@
     } else if (kind === 'stalkwalk') {
       boss.stalkSubPhase = 'sealing';
       boss.stalkStartedAt = now;
+    } else if (kind === 'magnetpull') {
+      boss.magnetPullTarget = nearestPlayer(boss.x, boss.y);
+      boss.magnetPullUntil = now + MAGNETPULL_DURATION_MS;
+      boss.magnetActiveUntil = boss.magnetPullUntil;
+      playItemChime(200);
     }
   }
 
@@ -938,6 +955,7 @@
     boss.phase = 'idle';
     boss.nextIdleUntil = now + BOSS_IDLE_MIN_MS + Math.random() * (BOSS_IDLE_MAX_MS - BOSS_IDLE_MIN_MS);
     gears = []; myceliumArms = [];
+    boss.magnetPullTarget = null;
   }
 
   function updateBossIdle(now, dt) {
@@ -986,16 +1004,33 @@
     }
   }
 
+  // A random open-floor point anywhere in the arena (margin kept off the
+  // walls) -- used to scatter spores across the whole room instead of
+  // just drifting near wherever the boss happens to be standing.
+  function randomArenaPoint() {
+    for (let tries = 0; tries < 20; tries++) {
+      const tx = 2 + Math.floor(Math.random() * (COLS - 4));
+      const ty = 2 + Math.floor(Math.random() * (ROWS - 4));
+      if (!isWallForPlayer(tx, ty)) return tileCenter(tx, ty);
+    }
+    return tileCenter(Math.floor(COLS / 2), Math.floor(ROWS / 2));
+  }
+
   function updateSporeBloom(now) {
     if (boss.sporeSubPhase === 'windup') {
       if (now - boss.sporeWindupStartedAt >= SPOREBLOOM_WINDUP_MS) {
         boss.sporeSubPhase = 'active';
         const headX = boss.x, headY = boss.y - boss.radius * 1.3;
-        for (let i = 0; i < SPORE_COUNT; i++) {
-          const a = Math.random() * Math.PI * 2;
-          const sp = SPORE_DRIFT_SPEED * (0.5 + Math.random());
+        // 10 more once it's rusting -- the same bloom, just worse.
+        const sporeCount = SPORE_COUNT + (boss.phase2 ? 10 : 0);
+        for (let i = 0; i < sporeCount; i++) {
+          const target = randomArenaPoint();
+          const dx = target.x - headX, dy = target.y - headY;
+          const travelSec = SPORE_FLOAT_MS / 1000;
           spores.push({
-            x: headX, y: headY, dx: Math.cos(a) * sp, dy: Math.sin(a) * sp,
+            x: headX, y: headY, dx: dx / travelSec, dy: dy / travelSec,
+            targetX: target.x, targetY: target.y,
+            wobbleSeed: Math.random() * 1000,
             bornAt: now, landedAt: 0, exploded: false,
           });
         }
@@ -1012,13 +1047,18 @@
       if (!s.landedAt) {
         if (now - s.bornAt >= SPORE_FLOAT_MS) {
           s.landedAt = now;
+          s.x = s.targetX; s.y = s.targetY;
           const t = worldToTile(s.x, s.y);
           if (isWallForPlayer(t.x, t.y)) { spores.splice(i, 1); continue; }
         } else {
-          s.x += s.dx * dt; s.y += s.dy * dt;
-          s.dx *= 0.98; s.dy *= 0.98;
-          const t = worldToTile(s.x, s.y);
-          if (isWallForPlayer(t.x, t.y)) { s.x -= s.dx * dt; s.y -= s.dy * dt; s.dx *= -0.5; s.dy *= -0.5; }
+          // straight-line travel to its scattered destination, plus a
+          // light perpendicular wobble so the path still reads as
+          // drifting rather than a dead-straight dart.
+          const frac = (now - s.bornAt) / SPORE_FLOAT_MS;
+          const wob = Math.sin(now * 0.006 + s.wobbleSeed) * 14 * (1 - frac);
+          const len = Math.hypot(s.dx, s.dy) || 1;
+          s.x += s.dx * dt + (-s.dy / len) * wob * dt;
+          s.y += s.dy * dt + (s.dx / len) * wob * dt;
         }
         continue;
       }
@@ -1140,6 +1180,7 @@
       case 'rocketcannon': updateRocketCannon(now); break;
       case 'firebreath': updateFireBreath(now); break;
       case 'stalkwalk': updateStalkWalk(now, dt); break;
+      case 'magnetpull': updateMagnetPullAttack(now, dt); break;
       default: boss.phase = 'idle';
     }
   }
@@ -1540,24 +1581,46 @@
       g.restore();
     }
   }
-  function drawMoss(g, radius, seed) {
-    const count = 10;
-    for (let i = 0; i < count; i++) {
-      const h = Math.imul(Math.floor(seed * 777) + i * 53, 2246822519);
+  // Real grass growing out of the hull -- same swaying-strand convention
+  // Level 17's Bog uses for its draped seaweed, not just a scatter of
+  // moss dots: fixed clumps around the body, each a few blades radiating
+  // outward and curving with `t`. Turns yellow once it's rusting, same
+  // as the lore ("the robot's grass on its back starts turning yellow").
+  function drawCultivatorGrass(g, radius, seed, t) {
+    const clumps = 9;
+    for (let c = 0; c < clumps; c++) {
+      const h = Math.imul(Math.floor(seed * 1000) + c * 131, 2246822519);
       const u = (h ^ (h >>> 15)) >>> 0;
-      const a = (u % 360) * Math.PI / 180;
-      const dist = radius * (0.3 + (u % 6) * 0.1);
-      const x = Math.cos(a) * dist, y = Math.sin(a) * dist;
-      g.beginPath();
-      g.arc(x, y, radius * (0.08 + (u % 3) * 0.03), 0, Math.PI * 2);
-      g.fillStyle = boss.phase2 ? 'rgba(200,190,90,0.55)' : 'rgba(80,180,70,0.6)';
-      g.fill();
+      const baseAngle = ((u % 360) * Math.PI) / 180;
+      const baseDist = radius * (0.35 + (u % 6) * 0.1);
+      const baseX = Math.cos(baseAngle) * baseDist, baseY = Math.sin(baseAngle) * baseDist;
+      const blades = 3 + (u % 2);
+      for (let i = 0; i < blades; i++) {
+        const bladeAngle = baseAngle + (i - blades / 2) * 0.35;
+        const len = radius * (0.22 + ((u >> (i * 3 + 2)) % 6) * 0.03);
+        const phase = ((u % 100) / 100) * Math.PI * 2 + i * 1.7 + seed;
+        const sway = Math.sin(t * 0.0022 + phase) * radius * 0.06;
+        const tipX = baseX + Math.cos(bladeAngle) * len + sway;
+        const tipY = baseY + Math.sin(bladeAngle) * len;
+        g.strokeStyle = boss.phase2
+          ? (i % 2 === 0 ? '#9a8a3a' : '#b4a24a')
+          : (i % 2 === 0 ? '#3a7a2a' : '#4c9436');
+        g.lineWidth = Math.max(1, radius * 0.045);
+        g.lineCap = 'round';
+        g.beginPath();
+        g.moveTo(baseX, baseY);
+        g.quadraticCurveTo((baseX + tipX) / 2 + sway * 0.4, (baseY + tipY) / 2, tipX, tipY);
+        g.stroke();
+      }
     }
   }
   function drawMushroomCap(g, radius, now) {
+    // While the lights are out (stalk walk), the cap flashes pitch black
+    // to neon green every 2 seconds instead of its usual color -- the
+    // one thing still visible in the dark.
     const flashing = boss.phase === 'stalkwalk' && boss.stalkSubPhase === 'walking';
     const flashOn = flashing && Math.floor((now - boss.stalkStartedAt) / STALKWALK_FLASH_PERIOD_MS) % 2 === 0;
-    const capColor = flashOn ? '#3dffa0' : '#c94a6a';
+    const capColor = flashing ? (flashOn ? '#3dff7a' : '#050806') : '#c94a6a';
     g.save();
     g.translate(0, -radius * 1.15);
     g.strokeStyle = '#d9d2c0';
@@ -1568,7 +1631,7 @@
     g.beginPath();
     g.ellipse(0, -radius * 0.32, radius * 0.5, radius * 0.32, 0, Math.PI, 0);
     g.fillStyle = capColor;
-    if (flashOn) { g.shadowColor = capColor; g.shadowBlur = 14; }
+    if (flashOn) { g.shadowColor = capColor; g.shadowBlur = 18; }
     g.fill();
     g.shadowBlur = 0;
     g.fillStyle = 'rgba(255,255,255,0.5)';
@@ -1595,53 +1658,149 @@
     g.fill();
     g.restore();
   }
+  // A round riveted hull instead of a squared-off panel block -- a
+  // domed radial gradient for volume, a couple of latitude rings and a
+  // handful of radial seams standing in for the old 3x3 grid, rust
+  // streaks still following the rim once it's rusting.
   function drawCultivatorBody(g, radius, now) {
-    const w = radius * 2.1, h = radius * 2.1;
     g.save();
     const bodyColor = boss.phase2 ? '#6a5240' : '#4a5248';
     const rimColor = boss.phase2 ? '#8a3a2a' : '#2a3a2a';
-    const grad = g.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
-    grad.addColorStop(0, shade(bodyColor, 0.18));
+    const grad = g.createRadialGradient(-radius * 0.3, -radius * 0.35, radius * 0.1, 0, 0, radius * 1.05);
+    grad.addColorStop(0, shade(bodyColor, 0.22));
     grad.addColorStop(0.6, bodyColor);
     grad.addColorStop(1, shade(bodyColor, -0.3));
     g.fillStyle = grad;
-    g.fillRect(-w / 2, -h / 2, w, h);
+    g.beginPath();
+    g.arc(0, 0, radius, 0, Math.PI * 2);
+    g.fill();
     g.strokeStyle = rimColor;
     g.lineWidth = 3;
-    g.strokeRect(-w / 2, -h / 2, w, h);
-    // 3x3 panel seams
+    g.stroke();
+
+    // latitude rings + radial seams, clipped to the hull
+    g.save();
+    g.beginPath();
+    g.arc(0, 0, radius, 0, Math.PI * 2);
+    g.clip();
     g.strokeStyle = 'rgba(0,0,0,0.35)';
     g.lineWidth = 1.5;
-    for (let i = 1; i < 3; i++) {
+    [0.4, 0.75].forEach((f) => {
       g.beginPath();
-      g.moveTo(-w / 2 + (w / 3) * i, -h / 2); g.lineTo(-w / 2 + (w / 3) * i, h / 2);
-      g.moveTo(-w / 2, -h / 2 + (h / 3) * i); g.lineTo(w / 2, -h / 2 + (h / 3) * i);
+      g.arc(0, 0, radius * f, 0, Math.PI * 2);
       g.stroke();
+    });
+    const seams = 8;
+    for (let i = 0; i < seams; i++) {
+      const a = (i / seams) * Math.PI * 2;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.lineTo(Math.cos(a) * radius, Math.sin(a) * radius);
+      g.stroke();
+    }
+    // rivets along the rim
+    g.fillStyle = 'rgba(0,0,0,0.4)';
+    const rivets = 10;
+    for (let i = 0; i < rivets; i++) {
+      const a = (i / rivets) * Math.PI * 2 + 0.3;
+      g.beginPath();
+      g.arc(Math.cos(a) * radius * 0.92, Math.sin(a) * radius * 0.92, radius * 0.035, 0, Math.PI * 2);
+      g.fill();
     }
     if (boss.phase2) {
       // rust streaks
       g.strokeStyle = 'rgba(140,60,20,0.5)';
       g.lineWidth = 2;
       for (let i = 0; i < 5; i++) {
-        const x = -w / 2 + (i / 4) * w;
-        g.beginPath(); g.moveTo(x, -h / 2); g.lineTo(x + 4, h / 2); g.stroke();
+        const a = (i / 5) * Math.PI * 2 + 0.7;
+        g.beginPath();
+        g.moveTo(Math.cos(a) * radius, Math.sin(a) * radius);
+        g.lineTo(Math.cos(a) * radius * 0.3, Math.sin(a) * radius * 0.3 + radius * 0.3);
+        g.stroke();
       }
     }
     g.restore();
-  }
-  function drawExtendoArm(g, side, now) {
-    const extended = boss.phase === 'mycelium';
-    const reach = extended ? boss.radius * 1.9 : boss.radius * 0.3;
-    const x = side * boss.radius * 1.1, y = boss.radius * 0.2;
-    g.save();
-    g.strokeStyle = boss.phase2 ? '#7a4a30' : '#525a4e';
-    g.lineWidth = boss.radius * 0.22;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(x, y);
-    g.lineTo(x + side * reach * 0.6, y + reach * 0.6);
-    g.stroke();
     g.restore();
+  }
+  // A proper two-segment jointed arm (shoulder->elbow->hand) instead of
+  // one straight tapered line, extending further during the mycelium
+  // attack same as before. side=-1 is the left arm (a simple claw); the
+  // right arm (side=1) ends in a magnet head instead -- see
+  // updateMagnetPull for what it actually does.
+  function drawRoboticArm(g, side, isMagnet, now) {
+    const extended = boss.phase === 'mycelium';
+    const reach = extended ? boss.radius * 1.9 : boss.radius * 0.55;
+    const shoulderX = side * boss.radius * 0.95, shoulderY = boss.radius * 0.1;
+    const elbowX = shoulderX + side * reach * 0.5, elbowY = shoulderY + reach * 0.35;
+    const handX = elbowX + side * reach * 0.5, handY = elbowY + reach * 0.45;
+    const armColor = boss.phase2 ? '#7a4a30' : '#525a4e';
+
+    g.save();
+    g.strokeStyle = armColor;
+    g.lineWidth = boss.radius * 0.2;
+    g.lineCap = 'round';
+    g.beginPath(); g.moveTo(shoulderX, shoulderY); g.lineTo(elbowX, elbowY); g.stroke();
+
+    g.beginPath();
+    g.arc(elbowX, elbowY, boss.radius * 0.11, 0, Math.PI * 2);
+    g.fillStyle = shade(armColor, -0.2);
+    g.fill();
+
+    g.lineWidth = boss.radius * 0.16;
+    g.beginPath(); g.moveTo(elbowX, elbowY); g.lineTo(handX, handY); g.stroke();
+
+    const handAngle = Math.atan2(handY - elbowY, handX - elbowX);
+    g.translate(handX, handY);
+    g.rotate(handAngle);
+
+    if (isMagnet) {
+      const magnetActive = now < boss.magnetActiveUntil;
+      g.strokeStyle = '#8a3a3a';
+      g.lineWidth = boss.radius * 0.1;
+      g.beginPath();
+      g.arc(0, 0, boss.radius * 0.18, Math.PI * 0.25, Math.PI * 1.75);
+      g.stroke();
+      g.fillStyle = '#d94a3a';
+      g.beginPath(); g.arc(boss.radius * 0.17, -boss.radius * 0.12, boss.radius * 0.065, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#3a6ad9';
+      g.beginPath(); g.arc(boss.radius * 0.17, boss.radius * 0.12, boss.radius * 0.065, 0, Math.PI * 2); g.fill();
+      if (magnetActive) {
+        const pulse = 0.5 + 0.5 * Math.sin(now * 0.012);
+        g.beginPath();
+        g.arc(boss.radius * 0.08, 0, boss.radius * 0.4 + pulse * boss.radius * 0.18, 0, Math.PI * 2);
+        g.strokeStyle = `rgba(217,74,58,${0.45 * pulse})`;
+        g.lineWidth = 2;
+        g.stroke();
+      }
+    } else {
+      g.fillStyle = shade(armColor, -0.1);
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.lineTo(boss.radius * 0.24, -boss.radius * 0.13);
+      g.lineTo(boss.radius * 0.17, 0);
+      g.lineTo(boss.radius * 0.24, boss.radius * 0.13);
+      g.closePath();
+      g.fill();
+    }
+    g.restore();
+  }
+
+  // 5. Magnet pull: locks onto whoever's nearest and hauls them straight
+  // toward it at 0.8x player speed for 7 seconds -- the magnet arm's
+  // real attack, not just a flourish. Touching the boss while it's
+  // reeling you in is lethal same as any other contact (updateCatch
+  // doesn't exclude this phase), so the whole point is fighting the pull
+  // or breaking line of sight, not just waiting it out.
+  const MAGNETPULL_DURATION_MS = 7000;
+  const MAGNETPULL_SPEED = PLAYER_SPEED * 0.8;
+  function updateMagnetPullAttack(now, dt) {
+    const target = boss.magnetPullTarget;
+    if (target && !target.caught) {
+      const dx = boss.x - target.x, dy = boss.y - target.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 1) movePlayer(target, (dx / d) * MAGNETPULL_SPEED * dt, (dy / d) * MAGNETPULL_SPEED * dt);
+    }
+    if (now >= boss.magnetPullUntil) finishAttack(now);
   }
 
   function drawBoss(g, t) {
@@ -1663,11 +1822,11 @@
       }
     }
 
-    drawExtendoArm(g, -1, t);
-    drawExtendoArm(g, 1, t);
+    drawRoboticArm(g, -1, false, t);
+    drawRoboticArm(g, 1, true, t);
     drawCultivatorBody(g, boss.radius, t);
     drawRobotGears(g, boss.radius, boss.seed);
-    drawMoss(g, boss.radius, boss.seed);
+    drawCultivatorGrass(g, boss.radius, boss.seed, t);
     drawBossEye(g, boss.radius);
     drawMushroomCap(g, boss.radius, t);
 

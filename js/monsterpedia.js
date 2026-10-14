@@ -630,17 +630,33 @@
       g.restore();
     }
   }
-  function drawCultivatorMoss(g, radius, seed) {
-    const count = 10;
-    for (let i = 0; i < count; i++) {
-      const h = Math.imul(Math.floor(seed * 777) + i * 53, 2246822519);
+  // Real grass growing out of the hull, same swaying-strand convention
+  // as Level 17's Bog portrait uses for its seaweed, not a scatter of
+  // moss dots.
+  function drawCultivatorGrass(g, radius, seed, t) {
+    const clumps = 9;
+    for (let c = 0; c < clumps; c++) {
+      const h = Math.imul(Math.floor(seed * 1000) + c * 131, 2246822519);
       const u = (h ^ (h >>> 15)) >>> 0;
-      const a = (u % 360) * Math.PI / 180;
-      const dist = radius * (0.3 + (u % 6) * 0.1);
-      g.beginPath();
-      g.arc(Math.cos(a) * dist, Math.sin(a) * dist, radius * (0.08 + (u % 3) * 0.03), 0, Math.PI * 2);
-      g.fillStyle = 'rgba(80,180,70,0.6)';
-      g.fill();
+      const baseAngle = ((u % 360) * Math.PI) / 180;
+      const baseDist = radius * (0.35 + (u % 6) * 0.1);
+      const baseX = Math.cos(baseAngle) * baseDist, baseY = Math.sin(baseAngle) * baseDist;
+      const blades = 3 + (u % 2);
+      for (let i = 0; i < blades; i++) {
+        const bladeAngle = baseAngle + (i - blades / 2) * 0.35;
+        const len = radius * (0.22 + ((u >> (i * 3 + 2)) % 6) * 0.03);
+        const phase = ((u % 100) / 100) * Math.PI * 2 + i * 1.7 + seed;
+        const sway = Math.sin(t * 0.0022 + phase) * radius * 0.06;
+        const tipX = baseX + Math.cos(bladeAngle) * len + sway;
+        const tipY = baseY + Math.sin(bladeAngle) * len;
+        g.strokeStyle = i % 2 === 0 ? '#3a7a2a' : '#4c9436';
+        g.lineWidth = Math.max(1, radius * 0.045);
+        g.lineCap = 'round';
+        g.beginPath();
+        g.moveTo(baseX, baseY);
+        g.quadraticCurveTo((baseX + tipX) / 2 + sway * 0.4, (baseY + tipY) / 2, tipX, tipY);
+        g.stroke();
+      }
     }
   }
   function drawCultivator(g, w, h, t) {
@@ -648,21 +664,30 @@
     g.save();
     g.translate(w / 2, h / 2);
     const radius = 30, seed = 63;
-    g.fillStyle = '#4a5248';
-    g.fillRect(-radius, -radius, radius * 2, radius * 2);
+    const grad = g.createRadialGradient(-radius * 0.3, -radius * 0.35, radius * 0.1, 0, 0, radius * 1.05);
+    grad.addColorStop(0, '#6a756a');
+    grad.addColorStop(0.6, '#4a5248');
+    grad.addColorStop(1, '#2e332e');
+    g.fillStyle = grad;
+    g.beginPath(); g.arc(0, 0, radius, 0, Math.PI * 2); g.fill();
     g.strokeStyle = '#2a3a2a';
     g.lineWidth = 3;
-    g.strokeRect(-radius, -radius, radius * 2, radius * 2);
+    g.stroke();
+    g.save();
+    g.beginPath(); g.arc(0, 0, radius, 0, Math.PI * 2); g.clip();
     g.strokeStyle = 'rgba(0,0,0,0.35)';
     g.lineWidth = 1.5;
-    for (let i = 1; i < 3; i++) {
-      g.beginPath();
-      g.moveTo(-radius + (radius * 2 / 3) * i, -radius); g.lineTo(-radius + (radius * 2 / 3) * i, radius);
-      g.moveTo(-radius, -radius + (radius * 2 / 3) * i); g.lineTo(radius, -radius + (radius * 2 / 3) * i);
-      g.stroke();
+    [0.4, 0.75].forEach((f) => {
+      g.beginPath(); g.arc(0, 0, radius * f, 0, Math.PI * 2); g.stroke();
+    });
+    const seams = 8;
+    for (let i = 0; i < seams; i++) {
+      const a = (i / seams) * Math.PI * 2;
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a) * radius, Math.sin(a) * radius); g.stroke();
     }
+    g.restore();
     drawCultivatorGears(g, radius, seed);
-    drawCultivatorMoss(g, radius, seed);
+    drawCultivatorGrass(g, radius, seed, t);
     g.save();
     g.shadowColor = '#4ab0ff'; g.shadowBlur = 8;
     g.beginPath(); g.arc(0, -radius * 0.05, radius * 0.22, 0, Math.PI * 2);
