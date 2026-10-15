@@ -31,15 +31,17 @@
   // took longer than usual.
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  const MONSTER_SIGHT_RADIUS = 200; // how close you have to get to the hub itself before it notices you
+  const MONSTER_SPEED = PLAYER_SPEED * 1.0;
+  const MONSTER_SIGHT_RADIUS = 220;
   const ALERT_GRACE_MS = 2500;
+  const REPATH_MS = 500;
   const CATCH_RADIUS = 22;
   const PROXIMITY_WARNING_RADIUS = 380;
   const RADAR_DURATION_MS = 10000;
   const ENERGY_DURATION_MS = 10000;
   const SCANNER_DURATION_MS = 10000;
   const FREEZE_DURATION_MS = 10000;
-  const FREEZE_RADIUS_TILES = 15; // freezes only reach the hub if it's this close to where the item was used
+  const FREEZE_RADIUS_TILES = 15; // freezes only reach the Reacher if it's this close to where the item was used
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
   const SUPER_RADAR_DURATION_MS = 10000;
@@ -58,18 +60,15 @@
   const GENERATOR_INTERACT_RADIUS = 30;
   const GENERATOR_DECAY_MULT = 2; // decays twice as fast as it fills once nobody's there
 
-  // ---- the long-reach tentacle lash -- the thing's signature attack.
-  // Every cycle it picks, for each player still in the run, whichever of
-  // LEVEL.reachPoints sits closest to where that player currently is, and
-  // lashes a tentacle out to it: a windup (a thin line and a growing
-  // warning ring), then a fast strike (full width, brief), then a retract.
-  // Distance from the hub itself never matters -- that's the whole point
-  // of "stretches from building to building".
-  const TENTACLE_COOLDOWN_MS = 4500;
-  const TENTACLE_WINDUP_MS = 900;
-  const TENTACLE_STRIKE_MS = 250;
-  const TENTACLE_RETRACT_MS = 400;
-  const TENTACLE_HIT_RADIUS = TILE * 1.1;
+  // ---- missiles -- the Reacher's own ranged attack. Fires at whichever
+  // player it can currently see, every few seconds, independent of
+  // patrol/alert state (same convention as Level 22's Kindling and Level
+  // 24's Sentry) -- a real flying projectile, not an instant hitscan, so
+  // it can be seen coming and dodged.
+  const MISSILE_INTERVAL_MS = 3000;
+  const MISSILE_SPEED = PLAYER_SPEED * 2.5;
+  const MISSILE_HIT_RADIUS = TILE * 0.65;
+  const MISSILE_LIFETIME_MS = 4500;
 
   // ---- sprint / stamina ----
   const DOUBLE_TAP_MS = 300;
@@ -347,23 +346,23 @@
     playChompThud(0.02);
   }
 
-  // A low, dragging groan with a rising screech tail -- the tentacle's own
-  // telegraph sound, distinct from the shotgun's sharp crack.
-  function playTentacleShriek() {
+  // A short rising-pitch whoosh -- the missile's own launch cue, distinct
+  // from the shotgun-stun's sharp crack.
+  function playMissileLaunch() {
     if (!audioCtx) return;
     const start = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(90, start);
-    osc.frequency.linearRampToValueAtTime(260, start + TENTACLE_WINDUP_MS / 1000);
+    osc.frequency.setValueAtTime(160, start);
+    osc.frequency.exponentialRampToValueAtTime(520, start + 0.22);
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.linearRampToValueAtTime(0.22, start + 0.15);
-    gain.gain.linearRampToValueAtTime(0.0001, start + TENTACLE_WINDUP_MS / 1000);
+    gain.gain.exponentialRampToValueAtTime(0.22, start + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.24);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start(start);
-    osc.stop(start + TENTACLE_WINDUP_MS / 1000 + 0.05);
+    osc.stop(start + 0.26);
   }
 
   function playWinJingle() {
@@ -372,7 +371,7 @@
 
   function updateAmbientTension() {
     if (!audioCtx) return;
-    const minDist = Math.min(...players.map((p) => Math.hypot(p.x - hub.x, p.y - hub.y)));
+    const minDist = Math.min(...players.map((p) => Math.hypot(p.x - mon.x, p.y - mon.y)));
     const proximity = clamp(1 - minDist / 380, 0, 1);
     ambientGain.gain.setTargetAtTime(0.05 + proximity * 0.18, audioCtx.currentTime, 0.3);
     ambientSubOsc.frequency.setTargetAtTime(41.2 + proximity * 12, audioCtx.currentTime, 0.3);
@@ -540,14 +539,15 @@
     }
   }
 
-  // A stable per-tile star field for the void beyond the rooftop edges --
-  // the drop between buildings reads as open night sky, not just a flat
-  // wall color.
+  // The night sky beyond the rooftop edges -- a single flat color rather
+  // than a per-tile gradient. A gradient that restarts at every tile's own
+  // top edge reads as a visible repeating band once you're looking across
+  // more than one void tile at a time -- a seam grid, not a sky. One flat
+  // color plus a sparse scatter of twinkling stars avoids that seam
+  // entirely while still reading as open night air.
+  const VOID_COLOR = '#07080f';
   function drawVoidTile(g, px, py, x, y) {
-    const grad = g.createLinearGradient(px, py, px, py + TILE);
-    grad.addColorStop(0, '#0a0c16');
-    grad.addColorStop(1, '#05060c');
-    g.fillStyle = grad;
+    g.fillStyle = VOID_COLOR;
     g.fillRect(px, py, TILE, TILE);
     const h = Math.imul(x, 1274126177) ^ Math.imul(y, 2516582981);
     const u = (h ^ (h >>> 15)) >>> 0;
@@ -620,43 +620,6 @@
     });
   }
 
-  // Same tapering idea as drawTaperedTentacle, but from one absolute world
-  // point to another instead of a monster-local (0,0) origin -- the long-
-  // reach lash can cross the whole map, far outside any single monster's
-  // own local transform.
-  function drawTaperedTentacleAbs(g, x0, y0, x1, y1, baseWidth, color, now) {
-    const dx = x1 - x0, dy = y1 - y0;
-    const dist = Math.hypot(dx, dy) || 1;
-    const perpX = -dy / dist, perpY = dx / dist;
-    const bow = Math.sin(now * 0.004 + x0 * 0.013 + y0 * 0.011) * Math.min(26, dist * 0.09);
-    const midX = (x0 + x1) / 2 + perpX * bow;
-    const midY = (y0 + y1) / 2 + perpY * bow;
-    const segs = 6;
-    let prevX = x0, prevY = y0;
-    for (let s = 1; s <= segs; s++) {
-      const tt = s / segs, it = 1 - tt;
-      const x = it * it * x0 + 2 * it * tt * midX + tt * tt * x1;
-      const y = it * it * y0 + 2 * it * tt * midY + tt * tt * y1;
-      g.beginPath();
-      g.moveTo(prevX, prevY);
-      g.lineTo(x, y);
-      g.strokeStyle = color;
-      g.lineWidth = Math.max(0.8, baseWidth * (1 - tt * 0.7));
-      g.lineCap = 'round';
-      g.stroke();
-      prevX = x; prevY = y;
-    }
-    g.fillStyle = 'rgba(10,0,20,0.35)';
-    [0.5, 0.78].forEach((s) => {
-      const it = 1 - s;
-      const x = it * it * x0 + 2 * it * s * midX + s * s * x1;
-      const y = it * it * y0 + 2 * it * s * midY + s * s * y1;
-      g.beginPath();
-      g.arc(x, y, baseWidth * 0.18, 0, Math.PI * 2);
-      g.fill();
-    });
-  }
-
   function hasLineOfSight(x0, y0, x1, y1) {
     const dist = Math.hypot(x1 - x0, y1 - y0);
     const steps = Math.ceil(dist / (TILE / 2));
@@ -667,6 +630,40 @@
       if (ch === '#' || (ch === 'G' && !gateOpen())) return false;
     }
     return true;
+  }
+
+  function bfsPath(graph, start, goal) {
+    const key = (t) => t.y * COLS + t.x;
+    const startKey = key(start), goalKey = key(goal);
+    if (!graph.has(startKey) || !graph.has(goalKey)) return null;
+    if (startKey === goalKey) return [start];
+    const visited = new Set([startKey]);
+    const prev = new Map();
+    const queue = [start];
+    let found = false;
+    while (queue.length) {
+      const cur = queue.shift();
+      if (key(cur) === goalKey) { found = true; break; }
+      const neighbors = graph.get(key(cur)) || [];
+      for (const n of neighbors) {
+        const k = key(n);
+        if (!visited.has(k)) {
+          visited.add(k);
+          prev.set(k, cur);
+          queue.push(n);
+        }
+      }
+    }
+    if (!found) return null;
+    const path = [goal];
+    let curKey = goalKey;
+    while (curKey !== startKey) {
+      const p = prev.get(curKey);
+      path.push(p);
+      curKey = key(p);
+    }
+    path.reverse();
+    return path;
   }
 
   // ---- game state ----
@@ -704,26 +701,28 @@
     ? [makePlayer(LEVEL.spawn1, '#ff8a3d')]
     : [makePlayer(LEVEL.spawn1, '#ff8a3d'), makePlayer(LEVEL.spawn2, '#3ddc84')];
 
-  // The hub -- rooted in place at the center of the rooftops. It never
-  // moves; every threat it poses either comes from getting too close to
-  // it directly, or from the long-reach tentacle lash (see
-  // updateTentacleLashes) which doesn't care about distance at all.
-  function makeHub() {
+  // The Reacher -- a mottled violet blob that actually roams the rooftops
+  // now, same sight-based patrol/chase model every other monster in this
+  // game uses, plus its own missile launcher firing at whichever player
+  // it can currently see.
+  function makeReacher(patrolStartIndex) {
     const spawn = LEVEL.monsterSpawns[0];
     const c = tileCenter(spawn.x, spawn.y);
     return {
-      x: c.x, y: c.y, radius: 34, seed: Math.random() * 100,
-      state: 'dormant', // 'dormant' | 'alert'
-      alertUntil: 0,
+      x: c.x, y: c.y, radius: 32, seed: Math.random() * 100,
+      path: [], pathIndex: 0, nextRepathAt: 0,
+      lookDir: { x: 1, y: 0 },
+      state: 'patrol', // 'patrol' | 'alert'
+      alertUntil: 0, alertTargetTile: null,
+      patrolIndex: patrolStartIndex,
       frozenUntil: 0,
+      nextMissileAt: 0,
     };
   }
-  const hub = makeHub();
+  const mon = makeReacher(0);
 
-  let tentacleLashes = []; // { x, y, startedAt, hit }
-  let nextLashAt = 0;
+  let missiles = []; // { x, y, dx, dy, bornAt }
 
-  const GENERATOR_HOLD_MS_LOCAL = GENERATOR_HOLD_MS;
   let generators = (LEVEL.generatorSpawns || []).map((g) => ({ x: g.x, y: g.y, heldMs: 0, solved: false }));
 
   let crates = [];
@@ -755,10 +754,12 @@
 
     const spawn = LEVEL.monsterSpawns[0];
     const c = tileCenter(spawn.x, spawn.y);
-    hub.x = c.x; hub.y = c.y;
-    hub.state = 'dormant'; hub.alertUntil = 0; hub.frozenUntil = 0;
-    tentacleLashes = [];
-    nextLashAt = performance.now() + TENTACLE_COOLDOWN_MS;
+    mon.x = c.x; mon.y = c.y;
+    mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
+    mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
+    mon.frozenUntil = 0;
+    mon.nextMissileAt = performance.now() + MISSILE_INTERVAL_MS;
+    missiles = [];
 
     generators.forEach((g) => { g.heldMs = 0; g.solved = false; });
 
@@ -886,7 +887,6 @@
     if (ch === '#') return '#10121c';
     if (ch === 'G') return gateOpen() ? '#4c9436' : '#8a3030';
     if (ch === 'S') return '#3ddc84';
-    if (isBoardwalk) return '#4c4038';
     return '#4c4038';
   }
 
@@ -922,8 +922,8 @@
     ctx.lineWidth = 1;
     ctx.strokeRect(mx + 0.5, my + 0.5, MINIMAP_W - 1, mh - 1);
     if (now < superRadarUntil) {
-      const px = mx + (hub.x / WORLD_W) * MINIMAP_W;
-      const py = my + (hub.y / WORLD_H) * mh;
+      const px = mx + (mon.x / WORLD_W) * MINIMAP_W;
+      const py = my + (mon.y / WORLD_H) * mh;
       ctx.beginPath();
       ctx.arc(px, py, 2.4, 0, Math.PI * 2);
       ctx.fillStyle = '#ff4d6d';
@@ -980,7 +980,7 @@
       spawnFloatingText(x, y, 'RADAR');
       playItemChime(880);
     } else if (item === 'co2') {
-      if (Math.hypot(hub.x - x, hub.y - y) <= FREEZE_RADIUS_TILES * TILE) hub.frozenUntil = now + FREEZE_DURATION_MS;
+      if (Math.hypot(mon.x - x, mon.y - y) <= FREEZE_RADIUS_TILES * TILE) mon.frozenUntil = now + FREEZE_DURATION_MS;
       spawnFloatingText(x, y, 'FROZEN');
       playItemChime(1200);
     } else if (item === 'scanner') {
@@ -1109,86 +1109,185 @@
     });
   }
 
-  // ---- hub detection / catch (no pathfinding at all -- it never moves) ----
-  function updateDetection(now) {
-    for (const p of players) {
-      if (p.caught || isHidden(p) || isInSmoke(p, now)) continue;
-      const d = Math.hypot(p.x - hub.x, p.y - hub.y);
-      if (d <= MONSTER_SIGHT_RADIUS && hasLineOfSight(hub.x, hub.y, p.x, p.y)) {
-        hub.state = 'alert';
-        hub.alertUntil = now + ALERT_GRACE_MS;
+  // ---- Reacher AI: sight-based patrol/chase, same model as every other
+  // monster in this game, plus its own missile launcher. ----
+  function monsterCanOccupy(ch) {
+    if (ch === '#' || ch === 'S') return false;
+    if (ch === 'G') return gateOpen();
+    return true;
+  }
+
+  function buildMonsterGraph() {
+    const graph = new Map();
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (!monsterCanOccupy(LEVEL.grid[y][x])) continue;
+        const list = [];
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) return;
+          if (monsterCanOccupy(LEVEL.grid[ny][nx])) list.push({ x: nx, y: ny });
+        });
+        graph.set(y * COLS + x, list);
       }
     }
-    if (hub.state === 'alert' && now >= hub.alertUntil) hub.state = 'dormant';
+    return graph;
+  }
+
+  function wallOffsetDir(tx, ty) {
+    let dx = 0, dy = 0;
+    if (tileChar(tx - 1, ty) === '#') dx += 1;
+    if (tileChar(tx + 1, ty) === '#') dx -= 1;
+    if (tileChar(tx, ty - 1) === '#') dy += 1;
+    if (tileChar(tx, ty + 1) === '#') dy -= 1;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) return { x: 0, y: 0 };
+    return { x: dx / len, y: dy / len };
+  }
+
+  function tileTargetWithOffset(t) {
+    const c = tileCenter(t.x, t.y);
+    const off = wallOffsetDir(t.x, t.y);
+    return { x: c.x + off.x * 10, y: c.y + off.y * 10 };
+  }
+
+  function updateDetection(m, now) {
+    for (const p of players) {
+      if (p.caught || isHidden(p) || isInSmoke(p, now)) continue;
+      const d = Math.hypot(p.x - m.x, p.y - m.y);
+      if (d <= MONSTER_SIGHT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+        m.state = 'alert';
+        m.alertUntil = now + ALERT_GRACE_MS;
+        m.alertTargetTile = worldToTile(p.x, p.y);
+      }
+    }
+    if (m.state === 'alert' && now >= m.alertUntil) {
+      m.state = 'patrol';
+      m.path = [];
+      m.pathIndex = 0;
+    }
+  }
+
+  // The closest currently-visible player, for the missile launcher to aim
+  // at -- null if nothing is in sight right now.
+  function closestVisiblePlayer(m, now) {
+    let best = null, bestD = Infinity;
+    for (const p of players) {
+      if (p.caught || isHidden(p) || isInSmoke(p, now)) continue;
+      const d = Math.hypot(p.x - m.x, p.y - m.y);
+      if (d <= MONSTER_SIGHT_RADIUS && d < bestD && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+        best = p;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  // Fires every 3 seconds at whichever player it can currently see that's
+  // closest -- independent of patrol/alert state, same convention as
+  // Level 22's Kindling and Level 24's Sentry shotguns, just a slower,
+  // dodgeable projectile instead of a hitscan blast.
+  function updateMonsterMissiles(m, now) {
+    if (now < m.nextMissileAt) return;
+    const target = closestVisiblePlayer(m, now);
+    if (!target) return;
+    m.nextMissileAt = now + MISSILE_INTERVAL_MS;
+    const dx = target.x - m.x, dy = target.y - m.y;
+    const d = Math.hypot(dx, dy) || 1;
+    missiles.push({
+      x: m.x, y: m.y, dx: (dx / d) * MISSILE_SPEED, dy: (dy / d) * MISSILE_SPEED, bornAt: now,
+    });
+    playMissileLaunch();
+  }
+
+  // Missiles fly straight and don't care about the void between buildings
+  // -- they're airborne, not foot traffic -- so the only things that stop
+  // one are a player (a hit) or its own fuel running out (lifetime).
+  function updateMissiles(now, dt) {
+    for (let i = missiles.length - 1; i >= 0; i--) {
+      const b = missiles[i];
+      b.x += b.dx * dt;
+      b.y += b.dy * dt;
+      if (now - b.bornAt > MISSILE_LIFETIME_MS) { missiles.splice(i, 1); continue; }
+      let hit = false;
+      players.forEach((p) => {
+        if (hit || p.caught || now < p.invulnerableUntil) return;
+        if (Math.hypot(p.x - b.x, p.y - b.y) < MISSILE_HIT_RADIUS) {
+          triggerCaught(p, now);
+          hit = true;
+        }
+      });
+      if (hit) missiles.splice(i, 1);
+    }
+  }
+
+  function updateMonster(m, now, dt) {
+    if (now < m.frozenUntil) return; // frozen solid: no movement, no perception
+
+    updateMonsterMissiles(m, now);
+    updateDetection(m, now);
+
+    if (now >= m.nextRepathAt) {
+      m.nextRepathAt = now + REPATH_MS;
+      const startTile = worldToTile(m.x, m.y);
+      const goalTile = m.state === 'alert' ? m.alertTargetTile : LEVEL.patrolPoints[m.patrolIndex];
+      const graph = buildMonsterGraph();
+      const path = bfsPath(graph, startTile, goalTile);
+      if (path && path.length > 1) {
+        m.path = path.slice(1);
+        m.pathIndex = 0;
+      } else {
+        m.path = [];
+        m.pathIndex = 0;
+        if (m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        }
+      }
+    }
+
+    if (m.path && m.pathIndex < m.path.length) {
+      const step = MONSTER_SPEED * dt;
+      const target = tileTargetWithOffset(m.path[m.pathIndex]);
+      const dx = target.x - m.x, dy = target.y - m.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 0.001) m.lookDir = { x: dx / d, y: dy / d };
+      if (d < step) {
+        m.x = target.x; m.y = target.y;
+        m.pathIndex++;
+        if (m.pathIndex >= m.path.length && m.state === 'patrol') {
+          m.patrolIndex = (m.patrolIndex + 1) % LEVEL.patrolPoints.length;
+        }
+      } else {
+        m.x += (dx / d) * step;
+        m.y += (dy / d) * step;
+      }
+    }
   }
 
   function updateShotgunDefense(now) {
     players.forEach((p) => {
       if (p.caught) return;
       if (p.shotgunAmmo <= 0) return;
-      if (now < hub.frozenUntil || hub.state !== 'alert') return;
-      if (Math.hypot(p.x - hub.x, p.y - hub.y) < SHOTGUN_RANGE) {
-        hub.frozenUntil = now + SHOTGUN_STUN_MS;
+      if (now < mon.frozenUntil || mon.state !== 'alert') return;
+      if (Math.hypot(p.x - mon.x, p.y - mon.y) < SHOTGUN_RANGE) {
+        mon.frozenUntil = now + SHOTGUN_STUN_MS;
         p.shotgunAmmo--;
-        spawnFloatingText(hub.x, hub.y, 'STUNNED!');
+        spawnFloatingText(mon.x, mon.y, 'STUNNED!');
         playShotgunBlast();
       }
     });
   }
 
   function updateCatch(now) {
-    if (now < hub.frozenUntil) return;
-    if (hub.state !== 'alert') return;
+    if (now < mon.frozenUntil) return;
+    if (mon.state !== 'alert') return;
     players.forEach((p) => {
       if (p.caught) return;
       if (isHidden(p) || isInSmoke(p, now)) return;
       if (!p.isMoving) return;
       if (now < p.invulnerableUntil) return;
-      if (Math.hypot(p.x - hub.x, p.y - hub.y) < CATCH_RADIUS) triggerCaught(p, now);
+      if (Math.hypot(p.x - mon.x, p.y - mon.y) < CATCH_RADIUS) triggerCaught(p, now);
     });
-  }
-
-  // Of LEVEL.reachPoints, whichever sits physically closest to (px,py) --
-  // the point the lash aims at, standing in for "the roof you're on".
-  function pickReachPointNear(px, py) {
-    let best = LEVEL.reachPoints[0], bestD = Infinity;
-    LEVEL.reachPoints.forEach((rp) => {
-      const c = tileCenter(rp.x, rp.y);
-      const d = Math.hypot(c.x - px, c.y - py);
-      if (d < bestD) { bestD = d; best = c; }
-    });
-    return best;
-  }
-
-  function updateTentacleLashes(now) {
-    if (now >= hub.frozenUntil && now >= nextLashAt) {
-      nextLashAt = now + TENTACLE_COOLDOWN_MS;
-      const active = players.filter((p) => !p.caught);
-      let fired = false;
-      active.forEach((p) => {
-        const target = pickReachPointNear(p.x, p.y);
-        tentacleLashes.push({ x: target.x, y: target.y, startedAt: now, hit: false });
-        fired = true;
-      });
-      if (fired) playTentacleShriek();
-    }
-    for (let i = tentacleLashes.length - 1; i >= 0; i--) {
-      const L = tentacleLashes[i];
-      const age = now - L.startedAt;
-      if (age < TENTACLE_WINDUP_MS) continue;
-      if (age < TENTACLE_WINDUP_MS + TENTACLE_STRIKE_MS) {
-        if (!L.hit) {
-          L.hit = true;
-          players.forEach((p) => {
-            if (p.caught || now < p.invulnerableUntil) return;
-            if (Math.hypot(p.x - L.x, p.y - L.y) <= TENTACLE_HIT_RADIUS) triggerCaught(p, now);
-          });
-        }
-        continue;
-      }
-      if (age < TENTACLE_WINDUP_MS + TENTACLE_STRIKE_MS + TENTACLE_RETRACT_MS) continue;
-      tentacleLashes.splice(i, 1);
-    }
   }
 
   function triggerCaught(p, now) {
@@ -1482,31 +1581,32 @@
   }
 
   // A mottled violet blob with a slit red eye and a crown of short idle
-  // tentacle stubs that wave constantly, regardless of what the long-reach
-  // lash is doing -- it's rooted, but it's never quite still.
-  function drawReacher(g, now) {
+  // tentacle stubs that wave constantly as it roams -- the body is the
+  // same one the stationary version of this creature had, it just
+  // actually walks around on it now.
+  function drawReacher(g, now, m) {
     g.save();
-    g.translate(hub.x, hub.y);
+    g.translate(m.x, m.y);
 
     const stubCount = 7;
     for (let i = 0; i < stubCount; i++) {
-      const a = (i / stubCount) * Math.PI * 2 + hub.seed;
-      const len = hub.radius * (1.3 + 0.3 * Math.sin(now * 0.0015 + i * 2 + hub.seed));
+      const a = (i / stubCount) * Math.PI * 2 + m.seed;
+      const len = m.radius * (1.3 + 0.3 * Math.sin(now * 0.0015 + i * 2 + m.seed));
       const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
-      const wob = Math.sin(now * 0.003 + i + hub.seed) * hub.radius * 0.3;
+      const wob = Math.sin(now * 0.003 + i + m.seed) * m.radius * 0.3;
       const midX = Math.cos(a) * len * 0.5 - Math.sin(a) * wob;
       const midY = Math.sin(a) * len * 0.5 + Math.cos(a) * wob;
-      drawTaperedTentacle(g, tx, ty, midX, midY, hub.radius * 0.18, hub.state === 'alert' ? '#8a3aa0' : '#4a2a5a');
+      drawTaperedTentacle(g, tx, ty, midX, midY, m.radius * 0.18, m.state === 'alert' ? '#8a3aa0' : '#4a2a5a');
     }
 
-    const r = hub.radius;
+    const r = m.radius;
     const grad = g.createRadialGradient(-r * 0.3, -r * 0.3, 2, 0, 0, r);
-    grad.addColorStop(0, hub.state === 'alert' ? '#9a4ab0' : '#5a3468');
+    grad.addColorStop(0, m.state === 'alert' ? '#9a4ab0' : '#5a3468');
     grad.addColorStop(1, '#231228');
     g.beginPath();
     g.arc(0, 0, r, 0, Math.PI * 2);
     g.fillStyle = grad;
-    g.shadowColor = '#000';
+    g.shadowColor = 'rgba(0,0,0,0.4)';
     g.shadowBlur = 14;
     g.fill();
     g.shadowBlur = 0;
@@ -1516,7 +1616,7 @@
 
     // a few knobby bumps for texture
     for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 + hub.seed * 0.5;
+      const a = (i / 6) * Math.PI * 2 + m.seed * 0.5;
       const bx = Math.cos(a) * r * 0.65, by = Math.sin(a) * r * 0.65;
       g.beginPath();
       g.arc(bx, by, r * 0.14, 0, Math.PI * 2);
@@ -1524,7 +1624,7 @@
       g.fill();
     }
 
-    const alert = hub.state === 'alert';
+    const alert = m.state === 'alert';
     const er = r * 0.32;
     g.beginPath();
     g.arc(0, 0, er * 1.3, 0, Math.PI * 2);
@@ -1542,7 +1642,7 @@
     g.fillStyle = '#050208';
     g.fill();
 
-    if (now < hub.frozenUntil) {
+    if (now < m.frozenUntil) {
       const points = 12;
       g.beginPath();
       for (let i = 0; i <= points; i++) {
@@ -1562,41 +1662,39 @@
     g.restore();
   }
 
-  // The long-reach lash itself -- drawn in absolute world coordinates
-  // (not inside the hub's own local transform) since its target can be on
-  // a completely different rooftop, far outside the hub's own body scale.
-  function drawTentacleLashes(g, now) {
-    tentacleLashes.forEach((L) => {
-      const age = now - L.startedAt;
-      let frac, color, width, ringAlpha = 0, ringR = 0;
-      if (age < TENTACLE_WINDUP_MS) {
-        frac = age / TENTACLE_WINDUP_MS;
-        color = 'rgba(140,50,180,0.55)';
-        width = 3 + frac * 3;
-        ringAlpha = frac * 0.6;
-        ringR = TENTACLE_HIT_RADIUS * frac;
-      } else if (age < TENTACLE_WINDUP_MS + TENTACLE_STRIKE_MS) {
-        frac = 1;
-        color = '#c060ff';
-        width = 14;
-        ringAlpha = 0.85;
-        ringR = TENTACLE_HIT_RADIUS;
-      } else {
-        const rFrac = 1 - (age - TENTACLE_WINDUP_MS - TENTACLE_STRIKE_MS) / TENTACLE_RETRACT_MS;
-        frac = Math.max(0, rFrac);
-        color = 'rgba(140,50,180,0.4)';
-        width = 6 * frac;
-      }
-      const tx = hub.x + (L.x - hub.x) * frac;
-      const ty = hub.y + (L.y - hub.y) * frac;
-      drawTaperedTentacleAbs(g, hub.x, hub.y, tx, ty, width, color, now);
-      if (ringAlpha > 0) {
-        g.beginPath();
-        g.arc(L.x, L.y, ringR, 0, Math.PI * 2);
-        g.strokeStyle = `rgba(200,100,255,${ringAlpha})`;
-        g.lineWidth = 3;
-        g.stroke();
-      }
+  // The Reacher's missiles: a bright flame trail with a dark body and a
+  // red warhead nose, oriented along its direction of travel.
+  function drawMissiles(g) {
+    missiles.forEach((b) => {
+      const d = Math.hypot(b.dx, b.dy) || 1;
+      const ux = b.dx / d, uy = b.dy / d;
+      const tailX = b.x - ux * 22, tailY = b.y - uy * 22;
+      g.strokeStyle = 'rgba(255,140,40,0.85)';
+      g.lineWidth = 5;
+      g.lineCap = 'round';
+      g.shadowColor = '#ff6a1a';
+      g.shadowBlur = 10;
+      g.beginPath();
+      g.moveTo(tailX, tailY);
+      g.lineTo(b.x, b.y);
+      g.stroke();
+      g.shadowBlur = 0;
+
+      g.save();
+      g.translate(b.x, b.y);
+      g.rotate(Math.atan2(b.dy, b.dx));
+      g.fillStyle = '#5a5f66';
+      g.fillRect(-14, -2.4, 11, 4.8);
+      g.fillStyle = '#c94a2a';
+      g.beginPath();
+      g.moveTo(-3, -2.6); g.lineTo(4, 0); g.lineTo(-3, 2.6); g.closePath();
+      g.fill();
+      g.restore();
+
+      g.beginPath();
+      g.arc(b.x, b.y, 2.2, 0, Math.PI * 2);
+      g.fillStyle = '#fff4c0';
+      g.fill();
     });
   }
 
@@ -1816,8 +1914,8 @@
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY, now);
     drawSmokeBombs(ctx, now);
-    drawTentacleLashes(ctx, now);
-    drawReacher(ctx, now);
+    drawMissiles(ctx);
+    drawReacher(ctx, now, mon);
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
@@ -1830,7 +1928,7 @@
       ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
     }
 
-    drawProximityWarning(vx, Math.hypot(p.x - hub.x, p.y - hub.y), now);
+    drawProximityWarning(vx, Math.hypot(p.x - mon.x, p.y - mon.y), now);
     drawRadar(vx, p, now);
     drawScanner(vx, p, now);
     drawShotgunHud(vx, p);
@@ -1881,7 +1979,7 @@
     ctx.strokeStyle = '#3ddc84';
     ctx.lineWidth = 2;
     ctx.stroke();
-    const angle = Math.atan2(hub.y - p.y, hub.x - p.x);
+    const angle = Math.atan2(mon.y - p.y, mon.x - p.x);
     ctx.translate(cx, cy);
     ctx.rotate(angle);
     ctx.beginPath();
@@ -2028,8 +2126,8 @@
       updateCrates(now);
       updateSmokeBombs(now);
       updateGenerators(now, dt);
-      updateDetection(now);
-      updateTentacleLashes(now);
+      updateMonster(mon, now, dt);
+      updateMissiles(now, dt);
       updateShotgunDefense(now);
       updateCatch(now);
       updateCutscenes(now);
