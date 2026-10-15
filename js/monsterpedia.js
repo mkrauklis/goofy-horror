@@ -32,6 +32,7 @@
   const sentryCtx = ctxFor('monster-canvas-sentry');
   const cultivatorCtx = ctxFor('monster-canvas-cultivator');
   const reacherCtx = ctxFor('monster-canvas-reacher');
+  const gargoyleCtx = ctxFor('monster-canvas-gargoyle');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -768,6 +769,96 @@
     g.beginPath();
     g.ellipse(0, 0, er, er * 0.6, 0, 0, Math.PI * 2);
     g.fillStyle = '#8a2a40';
+    g.fill();
+    g.shadowBlur = 0;
+    g.beginPath();
+    g.ellipse(0, 0, er * 0.3, er * 0.6, 0, 0, Math.PI * 2);
+    g.fillStyle = '#050208';
+    g.fill();
+
+    g.restore();
+  }
+
+  // The same family as drawReacher, recolored dark grey with a pair of
+  // membrane wings instead of rooftop-reach tentacles -- a static pose
+  // of the same winged body js/game27.js animates in flight.
+  function drawGargoyle(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const radius = 30, seed = 41;
+    const flap = t * 0.004;
+
+    function drawWing(side) {
+      const span = 24, sweep = Math.sin(flap) * 0.5;
+      g.save();
+      g.scale(side, 1);
+      g.rotate(0.3 + sweep);
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.quadraticCurveTo(span * 0.5, -span * 0.35, span, -span * 0.1);
+      g.quadraticCurveTo(span * 0.6, span * 0.15, span * 0.3, span * 0.05);
+      g.quadraticCurveTo(span * 0.15, span * 0.1, 0, 0);
+      g.closePath();
+      g.fillStyle = '#1c1e20';
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.4)';
+      g.lineWidth = 1.5;
+      g.stroke();
+      g.strokeStyle = 'rgba(0,0,0,0.25)';
+      g.lineWidth = 1;
+      [0.4, 0.7, 1].forEach((f) => {
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.lineTo(span * f, -span * 0.1 * f);
+        g.stroke();
+      });
+      g.restore();
+    }
+    drawWing(-1);
+    drawWing(1);
+
+    const stubCount = 5;
+    for (let i = 0; i < stubCount; i++) {
+      const a = (i / stubCount) * Math.PI + Math.PI * 0.5 + seed * 0.1;
+      const len = radius * 0.9;
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len + radius * 0.4;
+      drawTaperedTentacle(g, tx, ty, tx * 0.5, ty * 0.5, radius * 0.14, '#2a2c2e');
+    }
+
+    const grad = g.createRadialGradient(-radius * 0.3, -radius * 0.3, 2, 0, 0, radius);
+    grad.addColorStop(0, '#4a4e54');
+    grad.addColorStop(1, '#17181a');
+    g.beginPath();
+    g.arc(0, 0, radius, 0, Math.PI * 2);
+    g.fillStyle = grad;
+    g.shadowColor = '#000';
+    g.shadowBlur = 12;
+    g.fill();
+    g.shadowBlur = 0;
+    g.strokeStyle = '#0c0d0e';
+    g.lineWidth = 2.5;
+    g.stroke();
+
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + seed * 0.5;
+      const bx = Math.cos(a) * radius * 0.65, by = Math.sin(a) * radius * 0.65;
+      g.beginPath();
+      g.arc(bx, by, radius * 0.14, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(0,0,0,0.25)';
+      g.fill();
+    }
+
+    const er = radius * 0.32;
+    g.beginPath();
+    g.arc(0, 0, er * 1.3, 0, Math.PI * 2);
+    g.fillStyle = '#0c0410';
+    g.fill();
+    g.shadowColor = '#6a3060';
+    g.shadowBlur = 6;
+    g.beginPath();
+    g.ellipse(0, 0, er, er * 0.6, 0, 0, Math.PI * 2);
+    g.fillStyle = '#6a3060';
     g.fill();
     g.shadowBlur = 0;
     g.beginPath();
@@ -2580,6 +2671,7 @@
       drawPortraitOrLock(sentryCtx, drawSentry, t);
       drawPortraitOrLock(cultivatorCtx, drawCultivator, t);
       drawPortraitOrLock(reacherCtx, drawReacher, t);
+      drawPortraitOrLock(gargoyleCtx, drawGargoyle, t);
     }
     requestAnimationFrame(loop);
   }

@@ -1082,7 +1082,7 @@
           gameState = 'complete';
           playWinJingle();
           if (window.GoofyStory) window.GoofyStory.completeLevel(26);
-          setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+          setTimeout(() => { window.location.href = 'level27.html'; }, 2000);
         } else if (now - lastGeneratorHintAt > 2000) {
           lastGeneratorHintAt = now;
           spawnFloatingText(tileCenter(t.x, t.y).x, tileCenter(t.x, t.y).y, 'START ALL 3 GENERATORS FIRST');
@@ -2087,7 +2087,7 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'ALL GENERATORS ONLINE &mdash; heading back to the menu&hellip;';
+      messageEl.innerHTML = 'ALL GENERATORS ONLINE &mdash; heading to the next wing&hellip;';
     } else {
       messageEl.style.display = 'none';
     }

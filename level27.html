@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 27</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 27 &mdash; Satellite Array</h1>
+  <p class="objective">One big rooftop under a night sky, cluttered with 2x2 crates and rooftop fans. Find the wrench and carry it to the broken satellite dish to fix it &mdash; the access hatch unlocks once it's running again. Something with wings circles the roof, roaming at a steady <strong>1x</strong> your speed until it spots you, then closing at <strong>1.5x</strong>.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <span id="hud-wrench">Wrench: on the ground</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    No boardwalks this time &mdash; just one large, open rooftop, cluttered
+    with 2x2 maintenance crates and big rooftop exhaust fans, both solid
+    enough to duck behind or block a straight line of sight.
+  </p>
+  <p class="level-description">
+    The wrench sits out in the open somewhere on the roof; walk over it
+    to pick it up. Carry it to the satellite dish near the far access
+    hatch and get close enough to fix it &mdash; the hatch door unlocks
+    the instant it's running again. Get caught while carrying the wrench
+    and it drops right where you fell, same as any other carried item
+    here.
+  </p>
+  <p class="level-description">
+    The thing circling this roof looks like the Reacher from the wing
+    below, but dark grey and winged, actually flying its patrol instead
+    of walking it. It roams at a steady <strong>1x</strong> your speed
+    until it spots you, then closes the distance at <strong>1.5x</strong>
+    &mdash; same sight-based hunting every other monster in this game
+    uses, just faster once it's onto you.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level27/level.js"></script>
+<script src="js/game27.js"></script>
+</body>
+</html>
