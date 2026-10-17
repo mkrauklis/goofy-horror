@@ -1043,7 +1043,7 @@
           gameState = 'complete';
           playWinJingle();
           if (window.GoofyStory) window.GoofyStory.completeLevel(27);
-          setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+          setTimeout(() => { window.location.href = 'level28.html'; }, 2000);
         } else if (now - lastDoorHintAt > 2000) {
           lastDoorHintAt = now;
           spawnFloatingText(tileCenter(t.x, t.y).x, tileCenter(t.x, t.y).y, 'FIX THE SATELLITE FIRST');
@@ -2118,7 +2118,7 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'SATELLITE FIXED &mdash; heading back to the menu&hellip;';
+      messageEl.innerHTML = 'SATELLITE FIXED &mdash; heading to the next wing&hellip;';
     } else {
       messageEl.style.display = 'none';
     }

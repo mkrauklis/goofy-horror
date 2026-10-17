@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Goofy Horror &mdash; Level 28</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 28 &mdash; Power Grid</h1>
+  <p class="objective">Three buildings under a night sky, linked by boardwalks slung between their outer ledges. Every building has a real inside and outside &mdash; step through a doorway and you're off the ledge and safe. Find and press all <strong>3</strong> power switches (2 inside, 1 out on a ledge) to light up every interior and unlock the exit. Three light grey, four-winged Wardens patrol the open sky outside &mdash; they can't see you once you're indoors, but spot you on a ledge and they dive at <strong>3x</strong> your speed.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <span id="hud-switches">Switches: 0/3</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    Three separate buildings this time, each one hollow &mdash; a solid
+    outer wall wrapped by its own exterior ledge, four doorways punched
+    through that wall so you can duck inside or back out onto the ledge
+    at will. The buildings themselves are linked ledge to ledge by
+    boardwalks slung across the open gaps between them, cluttered with
+    2x2 maintenance crates and rooftop exhaust fans along the way.
+  </p>
+  <p class="level-description">
+    Three power switches keep the whole place running &mdash; two tucked
+    inside two of the buildings, one out on a ledge on the far side of
+    the complex. Walk up to one and it presses on contact, no holding
+    required. Press all three and every interior light in every building
+    comes on at once, and the gate on the exit (tucked deep inside the
+    third building) swings open.
+  </p>
+  <p class="level-description">
+    The Wardens don't walk a route &mdash; they fly one, gliding over
+    the ledges and straight across the open sky between buildings, the
+    same gaps you need a boardwalk to cross. They can only ever see you
+    while you're outside on a ledge; duck through any doorway and you're
+    instantly off their radar; even mid-chase, stepping inside is a safe
+    harbor. Spot one above you and it's just a steady glide &mdash; let it
+    actually see you out in the open, though, and it folds in and dives
+    at <strong>3x</strong> your speed.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level28/level.js"></script>
+<script src="js/game28.js"></script>
+</body>
+</html>

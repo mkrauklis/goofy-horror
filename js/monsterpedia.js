@@ -33,6 +33,7 @@
   const cultivatorCtx = ctxFor('monster-canvas-cultivator');
   const reacherCtx = ctxFor('monster-canvas-reacher');
   const gargoyleCtx = ctxFor('monster-canvas-gargoyle');
+  const wardenCtx = ctxFor('monster-canvas-warden');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -867,6 +868,104 @@
     g.beginPath();
     g.ellipse(0, 0, er, er * 0.6, 0, 0, Math.PI * 2);
     g.fillStyle = '#6a3060';
+    g.fill();
+    g.shadowBlur = 0;
+    g.beginPath();
+    g.ellipse(0, 0, er * 0.3, er * 0.6, 0, 0, Math.PI * 2);
+    g.fillStyle = '#050208';
+    g.fill();
+
+    g.restore();
+  }
+
+  // The same stubby-tentacled family as the Reacher and the Gargoyle,
+  // but light stone grey and genuinely four-winged (a larger front pair,
+  // a smaller rear pair beating slightly out of phase, 2x the span of
+  // the Gargoyle's own wings) -- matches the body js/game28.js animates
+  // in flight.
+  function drawWarden(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const radius = 28, seed = 41;
+    const flap = t * 0.004;
+
+    function drawWing(side, phase, color, spanMult, rootY) {
+      const span = radius * spanMult, sweep = Math.sin(flap + phase) * 0.5;
+      g.save();
+      g.translate(0, rootY);
+      g.scale(side, 1);
+      g.rotate(0.25 + sweep);
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.quadraticCurveTo(span * 0.5, -span * 0.35, span, -span * 0.1);
+      g.quadraticCurveTo(span * 0.6, span * 0.15, span * 0.3, span * 0.05);
+      g.quadraticCurveTo(span * 0.15, span * 0.1, 0, 0);
+      g.closePath();
+      g.fillStyle = color;
+      g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.4)';
+      g.lineWidth = 1.5;
+      g.stroke();
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 0.75;
+      g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,0.3)';
+      g.lineWidth = 1;
+      [0.4, 0.7, 1].forEach((f) => {
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.lineTo(span * f, -span * 0.1 * f);
+        g.stroke();
+      });
+      g.restore();
+    }
+    drawWing(-1, 0, '#6e7278', 2.6, radius * 0.1);
+    drawWing(1, 0, '#6e7278', 2.6, radius * 0.1);
+    drawWing(-1, 0.6, '#8a8e96', 3.8, -radius * 0.2);
+    drawWing(1, 0.6, '#8a8e96', 3.8, -radius * 0.2);
+
+    const stubCount = 5;
+    for (let i = 0; i < stubCount; i++) {
+      const a = (i / stubCount) * Math.PI + Math.PI * 0.5 + seed * 0.1;
+      const len = radius * 0.9;
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len + radius * 0.4;
+      drawTaperedTentacle(g, tx, ty, tx * 0.5, ty * 0.5, radius * 0.14, '#5a5e64');
+    }
+
+    const grad = g.createRadialGradient(-radius * 0.3, -radius * 0.3, 2, 0, 0, radius);
+    grad.addColorStop(0, '#9a9ea6');
+    grad.addColorStop(1, '#55585e');
+    g.beginPath();
+    g.arc(0, 0, radius, 0, Math.PI * 2);
+    g.fillStyle = grad;
+    g.shadowColor = '#000';
+    g.shadowBlur = 12;
+    g.fill();
+    g.shadowBlur = 0;
+    g.strokeStyle = '#3a3c40';
+    g.lineWidth = 2.5;
+    g.stroke();
+
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + seed * 0.5;
+      const bx = Math.cos(a) * radius * 0.65, by = Math.sin(a) * radius * 0.65;
+      g.beginPath();
+      g.arc(bx, by, radius * 0.14, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(0,0,0,0.18)';
+      g.fill();
+    }
+
+    const er = radius * 0.32;
+    g.beginPath();
+    g.arc(0, 0, er * 1.3, 0, Math.PI * 2);
+    g.fillStyle = '#16181c';
+    g.fill();
+    g.shadowColor = '#4a6a8a';
+    g.shadowBlur = 6;
+    g.beginPath();
+    g.ellipse(0, 0, er, er * 0.6, 0, 0, Math.PI * 2);
+    g.fillStyle = '#4a6a8a';
     g.fill();
     g.shadowBlur = 0;
     g.beginPath();
@@ -2680,6 +2779,7 @@
       drawPortraitOrLock(cultivatorCtx, drawCultivator, t);
       drawPortraitOrLock(reacherCtx, drawReacher, t);
       drawPortraitOrLock(gargoyleCtx, drawGargoyle, t);
+      drawPortraitOrLock(wardenCtx, drawWarden, t);
     }
     requestAnimationFrame(loop);
   }
