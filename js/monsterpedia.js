@@ -790,22 +790,30 @@
     const flap = t * 0.004;
 
     function drawWing(side) {
-      const span = 24, sweep = Math.sin(flap) * 0.5;
+      // Sized relative to the body radius and anchored a little above-
+      // behind it (not dead center) so the span clearly extends past the
+      // body's own silhouette instead of being drawn almost entirely
+      // behind it.
+      const span = radius * 1.8, sweep = Math.sin(flap) * 0.5;
       g.save();
+      g.translate(0, -radius * 0.2);
       g.scale(side, 1);
-      g.rotate(0.3 + sweep);
+      g.rotate(0.25 + sweep);
       g.beginPath();
       g.moveTo(0, 0);
       g.quadraticCurveTo(span * 0.5, -span * 0.35, span, -span * 0.1);
       g.quadraticCurveTo(span * 0.6, span * 0.15, span * 0.3, span * 0.05);
       g.quadraticCurveTo(span * 0.15, span * 0.1, 0, 0);
       g.closePath();
-      g.fillStyle = '#1c1e20';
+      g.fillStyle = '#52525c';
       g.fill();
-      g.strokeStyle = 'rgba(0,0,0,0.4)';
+      g.strokeStyle = 'rgba(210,210,220,0.35)';
       g.lineWidth = 1.5;
       g.stroke();
-      g.strokeStyle = 'rgba(0,0,0,0.25)';
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 0.75;
+      g.stroke();
+      g.strokeStyle = 'rgba(220,220,230,0.3)';
       g.lineWidth = 1;
       [0.4, 0.7, 1].forEach((f) => {
         g.beginPath();

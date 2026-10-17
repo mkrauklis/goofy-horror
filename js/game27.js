@@ -1596,11 +1596,18 @@
   // dark grey palette, with a pair of membrane wings that beat in time
   // with its flight (faster once it's chasing) and a small drop shadow
   // offset beneath it to sell "actually airborne" rather than walking.
-  function drawWing(g, side, flap, color) {
-    const span = 26, sweep = Math.sin(flap) * 0.5;
+  function drawWing(g, side, flap, color, radius) {
+    // Rooted at the body's own center and sized barely larger than the
+    // body itself, the wing used to end up almost entirely hidden behind
+    // the body circle drawn on top of it -- only a sliver of tip ever
+    // poked out. Sized relative to the body radius and anchored a little
+    // above-behind it instead, so the span clearly reads past the
+    // silhouette rather than disappearing into it.
+    const span = radius * 1.8, sweep = Math.sin(flap) * 0.5;
     g.save();
+    g.translate(0, -radius * 0.2);
     g.scale(side, 1);
-    g.rotate(0.3 + sweep);
+    g.rotate(0.25 + sweep);
     g.beginPath();
     g.moveTo(0, 0);
     g.quadraticCurveTo(span * 0.5, -span * 0.35, span, -span * 0.1);
@@ -1609,11 +1616,18 @@
     g.closePath();
     g.fillStyle = color;
     g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.4)';
+    // a lighter rim catches what little light there is -- without it the
+    // membrane reads as a near-black smudge against the night sky and the
+    // darkness mask, not as a recognizable wing shape.
+    g.strokeStyle = 'rgba(210,210,220,0.35)';
     g.lineWidth = 1.5;
     g.stroke();
-    // membrane ribs
-    g.strokeStyle = 'rgba(0,0,0,0.25)';
+    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.lineWidth = 0.75;
+    g.stroke();
+    // membrane ribs, same light tone so they read against the membrane
+    // instead of disappearing into it
+    g.strokeStyle = 'rgba(220,220,230,0.3)';
     g.lineWidth = 1;
     [0.4, 0.7, 1].forEach((f) => {
       g.beginPath();
@@ -1641,9 +1655,9 @@
     g.save();
     g.translate(m.x, m.y + hover);
 
-    const wingColor = m.state === 'alert' ? '#2a2c30' : '#1c1e20';
-    drawWing(g, -1, flap, wingColor);
-    drawWing(g, 1, flap, wingColor);
+    const wingColor = m.state === 'alert' ? '#7a3a48' : '#52525c';
+    drawWing(g, -1, flap, wingColor, m.radius);
+    drawWing(g, 1, flap, wingColor, m.radius);
 
     const stubCount = 5;
     for (let i = 0; i < stubCount; i++) {
