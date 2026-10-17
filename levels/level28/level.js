@@ -15,38 +15,38 @@ window.LEVEL28 = {
     "############################################################################################################################################################################",
     "##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########",
     "##########LLLLLLLLLLLLLLLLLLLLLLLLLCCFFLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLFFLLLLLLLLLL##########",
-    "##########LLLLLLLLLLLLLLLLLLLLLLLLLCCFFLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLFFLLLLLLLLLLLLLLLLLLLLLLFFLLLLLLLLLL##########",
-    "##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLFFLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########",
-    "##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########",
-    "##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########",
-    "##########LLLLWW................................WWLLLL##########LLLLWW................................WWLLLL##########LLLLWW................................WWLLLL##########",
-    "##########LLLLWW................................WWLLLL##########LLLLWW...........................CC...WWLLLL##########LLLLWW................................WWLLLL##########",
-    "##########LLLLWW................................WWLLLL##########LLLLWW...........................CC...WWLLLL##########LLLLWW.........................CC.....WWLLLL##########",
-    "##########LLLLWW................................WWLLLL##########LLLLWW................................WWLLLL##########LLLLWW.........................CC.....WWLLLL##########",
-    "##########LLLLWW................................WWLLLL##########LLLLWW................................WWLLLL##########LLLLWW................................WWLLLL##########",
-    "##########LLLLWW................................WWLLLL##########LLLLWW................................WWFFLL##########LLLLWW................................WWLLLL##########",
-    "##########LLLLWW................................WWLLLL##########LLLLWW................................WWFFLL##########LLLLWW............................CC..WWLLLL##########",
-    "##########LLLLWW..SSSSSS........................WWLLLL##########LLLLWW................................WWLLLL##########LLLLWW............................CC..WWLLLL##########",
-    "##########LLLLWW..SSSSSS........................WWLLLL##########LLLLWW................................WWLLLL##########LLLLWW................................WWLLLL##########",
-    "##########LLLLWW..SSSSSS........................WWLLLL##########LLLLWW.................P..............WWLLLL##########LLLLWW................................WWLLLL##########",
-    "##########LLLL....SSSSSS..........................LLLLLLLLLLLLLLLLLL....................................LLLLLLLLLLLLLLLLLL.....CC.............................LLLL##########",
-    "##########LLLL....SSSSSS..........................LLLLLLLLLLLLLLLLLL.........................CC.........LLLLLLLLLLLLLLLLLL.....CC.............................LLLL##########",
-    "##########LLLL....SSSSSS..........................LLLLLLLLLLLLLLLLLL.........................CC.........LLLLLLLLLLLLLLLLLL....................................LLLL##########",
-    "##########LLLLWW...........................CC...WWLLLL##########LLLLWW................................WWLLLL##########LLLLWW.....................WWWGGGWWW..WWLLLL##########",
-    "##########LLLLWW...........................CCCC.WWLLLL##########LLLLWW................................WWLLLL##########LLLLWW.....................WEEEEEEEW..WWLLLL##########",
-    "##########LLLLWW................P............CC.WWLLLL##########LLLLWW........................CC......WWCCLL##########LLLLWW.....................WEEEEEEEW..WWCCLL##########",
-    "##########LLLLWW................................WWCCLL##########LLLLWW........................CC......WWCCLL##########LLLLWW.....................WEEEEEEEW..WWCCLL##########",
-    "##########LLLLWW................................WWCCLL##########LLCCWW................................WWLLLL##########LLLLWW.....................WEEEXEEEW..WWLLLL##########",
-    "##########LLLLWW................................WWLLLL##########LLCCWW................................WWLLLL##########LLLLWW.....................WEEEEEEEW..WWLLLL##########",
-    "##########LLLLWW.........CC.....................WWLLLL##########LLLLWW................................WWLLLL##########LLLLWW.....................WEEEEEEEW..WWLLLL##########",
-    "##########LLLLWW.........CC.....................WWLLLL##########LLLLWW................................WWLLLL##########LLLLWW.....................WEEEEEEEW..WWFFLL##########",
-    "##########LLLLWW................................WWLLLL##########LLLLWW................................WWFFLL##########LLLLWW.....................WWWWWWWWW..WWFFLL##########",
-    "##########LLLLWW................................WWLLLL##########LLLLWW................................WWFFLL##########LLLLWW................................WWLLLL##########",
-    "##########LLLLWW................................WWLLLL##########LLLLWW................................WWLLLL##########LLLLWW................................WWLLLL##########",
-    "##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########",
-    "##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWW...WWWWWWWWWWWWWWWWWLLLL##########",
-    "##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLCCLLLL##########LLLLFFLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLPLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########",
-    "##########LLLLLLLFFLLFFLLLLLLLLLLLLLLLLLLLLLLLLLCCLLLL##########LLLLFFLLLLLLLLLLLLLLLLLLLLLLLCCLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLCCLLCCLLL##########",
+    "##########LLLLLLLLLLLLLLLLLLLLLLLLLCCFFLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLFFLLLLLLLLLL##########",
+    "##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########",
+    "##########LLLLWWWWWWW...WWWWWWWWWWWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWW...WWWWWWWWWWWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWW...WWWWWWWWWWWWWWWWWWWWWWWWWWLLLL##########",
+    "##########LLLLWWWWWWW...WWWWWWWWWWWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWW...WWWWWWWWWWWWWWWWWWWWWWWWWWLLLL##########LLLLWWWWWWW...WWWWWWWWWWWWWWWWWWWWWWWWWWLLLL##########",
+    "##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWLLLL##########",
+    "##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWLLLL##########",
+    "##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW.........CC.....WWLLLL##########",
+    "##########LLLLWW..............WW..................LLLL##########LLLLWW..............WW.............CC...LLLL##########LLLLWW..............WW.........CC.......LLLL##########",
+    "##########LLLLWW..............WW..................LLLL##########LLLLWW..............WW.............CC...LLLL##########LLLLWW..............WW..................LLLL##########",
+    "##########LLLLWW........P.....WW..................LLLL##########LLLLWW..............WW..................LLLL##########LLLLWW..............WW..................LLLL##########",
+    "##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW............CC..WWLLLL##########",
+    "##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW............CC..WWLLLL##########",
+    "##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWLLLL##########",
+    "##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWFFLL##########LLLLWW..............WW................WWLLLL##########",
+    "##########LLLLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWLLLLLLLLLLLLLLLLLLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWFFLLLLLLLLLLLLLLLLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWLLLL##########",
+    "##########LLLLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWLLLLLLLLLLLLLLLLLLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWLLLLLLLLLLLLLLLLLLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWLLLL##########",
+    "##########LLLLWW..............WW................WWLLLLLLLLLLLLLLLLLLWW..............WW.............CC.WWLLLLLLLLLLLLLLLLLLWW...CC.........WWEEEEEEEEEEEEEEEEWWLLLL##########",
+    "##########LLLLWW..............WW...........CC...WWLLLL##########LLLLWW..............WW.............CC.WWLLLL##########LLLLWW...CC.........WWEEEEEEEEEEEEEEEEWWLLLL##########",
+    "##########LLLLWW.SSSSSS.......WW...........CCCC.WWLLLL##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WWEEEEEEEEEEEEEEEEWWLLLL##########",
+    "##########LLLLWW.SSSSSS.......WW.............CC.WWLLLL##########LLLLWW..............WW................WWCCLL##########LLLLWW..............WWEEEEEEEEEEEEEEEEWWCCLL##########",
+    "##########LLLL...SSSSSS.......WW................WWCCLL##########LLLL................WW................WWCCLL##########LLLL................WWEEEEEEEEEEEEEEEEWWCCLL##########",
+    "##########LLLL...SSSSSS.......WW................WWCCLL##########LLLL................WW.........P......WWLLLL##########LLLL................WWEEEEEEEXEEEEEEEEWWLLLL##########",
+    "##########LLLL...SSSSSS.......WW................WWLLLL##########LLLL................WW................WWLLLL##########LLLL................WWEEEEEEEEEEEEEEEEWWLLLL##########",
+    "##########LLLLWW.SSSSSS..CC...WW................WWLLLL##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WWEEEEEEEEEEEEEEEEWWLLLL##########",
+    "##########LLLLWW.........CC...WW................WWLLLL##########LLLLWW..............WW.............CC.WWLLLL##########LLLLWW..............WWEEEEEEEEEEEEEEEEWWFFLL##########",
+    "##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW.............CC.WWFFLL##########LLLLWW..............WWEEEEEEEEEEEEEEEEWWFFLL##########",
+    "##########LLLLWW..............WW................WWLLLL##########LLLLWW..............WW................WWFFLL##########LLLLWW..............WWEEEEEEEEEEEEEEEEWWLLLL##########",
+    "##########LLLLWW..............WW................WWLLLL##########LCCLWW..............WW................WWLLLL##########LLLLWW..............WWEEEEEEEEEEEEEEEEWWLLLL##########",
+    "##########LLLLWWWWWWWWWWWWWWWWWWWWWWWW...WWWWWWWWWLLLL##########LCCLWWWWWWWWWWWWWWWWWWWWWWWW...WWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWWWWWWWWWWGGGWWWWWWWWWLLLL##########",
+    "##########LLLLWWWWWWWWWWWWWWWWWWWWWWWW...WWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWWWWWWWWWW...WWWWWWWWWLLLL##########LLLLWWWWWWWWWWWWWWWWWWWWWWWWGGGWWWWWWWWWLLLL##########",
+    "##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLCCLLLL##########LLLLFFLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLPLLLLLLLLLLLLLLLLFFLLLLLLLLLLLLLLLLLLLL##########",
+    "##########LLLLLLLFFLLFFLLLLLLLLLLLLLLLLLLLLLLLLLCCLLLL##########LLLLFFLLLLLLLLLLLLLLLLLLLLLLLCCLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLFFLLLLLLLLLLLCCLLCCLLL##########",
     "##########LLLLLLLFFLLFFLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLCCLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLCCLLCCLLL##########",
     "##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL##########",
     "############################################################################################################################################################################",
@@ -61,37 +61,38 @@ window.LEVEL28 = {
     "############################################################################################################################################################################"
   ],
   spawn1: {
-    x: 19,
-    y: 25
+    x: 18,
+    y: 32
   },
   spawn2: {
-    x: 20,
-    y: 25
+    x: 19,
+    y: 32
   },
   safeZone: {
-    x0: 18,
-    y0: 23,
-    x1: 23,
-    y1: 28
+    x0: 17,
+    y0: 30,
+    x1: 22,
+    y1: 35
   },
   exitTrigger: {
-    x: 149,
+    x: 147,
     y: 33
   },
   gate: {
-    x0: 148,
-    x1: 150,
-    y: 29
+    x0: 146,
+    x1: 148,
+    y: 40,
+    h: 2
   },
   switchSpawns: [
     {
-      x: 32,
-      y: 31,
+      x: 24,
+      y: 21,
       inside: true
     },
     {
-      x: 87,
-      y: 25,
+      x: 95,
+      y: 33,
       inside: true
     },
     {
@@ -114,7 +115,11 @@ window.LEVEL28 = {
       y: 22
     },
     {
-      x: 21,
+      x: 25,
+      y: 28
+    },
+    {
+      x: 75,
       y: 31
     },
     {
@@ -126,10 +131,6 @@ window.LEVEL28 = {
       y: 19
     },
     {
-      x: 85,
-      y: 19
-    },
-    {
       x: 74,
       y: 31
     },
@@ -138,16 +139,16 @@ window.LEVEL28 = {
       y: 22
     },
     {
-      x: 143,
-      y: 26
-    },
-    {
       x: 144,
       y: 23
     },
     {
-      x: 137,
-      y: 27
+      x: 131,
+      y: 28
+    },
+    {
+      x: 140,
+      y: 22
     }
   ],
   monsterSpawns: [
@@ -232,10 +233,6 @@ window.LEVEL28 = {
       y: 30
     },
     {
-      x: 66,
-      y: 33
-    },
-    {
       x: 104,
       y: 31
     },
@@ -244,16 +241,20 @@ window.LEVEL28 = {
       y: 43
     },
     {
-      x: 97,
-      y: 17
+      x: 65,
+      y: 39
     },
     {
-      x: 94,
-      y: 31
+      x: 99,
+      y: 28
     },
     {
-      x: 93,
-      y: 27
+      x: 99,
+      y: 36
+    },
+    {
+      x: 99,
+      y: 19
     },
     {
       x: 158,
@@ -272,12 +273,12 @@ window.LEVEL28 = {
       y: 22
     },
     {
-      x: 127,
-      y: 26
-    },
-    {
       x: 149,
       y: 18
+    },
+    {
+      x: 127,
+      y: 28
     }
   ],
   fanSpawns: [
@@ -295,7 +296,7 @@ window.LEVEL28 = {
     },
     {
       x: 104,
-      y: 21
+      y: 25
     },
     {
       x: 104,
@@ -306,8 +307,8 @@ window.LEVEL28 = {
       y: 42
     },
     {
-      x: 126,
-      y: 12
+      x: 140,
+      y: 42
     },
     {
       x: 158,
@@ -320,284 +321,284 @@ window.LEVEL28 = {
   ],
   crateSpawns: [
     {
-      x: 52,
-      y: 25
-    },
-    {
-      x: 30,
-      y: 45
-    },
-    {
-      x: 23,
-      y: 38
-    },
-    {
-      x: 129,
-      y: 35
-    },
-    {
-      x: 131,
-      y: 26
-    },
-    {
-      x: 84,
-      y: 23
-    },
-    {
-      x: 45,
-      y: 24
-    },
-    {
-      x: 126,
-      y: 30
-    },
-    {
-      x: 10,
-      y: 22
-    },
-    {
-      x: 77,
-      y: 24
-    },
-    {
-      x: 41,
-      y: 42
-    },
-    {
-      x: 31,
-      y: 11
-    },
-    {
-      x: 66,
+      x: 133,
       y: 21
-    },
-    {
-      x: 41,
-      y: 11
-    },
-    {
-      x: 19,
-      y: 10
-    },
-    {
-      x: 52,
-      y: 21
-    },
-    {
-      x: 52,
-      y: 44
-    },
-    {
-      x: 141,
-      y: 24
-    },
-    {
-      x: 50,
-      y: 37
-    },
-    {
-      x: 52,
-      y: 27
-    },
-    {
-      x: 127,
-      y: 30
-    },
-    {
-      x: 47,
-      y: 21
-    },
-    {
-      x: 73,
-      y: 35
-    },
-    {
-      x: 148,
-      y: 42
-    },
-    {
-      x: 87,
-      y: 38
-    },
-    {
-      x: 140,
-      y: 11
-    },
-    {
-      x: 155,
-      y: 19
-    },
-    {
-      x: 28,
-      y: 45
-    },
-    {
-      x: 155,
-      y: 31
-    },
-    {
-      x: 39,
-      y: 43
-    },
-    {
-      x: 143,
-      y: 19
-    },
-    {
-      x: 50,
-      y: 36
-    },
-    {
-      x: 106,
-      y: 42
-    },
-    {
-      x: 11,
-      y: 34
-    },
-    {
-      x: 81,
-      y: 39
-    },
-    {
-      x: 12,
-      y: 29
-    },
-    {
-      x: 35,
-      y: 17
-    },
-    {
-      x: 29,
-      y: 44
-    },
-    {
-      x: 43,
-      y: 20
-    },
-    {
-      x: 53,
-      y: 30
-    },
-    {
-      x: 160,
-      y: 43
-    },
-    {
-      x: 66,
-      y: 35
-    },
-    {
-      x: 28,
-      y: 24
-    },
-    {
-      x: 138,
-      y: 10
-    },
-    {
-      x: 82,
-      y: 21
-    },
-    {
-      x: 94,
-      y: 26
-    },
-    {
-      x: 88,
-      y: 10
-    },
-    {
-      x: 107,
-      y: 21
-    },
-    {
-      x: 77,
-      y: 34
-    },
-    {
-      x: 12,
-      y: 25
     },
     {
       x: 75,
-      y: 36
+      y: 38
     },
     {
-      x: 31,
-      y: 23
+      x: 65,
+      y: 44
     },
     {
-      x: 85,
-      y: 25
+      x: 124,
+      y: 44
     },
     {
-      x: 32,
+      x: 46,
       y: 45
     },
     {
-      x: 33,
-      y: 43
+      x: 151,
+      y: 24
     },
     {
-      x: 134,
-      y: 17
+      x: 13,
+      y: 23
+    },
+    {
+      x: 98,
+      y: 38
+    },
+    {
+      x: 90,
+      y: 28
+    },
+    {
+      x: 107,
+      y: 36
+    },
+    {
+      x: 13,
+      y: 28
+    },
+    {
+      x: 64,
+      y: 19
+    },
+    {
+      x: 34,
+      y: 25
     },
     {
       x: 39,
+      y: 43
+    },
+    {
+      x: 127,
       y: 33
     },
     {
       x: 89,
-      y: 36
-    },
-    {
-      x: 84,
-      y: 10
-    },
-    {
-      x: 29,
-      y: 30
-    },
-    {
-      x: 132,
-      y: 29
-    },
-    {
-      x: 52,
-      y: 33
-    },
-    {
-      x: 79,
-      y: 32
-    },
-    {
-      x: 23,
-      y: 34
-    },
-    {
-      x: 138,
-      y: 29
-    },
-    {
-      x: 159,
-      y: 19
-    },
-    {
-      x: 98,
-      y: 28
-    },
-    {
-      x: 80,
-      y: 34
-    },
-    {
-      x: 101,
       y: 20
     },
     {
-      x: 135,
+      x: 35,
+      y: 16
+    },
+    {
+      x: 75,
+      y: 32
+    },
+    {
+      x: 12,
+      y: 30
+    },
+    {
+      x: 36,
+      y: 43
+    },
+    {
+      x: 137,
+      y: 34
+    },
+    {
+      x: 66,
+      y: 10
+    },
+    {
+      x: 25,
+      y: 24
+    },
+    {
+      x: 73,
+      y: 30
+    },
+    {
+      x: 17,
+      y: 19
+    },
+    {
+      x: 78,
+      y: 21
+    },
+    {
+      x: 13,
+      y: 11
+    },
+    {
+      x: 73,
+      y: 20
+    },
+    {
+      x: 121,
+      y: 15
+    },
+    {
+      x: 126,
+      y: 29
+    },
+    {
+      x: 18,
+      y: 20
+    },
+    {
+      x: 95,
+      y: 29
+    },
+    {
+      x: 27,
+      y: 37
+    },
+    {
+      x: 94,
+      y: 18
+    },
+    {
+      x: 86,
+      y: 18
+    },
+    {
+      x: 104,
+      y: 30
+    },
+    {
+      x: 156,
+      y: 45
+    },
+    {
+      x: 83,
+      y: 30
+    },
+    {
+      x: 67,
+      y: 26
+    },
+    {
+      x: 100,
+      y: 16
+    },
+    {
+      x: 120,
+      y: 30
+    },
+    {
+      x: 10,
+      y: 26
+    },
+    {
+      x: 155,
+      y: 43
+    },
+    {
+      x: 10,
+      y: 42
+    },
+    {
+      x: 70,
+      y: 18
+    },
+    {
+      x: 132,
+      y: 23
+    },
+    {
+      x: 45,
+      y: 11
+    },
+    {
+      x: 75,
+      y: 12
+    },
+    {
+      x: 128,
+      y: 42
+    },
+    {
+      x: 133,
+      y: 20
+    },
+    {
+      x: 158,
+      y: 27
+    },
+    {
+      x: 29,
+      y: 17
+    },
+    {
+      x: 65,
+      y: 19
+    },
+    {
+      x: 140,
+      y: 21
+    },
+    {
+      x: 120,
+      y: 14
+    },
+    {
+      x: 28,
+      y: 34
+    },
+    {
+      x: 23,
+      y: 22
+    },
+    {
+      x: 95,
+      y: 31
+    },
+    {
+      x: 64,
+      y: 20
+    },
+    {
+      x: 72,
+      y: 43
+    },
+    {
+      x: 20,
+      y: 20
+    },
+    {
+      x: 107,
+      y: 44
+    },
+    {
+      x: 143,
+      y: 16
+    },
+    {
+      x: 45,
+      y: 19
+    },
+    {
+      x: 79,
+      y: 39
+    },
+    {
+      x: 18,
+      y: 42
+    },
+    {
+      x: 83,
+      y: 32
+    },
+    {
+      x: 49,
+      y: 12
+    },
+    {
+      x: 137,
       y: 35
+    },
+    {
+      x: 94,
+      y: 45
     }
   ],
   boardwalks: [

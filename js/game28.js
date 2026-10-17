@@ -1382,7 +1382,7 @@
     if (!gate) return;
     const open = gateOpen();
     const x0 = gate.x0 * TILE, y0 = gate.y * TILE;
-    const w = (gate.x1 - gate.x0 + 1) * TILE, h = TILE;
+    const w = (gate.x1 - gate.x0 + 1) * TILE, h = (gate.h || 1) * TILE;
     g.save();
     if (open) {
       g.fillStyle = 'rgba(61,220,132,0.12)';
