@@ -37,8 +37,7 @@
   const WARDEN_PATROL_SPEED = PLAYER_SPEED * 1.0;
   const WARDEN_CHASE_SPEED = PLAYER_SPEED * 3.0;
   const WARDEN_RADIUS = 28;
-  const WARDEN_SIGHT_RADIUS = 240;
-  const ALERT_GRACE_MS = 2200;
+  const WARDEN_SIGHT_RADIUS = 480; // 2x the original range, direct request
   const CATCH_RADIUS = 22;
   const PROXIMITY_WARNING_RADIUS = 380;
   const RADAR_DURATION_MS = 10000;
@@ -659,7 +658,7 @@
     return {
       x: c.x, y: c.y, radius: WARDEN_RADIUS, seed: Math.random() * 100,
       state: 'patrol', // 'patrol' | 'alert'
-      alertUntil: 0, targetX: 0, targetY: 0,
+      target: null, targetX: 0, targetY: 0,
       patrolIndex: patrolStartIndex,
       frozenUntil: 0,
       wingPhase: Math.random() * 10,
@@ -705,7 +704,7 @@
       const spawn = LEVEL.monsterSpawns[i];
       const c = tileCenter(spawn.x, spawn.y);
       m.x = c.x; m.y = c.y;
-      m.state = 'patrol'; m.alertUntil = 0;
+      m.state = 'patrol'; m.target = null;
       m.patrolIndex = Math.floor(i * LEVEL.patrolPoints.length / LEVEL.monsterSpawns.length);
       m.frozenUntil = 0;
     });
@@ -1093,20 +1092,35 @@
     if (dy !== 0 && canWardenStandAt(m.x, m.y + dy, m.radius)) m.y += dy;
   }
 
+  // Direct spec: once a Warden locks onto you, that's it -- no grace
+  // period to wait out. It stays locked on that specific player,
+  // tracking their real position whenever it can still see them and
+  // otherwise pursuing wherever it saw them last, until either it
+  // catches them or they make it through a doorway. Only ever locks on
+  // in the first place while you're actually moving -- stand still
+  // outside, even in plain sight, and it has no reason to notice you.
   function updateWarden(m, now, dt) {
     if (now < m.frozenUntil) return; // frozen solid: no flight, no perception
 
-    for (const p of players) {
-      if (p.caught || !isOutside(p) || isInSmoke(p, now)) continue;
-      const d = Math.hypot(p.x - m.x, p.y - m.y);
-      if (d <= WARDEN_SIGHT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
-        m.state = 'alert';
-        m.alertUntil = now + ALERT_GRACE_MS;
+    if (m.state === 'patrol') {
+      for (const p of players) {
+        if (p.caught || !p.isMoving || !isOutside(p) || isInSmoke(p, now)) continue;
+        const d = Math.hypot(p.x - m.x, p.y - m.y);
+        if (d <= WARDEN_SIGHT_RADIUS && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+          m.state = 'alert';
+          m.target = p;
+          m.targetX = p.x; m.targetY = p.y;
+          break;
+        }
+      }
+    } else {
+      const p = m.target;
+      if (!p || p.caught || !isOutside(p)) {
+        m.state = 'patrol';
+        m.target = null;
+      } else if (hasLineOfSight(m.x, m.y, p.x, p.y)) {
         m.targetX = p.x; m.targetY = p.y;
       }
-    }
-    if (m.state === 'alert' && now >= m.alertUntil) {
-      m.state = 'patrol';
     }
 
     let tx, ty, speed;
