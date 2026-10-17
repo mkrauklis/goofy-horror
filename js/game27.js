@@ -1602,8 +1602,9 @@
     // the body circle drawn on top of it -- only a sliver of tip ever
     // poked out. Sized relative to the body radius and anchored a little
     // above-behind it instead, so the span clearly reads past the
-    // silhouette rather than disappearing into it.
-    const span = radius * 1.8, sweep = Math.sin(flap) * 0.5;
+    // silhouette rather than disappearing into it. 1.8x bigger again on
+    // top of that fix, direct follow-up request.
+    const span = radius * 3.24, sweep = Math.sin(flap) * 0.5;
     g.save();
     g.translate(0, -radius * 0.2);
     g.scale(side, 1);

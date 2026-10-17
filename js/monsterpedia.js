@@ -794,8 +794,9 @@
       // Sized relative to the body radius and anchored a little above-
       // behind it (not dead center) so the span clearly extends past the
       // body's own silhouette instead of being drawn almost entirely
-      // behind it.
-      const span = radius * 1.8, sweep = Math.sin(flap) * 0.5;
+      // behind it. 1.8x bigger again on top of that, direct follow-up
+      // request.
+      const span = radius * 3.24, sweep = Math.sin(flap) * 0.5;
       g.save();
       g.translate(0, -radius * 0.2);
       g.scale(side, 1);
