@@ -34,6 +34,7 @@
   const reacherCtx = ctxFor('monster-canvas-reacher');
   const gargoyleCtx = ctxFor('monster-canvas-gargoyle');
   const wardenCtx = ctxFor('monster-canvas-warden');
+  const grotesqueCtx = ctxFor('monster-canvas-grotesque');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -972,6 +973,87 @@
     g.beginPath();
     g.ellipse(0, 0, er * 0.3, er * 0.6, 0, 0, Math.PI * 2);
     g.fillStyle = '#050208';
+    g.fill();
+
+    g.restore();
+  }
+
+  // The runt of the same family -- half the Warden's radius, no real
+  // flight (small nub wings that just idle-wobble), very dark grey, and
+  // a single pale, vein-shot sclera around a dark red bloodshot iris
+  // instead of a glowing dot -- matches js/game29.js's own Grotesque.
+  function drawGrotesque(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const radius = 28 * 0.5, seed = 17;
+    const wobble = Math.sin(t * 0.004 + seed) * 0.15;
+
+    [-1, 1].forEach((side) => {
+      g.save();
+      g.scale(side, 1);
+      g.rotate(0.5 + wobble);
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.quadraticCurveTo(radius * 0.9, -radius * 0.5, radius * 1.3, -radius * 0.1);
+      g.quadraticCurveTo(radius * 0.7, radius * 0.1, 0, 0);
+      g.closePath();
+      g.fillStyle = '#232224';
+      g.fill();
+      g.restore();
+    });
+
+    const legCount = 3;
+    for (let i = 0; i < legCount; i++) {
+      const a = Math.PI * 0.25 + (i / (legCount - 1)) * Math.PI * 0.5;
+      const len = radius * 0.8;
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len + radius * 0.5;
+      drawTaperedTentacle(g, tx, ty, tx * 0.5, ty * 0.5, radius * 0.2, '#1c1a1c');
+    }
+
+    const grad = g.createRadialGradient(-radius * 0.3, -radius * 0.3, 1, 0, 0, radius);
+    grad.addColorStop(0, '#2a282c');
+    grad.addColorStop(1, '#121113');
+    g.beginPath();
+    g.arc(0, 0, radius, 0, Math.PI * 2);
+    g.fillStyle = grad;
+    g.shadowColor = '#000';
+    g.shadowBlur = 10;
+    g.fill();
+    g.shadowBlur = 0;
+    g.strokeStyle = '#000';
+    g.lineWidth = 1;
+    g.stroke();
+
+    const er = radius * 0.55;
+    g.beginPath();
+    g.ellipse(0, 0, er, er * 0.72, 0, 0, Math.PI * 2);
+    g.fillStyle = '#d8b8b4';
+    g.fill();
+    g.save();
+    g.beginPath();
+    g.ellipse(0, 0, er, er * 0.72, 0, 0, Math.PI * 2);
+    g.clip();
+    g.strokeStyle = 'rgba(180,20,20,0.7)';
+    g.lineWidth = 0.6;
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + seed;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * er * 1.2, Math.sin(a) * er * 1.2);
+      g.lineTo(0, 0);
+      g.stroke();
+    }
+    g.restore();
+    g.beginPath();
+    g.arc(0, 0, er * 0.42, 0, Math.PI * 2);
+    g.fillStyle = '#9c1414';
+    g.shadowColor = '#ff2020';
+    g.shadowBlur = 5;
+    g.fill();
+    g.shadowBlur = 0;
+    g.beginPath();
+    g.arc(0, 0, er * 0.16, 0, Math.PI * 2);
+    g.fillStyle = '#0a0304';
     g.fill();
 
     g.restore();
@@ -2781,6 +2863,7 @@
       drawPortraitOrLock(reacherCtx, drawReacher, t);
       drawPortraitOrLock(gargoyleCtx, drawGargoyle, t);
       drawPortraitOrLock(wardenCtx, drawWarden, t);
+      drawPortraitOrLock(grotesqueCtx, drawGrotesque, t);
     }
     requestAnimationFrame(loop);
   }

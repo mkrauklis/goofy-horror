@@ -1,4 +1,4 @@
-# Goofy Horror
+# Desolate Apes
 
 A browser-based game. Real JavaScript, no build step.
 

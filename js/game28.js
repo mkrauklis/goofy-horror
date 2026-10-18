@@ -1059,7 +1059,7 @@
           gameState = 'complete';
           playWinJingle();
           if (window.GoofyStory) window.GoofyStory.completeLevel(28);
-          setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+          setTimeout(() => { window.location.href = 'level29.html'; }, 2000);
         } else if (now - lastGateHintAt > 2000) {
           lastGateHintAt = now;
           spawnFloatingText(tileCenter(t.x, t.y).x, tileCenter(t.x, t.y).y, 'PRESS ALL 3 SWITCHES FIRST');

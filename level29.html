@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; Level 29</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 29 &mdash; Sunrise Escape</h1>
+  <p class="objective">Four bare rooftops in a row, the sky just starting to go pink at the edges instead of pitch dark. No boardwalks this time &mdash; find all <strong>3</strong> ziplines and ride them (at <strong>2.2x</strong> your speed) across the open gaps between roofs, then get everyone into the elevator on the far roof to escape. Fifteen tiny, very dark grey Grotesques with bloodshot red eyes swarm the rooftops &mdash; slow on their own at <strong>0.8x</strong> your speed, but there's a lot of them.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <span id="hud-ziplines">Ziplines ridden: 0/3</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    Same bare rooftop deco as the wing before this one &mdash; 2x2
+    maintenance crates and rooftop fans, no walls, no way inside &mdash;
+    but four separate roofs this time, each one a real gap of open air
+    from the next. Nothing bridges them. The sky's gone from black to a
+    deep, warm pink along the horizon; it's dim, not dark, your own
+    flashlight filling in the difference.
+  </p>
+  <p class="level-description">
+    Each gap has exactly one zipline strung across it, post on this
+    roof, landing spot on the next. Walk up to a post and it fires
+    automatically, no button to press &mdash; you're carried straight
+    across at <strong>2.2x</strong> your own speed and can't be caught
+    mid-ride. They only run one way; there's no walking back across a
+    gap once you've crossed it.
+  </p>
+  <p class="level-description">
+    The Grotesques are the smallest things in this book &mdash; barely
+    half your size, dark grey all over with one bloodshot red eye apiece
+    &mdash; and individually slower than you at <strong>0.8x</strong>
+    your speed, easy to outrun one at a time. There are <strong>15</strong>
+    of them spread across the four roofs, though, patrolling independently,
+    and getting boxed in by several at once is a real problem a single
+    slow chaser never would be.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level29/level.js"></script>
+<script src="js/game29.js"></script>
+</body>
+</html>
