@@ -70,9 +70,12 @@
   const CHARGE_IMPACT_MS = 500;
 
   // 2. Reposition & spin: glides to a random spot over 2s, then spins
-  // with its claws out for 5s straight.
+  // with its claws out for 5s straight, caroming around the pad off its
+  // own edges at 1.5x player speed the whole time instead of holding
+  // still.
   const REPOSITION_MS = 2000;
   const SPIN_MS = 5000;
+  const SPIN_MOVE_SPEED = PLAYER_SPEED * 1.5;
 
   // 3. Spear fling: a stationary volley aimed at whoever's closest.
   const SPEAR_COUNT = 5;
@@ -85,7 +88,7 @@
   const DIVEBOMB_RISE_MS = 800;
   const DIVEBOMB_SHADOW_MS = 1200;
   const DIVEBOMB_SPEED = PLAYER_SPEED * 3;
-  const DIVEBOMB_IMPACT_RADIUS = BOSS_RADIUS * 1.15;
+  const DIVEBOMB_IMPACT_RADIUS = TILE * 10;
 
   // Phase 2, gained in addition to the four above once it's in Primal
   // Form.
@@ -607,6 +610,7 @@
       // reposition & spin
       repoSubPhase: 'moving', // 'moving' | 'spinning'
       repoStartX: 0, repoStartY: 0, repoTargetX: 0, repoTargetY: 0,
+      spinDir: { x: 1, y: 0 },
 
       // spear fling
       spearsThrown: 0,
@@ -1020,9 +1024,22 @@
       const t = clamp((now - boss.phaseStartedAt) / (REPOSITION_MS / speedMult(now)), 0, 1);
       boss.x = boss.repoStartX + (boss.repoTargetX - boss.repoStartX) * t;
       boss.y = boss.repoStartY + (boss.repoTargetY - boss.repoStartY) * t;
-      if (t >= 1) { boss.repoSubPhase = 'spinning'; boss.spinStartedAt = now; }
+      if (t >= 1) {
+        boss.repoSubPhase = 'spinning';
+        boss.spinStartedAt = now;
+        const angle = Math.random() * Math.PI * 2;
+        boss.spinDir = { x: Math.cos(angle), y: Math.sin(angle) };
+      }
       return;
     }
+    // caroms around the pad off its own edges, same ricochet rule the
+    // gear-throw-style projectiles elsewhere in this game use.
+    const step = SPIN_MOVE_SPEED * speedMult(now) * dt;
+    let nx = boss.x + boss.spinDir.x * step;
+    let ny = boss.y + boss.spinDir.y * step;
+    if (nx < ARENA_MIN_X || nx > ARENA_MAX_X) { boss.spinDir.x *= -1; nx = clamp(nx, ARENA_MIN_X, ARENA_MAX_X); }
+    if (ny < ARENA_MIN_Y || ny > ARENA_MAX_Y) { boss.spinDir.y *= -1; ny = clamp(ny, ARENA_MIN_Y, ARENA_MAX_Y); }
+    boss.x = nx; boss.y = ny;
     if (now - boss.spinStartedAt >= SPIN_MS / speedMult(now)) finishAttack(now);
   }
 
@@ -1669,6 +1686,7 @@
     if (boss.phase !== 'divebomb' || boss.diveSubPhase !== 'shadow') return;
     const t = clamp((now - boss.phaseStartedAt) / DIVEBOMB_SHADOW_MS, 0, 1);
     g.save();
+    // the body-sized silhouette where it actually lands
     g.beginPath();
     g.ellipse(boss.diveShadowX, boss.diveShadowY, boss.radius * (0.6 + t * 0.5), boss.radius * (0.4 + t * 0.35), 0, 0, Math.PI * 2);
     g.fillStyle = `rgba(10,5,5,${0.35 + t * 0.35})`;
@@ -1676,6 +1694,16 @@
     g.strokeStyle = `rgba(255,80,40,${0.3 + t * 0.5})`;
     g.lineWidth = 2;
     g.stroke();
+    // the real blast radius (10 tiles), drawn as a growing ring so a 10-tile
+    // impact doesn't catch you with no real warning the way a body-sized
+    // shadow alone would.
+    g.beginPath();
+    g.arc(boss.diveShadowX, boss.diveShadowY, DIVEBOMB_IMPACT_RADIUS * t, 0, Math.PI * 2);
+    g.strokeStyle = `rgba(255,80,40,${0.5 * t})`;
+    g.lineWidth = 3;
+    g.setLineDash([10, 8]);
+    g.stroke();
+    g.setLineDash([]);
     g.restore();
   }
 
