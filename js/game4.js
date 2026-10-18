@@ -2130,6 +2130,33 @@
     g.translate(R * 0.55, -bob);
     const headR = R * 0.5;
 
+    // Chimp ears + muzzle, drawn first so the glass dome mostly
+    // covers them -- only the bits that poke out past its round rim
+    // show, same as a real head inside an open helmet. Direct
+    // request: "make the player model a chimp with a helmet on".
+    const furShade = shade(color, -0.2);
+    [-1, 1].forEach((side) => {
+      g.beginPath();
+      g.arc(-headR * 0.1, side * headR * 0.75, headR * 0.38, 0, Math.PI * 2);
+      g.fillStyle = furShade;
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.3)';
+      g.lineWidth = 0.75;
+      g.stroke();
+    });
+    g.beginPath();
+    g.ellipse(headR * 0.65, headR * 0.1, headR * 0.5, headR * 0.38, 0, 0, Math.PI * 2);
+    g.fillStyle = '#4a3828';
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.35)';
+    g.lineWidth = 0.75;
+    g.stroke();
+    g.beginPath();
+    g.arc(headR * 1.0, headR * 0.0, headR * 0.07, 0, Math.PI * 2);
+    g.arc(headR * 1.0, headR * 0.22, headR * 0.07, 0, Math.PI * 2);
+    g.fillStyle = '#1c130c';
+    g.fill();
+
     g.beginPath();
     g.arc(0, 0, headR * 1.05, 0, Math.PI * 2);
     g.strokeStyle = '#1c1c18';
