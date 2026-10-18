@@ -37,7 +37,6 @@
   const MONSTER_SPEED = PLAYER_SPEED * 0.8;
   const MONSTER_SIGHT_RADIUS = 200;
   const ALERT_GRACE_MS = 2500;
-  const REPATH_MS = 500;
   const CATCH_RADIUS = 16;
   const PROXIMITY_WARNING_RADIUS = 340;
   const RADAR_DURATION_MS = 10000;
@@ -572,6 +571,9 @@
     }
   }
 
+  // Open sky never blocks sight -- a flying Grotesque has a clear view
+  // across a gap the same as across its own rooftop. Big crates and fans
+  // still do, same as they always have.
   function hasLineOfSight(x0, y0, x1, y1) {
     const dist = Math.hypot(x1 - x0, y1 - y0);
     const steps = Math.ceil(dist / (TILE / 2));
@@ -579,43 +581,9 @@
       const t = i / steps;
       const t2 = worldToTile(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
       const ch = tileChar(t2.x, t2.y);
-      if (ch === '#') return false;
+      if (ch === 'C' || ch === 'F') return false;
     }
     return true;
-  }
-
-  function bfsPath(graph, start, goal) {
-    const key = (t) => t.y * COLS + t.x;
-    const startKey = key(start), goalKey = key(goal);
-    if (!graph.has(startKey) || !graph.has(goalKey)) return null;
-    if (startKey === goalKey) return [start];
-    const visited = new Set([startKey]);
-    const prev = new Map();
-    const queue = [start];
-    let found = false;
-    while (queue.length) {
-      const cur = queue.shift();
-      if (key(cur) === goalKey) { found = true; break; }
-      const neighbors = graph.get(key(cur)) || [];
-      for (const n of neighbors) {
-        const k = key(n);
-        if (!visited.has(k)) {
-          visited.add(k);
-          prev.set(k, cur);
-          queue.push(n);
-        }
-      }
-    }
-    if (!found) return null;
-    const path = [goal];
-    let curKey = goalKey;
-    while (curKey !== startKey) {
-      const p = prev.get(curKey);
-      path.push(p);
-      curKey = key(p);
-    }
-    path.reverse();
-    return path;
   }
 
   // ---- game state ----
@@ -655,16 +623,18 @@
     ? [makePlayer(LEVEL.spawn1, '#ff8a3d')]
     : [makePlayer(LEVEL.spawn1, '#ff8a3d'), makePlayer(LEVEL.spawn2, '#3ddc84')];
 
-  // Fifteen Grotesques -- tiny, dark grey, one bloodshot eye apiece,
-  // each confined to its own rooftop (the gap on either side is just as
-  // impassable to them as it is to you on foot). Same sight-based
-  // patrol/chase model most of this game's ground monsters use.
+  // Fifteen Grotesques -- tiny, dark grey, one bloodshot eye apiece. Each
+  // one patrols its own rooftop normally, but unlike every ground
+  // monster elsewhere in this game, a spotted intruder isn't safe just
+  // because there's open sky between them -- it flies the gap straight
+  // at you, direct-line, the same true-flight model Level 28's Warden
+  // uses (no walkable-tile pathfinding at all, since there's nothing to
+  // path around up there).
   function makeGrotesque(spawn) {
     const c = tileCenter(spawn.x, spawn.y);
     return {
       x: c.x, y: c.y, radius: MONSTER_RADIUS, seed: Math.random() * 100,
       platform: spawn.platform,
-      path: [], pathIndex: 0, nextRepathAt: 0,
       state: 'patrol', // 'patrol' | 'alert'
       alertUntil: 0, alertTargetTile: null,
       patrolIndex: Math.floor(Math.random() * (LEVEL.platformPatrolPoints[spawn.platform] || [{}]).length),
@@ -675,7 +645,6 @@
   const monsters = (LEVEL.monsterSpawns || []).map((spawn) => makeGrotesque(spawn));
 
   let ziplinesRiddenCount = 0;
-  let monsterGraph = null;
 
   let crates = [];
   let radarUntil = 0;
@@ -710,19 +679,11 @@
       const spawn = LEVEL.monsterSpawns[i];
       const c = tileCenter(spawn.x, spawn.y);
       m.x = c.x; m.y = c.y;
-      m.path = []; m.pathIndex = 0; m.nextRepathAt = 0;
       m.state = 'patrol'; m.alertUntil = 0; m.alertTargetTile = null;
       m.frozenUntil = 0;
     });
 
     ziplinesRiddenCount = 0;
-    // Built once here rather than per-monster, per-repath (see
-    // updateMonster) -- the terrain never changes mid-level, and with a
-    // 40-platform, 306x162-tile maze, rebuilding this full-grid
-    // adjacency list from scratch every 500ms for all 15 Grotesques
-    // independently (15 full grid scans every half second) was the
-    // actual source of this level's lag, not the rendering.
-    monsterGraph = buildMonsterGraph();
 
     crates = (LEVEL.crateSpawns || []).map((c2) => ({
       x: c2.x, y: c2.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
@@ -1120,30 +1081,10 @@
     }
   }
 
-  // ---- Grotesque AI: sight-based patrol/chase, confined to its own
-  // platform (the void makes that automatic -- no gap-crossing in the
-  // walkable graph at all).
-  function monsterCanOccupy(ch) {
-    return ch !== '#' && ch !== 'S' && ch !== 'C' && ch !== 'F';
-  }
-
-  function buildMonsterGraph() {
-    const graph = new Map();
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        if (!monsterCanOccupy(LEVEL.grid[y][x])) continue;
-        const list = [];
-        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) return;
-          if (monsterCanOccupy(LEVEL.grid[ny][nx])) list.push({ x: nx, y: ny });
-        });
-        graph.set(y * COLS + x, list);
-      }
-    }
-    return graph;
-  }
-
+  // ---- Grotesque AI: sight-based patrol/chase. Flies, so there's no
+  // walkable-tile pathfinding here at all -- just steer straight at the
+  // target every frame, same true-flight model Level 28's Warden uses.
+  // Open sky is no longer an obstacle, it's just more sky.
   function updateDetection(m, now) {
     for (const p of players) {
       if (p.caught || p.riding || isHidden(p) || isInSmoke(p, now)) continue;
@@ -1156,8 +1097,6 @@
     }
     if (m.state === 'alert' && now >= m.alertUntil) {
       m.state = 'patrol';
-      m.path = [];
-      m.pathIndex = 0;
     }
   }
 
@@ -1167,35 +1106,22 @@
     updateDetection(m, now);
 
     const myPoints = LEVEL.platformPatrolPoints[m.platform] || [];
-    if (now >= m.nextRepathAt) {
-      m.nextRepathAt = now + REPATH_MS;
-      const startTile = worldToTile(m.x, m.y);
-      const goalTile = m.state === 'alert' ? m.alertTargetTile : myPoints[m.patrolIndex % myPoints.length];
-      if (goalTile) {
-        const path = bfsPath(monsterGraph, startTile, goalTile);
-        if (path && path.length > 1) {
-          m.path = path.slice(1);
-          m.pathIndex = 0;
-        } else {
-          m.path = [];
-          m.pathIndex = 0;
-          if (m.state === 'patrol' && myPoints.length) m.patrolIndex = (m.patrolIndex + 1) % myPoints.length;
-        }
-      }
+    let target = null;
+    if (m.state === 'alert' && m.alertTargetTile) {
+      target = tileCenter(m.alertTargetTile.x, m.alertTargetTile.y);
+    } else if (myPoints.length) {
+      const pt = myPoints[m.patrolIndex % myPoints.length];
+      target = tileCenter(pt.x, pt.y);
     }
 
     const speed = MONSTER_SPEED;
-    if (m.path && m.pathIndex < m.path.length) {
-      const step = speed * dt;
-      const target = tileCenter(m.path[m.pathIndex].x, m.path[m.pathIndex].y);
+    if (target) {
       const dx = target.x - m.x, dy = target.y - m.y;
       const d = Math.hypot(dx, dy);
-      if (d < step) {
+      const step = speed * dt;
+      if (d < step || d < 4) {
         m.x = target.x; m.y = target.y;
-        m.pathIndex++;
-        if (m.pathIndex >= m.path.length && m.state === 'patrol' && myPoints.length) {
-          m.patrolIndex = (m.patrolIndex + 1) % myPoints.length;
-        }
+        if (m.state === 'patrol' && myPoints.length) m.patrolIndex = (m.patrolIndex + 1) % myPoints.length;
       } else {
         m.x += (dx / d) * step;
         m.y += (dy / d) * step;
@@ -1547,10 +1473,10 @@
   }
 
   // The Grotesque: a tiny, hunched, very dark grey gargoyle-family body
-  // with real (if flightless) wings -- same membrane-and-rim-stroke
-  // build as the Gargoyle/Warden, just scaled to its own tiny radius and
-  // anchored off-center so the span actually reads as wings instead of
-  // a dark blob fused to the body -- and one bloodshot red eye, a pale,
+  // with real, working wings -- same membrane-and-rim-stroke build as
+  // the Gargoyle/Warden, just scaled to its own tiny radius and anchored
+  // off-center so the span actually reads as wings instead of a dark
+  // blob fused to the body -- and one bloodshot red eye, a pale,
   // vein-shot sclera with a dark red iris, not just a glowing dot like
   // its bigger cousins.
   function drawGrotesque(g, now, m) {

@@ -1109,8 +1109,8 @@
       g.stroke();
       g.restore();
     }
-    wing(-1, radius * 1.9);
-    wing(1, radius * 1.9);
+    wing(-1, radius * 2.9);
+    wing(1, radius * 2.9);
 
     const legCount = 7;
     for (let i = 0; i < legCount; i++) {

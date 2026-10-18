@@ -1405,15 +1405,24 @@
       g.restore();
     });
   }
+  // This whole arena renders at ZOOM 0.42 so the whole pad stays on
+  // screen at once -- every projectile here is scaled up by roughly the
+  // inverse of that (not the hit radius, just what you see) so they
+  // still read clearly instead of shrinking into near-invisible specks,
+  // which was making the attacks feel like they weren't doing anything.
+  const ATTACK_VISUAL_SCALE = 2.4;
   function drawSpears(g) {
     spears.forEach((s) => {
       g.save();
       g.translate(s.x, s.y);
       g.rotate(Math.atan2(s.vy, s.vx));
+      g.scale(ATTACK_VISUAL_SCALE, ATTACK_VISUAL_SCALE);
       g.strokeStyle = '#8a6a3a'; g.lineWidth = 2.5; g.lineCap = 'round';
       g.beginPath(); g.moveTo(-14, 0); g.lineTo(8, 0); g.stroke();
       g.fillStyle = '#c0c0c8';
       g.beginPath(); g.moveTo(8, 0); g.lineTo(16, -3); g.lineTo(16, 3); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 0.8;
+      g.beginPath(); g.moveTo(8, 0); g.lineTo(16, -3); g.lineTo(16, 3); g.closePath(); g.stroke();
       g.restore();
     });
   }
@@ -1421,13 +1430,16 @@
     antimatterBolts.forEach((s) => {
       g.save();
       g.translate(s.x, s.y);
+      g.scale(ATTACK_VISUAL_SCALE, ATTACK_VISUAL_SCALE);
       const grad = g.createRadialGradient(0, 0, 0, 0, 0, 9);
       grad.addColorStop(0, '#f0d6ff');
       grad.addColorStop(0.5, '#8a2aff');
       grad.addColorStop(1, 'rgba(30,0,60,0)');
       g.beginPath(); g.arc(0, 0, 9, 0, Math.PI * 2);
-      g.fillStyle = grad; g.shadowColor = '#8a2aff'; g.shadowBlur = 10;
+      g.fillStyle = grad; g.shadowColor = '#8a2aff'; g.shadowBlur = 14;
       g.fill(); g.shadowBlur = 0;
+      g.strokeStyle = 'rgba(240,214,255,0.6)'; g.lineWidth = 1;
+      g.beginPath(); g.arc(0, 0, 9, 0, Math.PI * 2); g.stroke();
       g.restore();
     });
   }
@@ -1556,13 +1568,36 @@
     const charging = boss.phase === 'charge';
     const telegraphing = charging && (t - boss.phaseStartedAt) < CHARGE_TELEGRAPH_MS;
     const curled = boss.phase === 'curlshockwave' && boss.curlSubPhase === 'curling';
-    const curlT = curled ? clamp((t - boss.phaseStartedAt) / CURL_WINDUP_MS, 0, 1) : 0;
+    // Same Primal Form speed multiplier as updateCurlShockwaveAttack's own
+    // windup check -- otherwise the curl-up animation ran on the slower,
+    // un-boosted clock while the real windup finished 1.2x faster, so the
+    // boss would snap into the shockwave mid-animation instead of
+    // finishing the curl first.
+    const curlT = curled ? clamp((t - boss.phaseStartedAt) / (CURL_WINDUP_MS / speedMult(t)), 0, 1) : 0;
+
+    // The "spin" half of reposition & spin previously had no visual at
+    // all -- the boss just sat there motionless for 5 full seconds with
+    // a secretly bigger catch radius, which read as the attack doing
+    // nothing. It now actually spins, fast enough to be unmistakable,
+    // and the bigger danger radius it's claiming is drawn as a visible
+    // ring so getting caught by it doesn't feel like it came from
+    // nowhere.
+    const spinning = boss.phase === 'reposition' && boss.repoSubPhase === 'spinning';
+    if (spinning) {
+      const spinElapsed = (t - boss.spinStartedAt) * speedMult(t);
+      g.rotate(spinElapsed * 0.012);
+      g.beginPath();
+      g.arc(0, 0, BOSS_SPIN_CATCH_RADIUS, 0, Math.PI * 2);
+      g.strokeStyle = bossColor(`rgba(255,60,40,${0.4 + 0.25 * Math.sin(t * 0.02)})`);
+      g.lineWidth = 5;
+      g.stroke();
+    }
 
     // wings fold flat against the body during a charge telegraph or the
     // curl windup, otherwise they beat normally.
     const wingSpanMult = (telegraphing || curled) ? 0.35 : 1;
-    drawWing(g, -1, flap, bossColor('#5a5e64'), radius * 1.9 * wingSpanMult, radius * 0.05);
-    drawWing(g, 1, flap, bossColor('#5a5e64'), radius * 1.9 * wingSpanMult, radius * 0.05);
+    drawWing(g, -1, flap, bossColor('#5a5e64'), radius * 2.9 * wingSpanMult, radius * 0.05);
+    drawWing(g, 1, flap, bossColor('#5a5e64'), radius * 2.9 * wingSpanMult, radius * 0.05);
 
     const legCount = 7;
     for (let i = 0; i < legCount; i++) {
@@ -1646,13 +1681,24 @@
 
   function drawShockwaveRing(g, now) {
     if (boss.phase !== 'curlshockwave' || boss.curlSubPhase !== 'shockwave') return;
-    const t = clamp((now - boss.shockwaveStartedAt) / SHOCKWAVE_EXPAND_MS, 0, 1);
+    // Must match updateCurlShockwaveAttack's own timing exactly (including
+    // the Primal Form speed multiplier) -- this ring previously expanded
+    // on a plain, un-boosted clock while the real hit check behind it ran
+    // 1.2x faster in Phase 2, so the ring visibly lagged the actual hit
+    // radius and the attack looked like it was catching you out of thin
+    // air, well before the ring ever reached you.
+    const t = clamp((now - boss.shockwaveStartedAt) / (SHOCKWAVE_EXPAND_MS / speedMult(now)), 0, 1);
     const radius = t * SHOCKWAVE_MAX_RADIUS;
     g.save();
     g.beginPath();
     g.arc(boss.x, boss.y, radius, 0, Math.PI * 2);
-    g.strokeStyle = bossColor(`rgba(255,80,40,${0.7 * (1 - t * 0.6)})`);
-    g.lineWidth = 6;
+    g.strokeStyle = bossColor(`rgba(255,80,40,${0.8 * (1 - t * 0.6)})`);
+    g.lineWidth = 14;
+    g.stroke();
+    g.beginPath();
+    g.arc(boss.x, boss.y, radius, 0, Math.PI * 2);
+    g.strokeStyle = bossColor(`rgba(255,220,180,${0.6 * (1 - t)})`);
+    g.lineWidth = 4;
     g.stroke();
     g.restore();
   }
