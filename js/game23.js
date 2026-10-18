@@ -1815,16 +1815,27 @@
   // A single limb: a thick rounded stroke from (hipX,hipY) to (tipX,tipY)
   // with a small cap circle (boot/glove) at the moving end.
   function drawLimb(g, hipX, hipY, tipX, tipY, width, color, capColor, capR) {
+    // A slight elbow/knee bow instead of a dead-straight line, plus a
+    // lit hand/foot instead of a flat-filled circle -- more follow-up
+    // for a more expressive chimp body.
+    const mx = (hipX + tipX) / 2, my = (hipY + tipY) / 2;
+    const dx = tipX - hipX, dy = tipY - hipY;
+    const len = Math.hypot(dx, dy) || 1;
+    const bend = len * 0.14;
+    const bx = mx - (dy / len) * bend, by = my + (dx / len) * bend;
     g.strokeStyle = color;
     g.lineWidth = width;
     g.lineCap = 'round';
     g.beginPath();
     g.moveTo(hipX, hipY);
-    g.lineTo(tipX, tipY);
+    g.quadraticCurveTo(bx, by, tipX, tipY);
     g.stroke();
+    const capGrad = g.createRadialGradient(tipX - capR * 0.3, tipY - capR * 0.3, capR * 0.1, tipX, tipY, capR);
+    capGrad.addColorStop(0, capColor);
+    capGrad.addColorStop(1, 'rgba(0,0,0,0.3)');
     g.beginPath();
     g.arc(tipX, tipY, capR, 0, Math.PI * 2);
-    g.fillStyle = capColor;
+    g.fillStyle = capGrad;
     g.fill();
   }
 
@@ -1947,7 +1958,8 @@
       // Chimp ears + muzzle, drawn first so the glass dome mostly
       // covers them -- only the bits that poke out past its round rim
       // show, same as a real head inside an open helmet. Direct
-      // request: "make the player model a chimp with a helmet on".
+      // request: "make the player model a chimp with a helmet on", with
+      // a later follow-up for more face/fur detail.
       const furShade = shade(p.color, -0.2);
       [-1, 1].forEach((side) => {
         g.beginPath();
@@ -1957,7 +1969,22 @@
         g.strokeStyle = 'rgba(0,0,0,0.3)';
         g.lineWidth = 0.75;
         g.stroke();
+        // a little inner-ear shading so the ears read as cupped, not flat
+        g.beginPath();
+        g.arc(-headR * 0.05, side * headR * 0.75, headR * 0.2, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(0,0,0,0.25)';
+        g.fill();
       });
+      // a small tuft of fur at the back of the head, poking past the
+      // dome's rim the same way the ears do -- breaks up the dome's
+      // silhouette on the side with no muzzle to do that job instead.
+      g.beginPath();
+      g.moveTo(-headR * 0.85, -headR * 0.2);
+      g.quadraticCurveTo(-headR * 1.18, -headR * 0.06, -headR * 0.92, headR * 0.12);
+      g.quadraticCurveTo(-headR * 1.08, headR * 0.2, -headR * 0.8, headR * 0.3);
+      g.closePath();
+      g.fillStyle = furShade;
+      g.fill();
       g.beginPath();
       g.ellipse(headR * 0.65, headR * 0.1, headR * 0.5, headR * 0.38, 0, 0, Math.PI * 2);
       g.fillStyle = '#4a3828';
@@ -1970,6 +1997,14 @@
       g.arc(headR * 1.0, headR * 0.22, headR * 0.07, 0, Math.PI * 2);
       g.fillStyle = '#1c130c';
       g.fill();
+      // a small mouth line under the nostrils
+      g.beginPath();
+      g.moveTo(headR * 0.88, headR * 0.38);
+      g.quadraticCurveTo(headR * 1.02, headR * 0.46, headR * 1.16, headR * 0.36);
+      g.strokeStyle = 'rgba(15,8,6,0.65)';
+      g.lineWidth = headR * 0.08;
+      g.lineCap = 'round';
+      g.stroke();
 
       // sealed collar ring
       g.beginPath();
