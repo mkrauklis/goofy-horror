@@ -487,16 +487,30 @@
     }
   }
 
-  // The sky beyond the rooftop edges -- dawn, not night: a handful of
-  // close, warm dusky-rose tones (same flat-shade-plus-hash technique
-  // every other void render here uses, so it reads as one continuous
-  // sky instead of a per-tile seam) with the odd gold glint instead of
-  // a star.
-  const SKY_SHADES = ['#6a4656', '#71495a', '#784d5e', '#664354', '#744a5c'];
+  // The sky beyond the rooftop edges -- dawn, not night: a genuine
+  // orange sunrise gradient (deep dusk up high fading into a warm,
+  // saturated orange near the rooftops) computed smoothly from each
+  // tile's own height rather than picked from a handful of per-tile
+  // hues -- the old hash-picked palette read as a visible checkerboard
+  // of five fairly different colors ("too griddy", direct feedback).
+  // Only a tiny brightness jitter (not a hue swap) is layered on top
+  // for texture, so neighboring tiles stay close enough to blend into
+  // one continuous sky.
+  function lerpHex(a, b, t) {
+    const an = parseInt(a.slice(1), 16), bn = parseInt(b.slice(1), 16);
+    const ar = (an >> 16) & 255, ag = (an >> 8) & 255, ab = an & 255;
+    const br = (bn >> 16) & 255, bg = (bn >> 8) & 255, bb = bn & 255;
+    const toHex = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+    return `#${toHex(ar + (br - ar) * t)}${toHex(ag + (bg - ag) * t)}${toHex(ab + (bb - ab) * t)}`;
+  }
+  const SKY_TOP = '#3a2230';
+  const SKY_BOTTOM = '#d8762e';
   function skyShade(x, y) {
+    const t = clamp(y / ROWS, 0, 1);
+    const base = lerpHex(SKY_TOP, SKY_BOTTOM, t);
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
-    const idx = ((h ^ (h >>> 13)) >>> 0) % SKY_SHADES.length;
-    return SKY_SHADES[idx];
+    const u = ((h ^ (h >>> 13)) >>> 0) % 100;
+    return shade(base, (u - 50) / 1400);
   }
   function drawVoidTile(g, px, py, x, y) {
     g.fillStyle = skyShade(x, y);
@@ -504,7 +518,7 @@
     const h = Math.imul(x, 1274126177) ^ Math.imul(y, 2516582981);
     const u = (h ^ (h >>> 15)) >>> 0;
     if (u % 10 === 0) {
-      g.fillStyle = `rgba(255,205,150,${0.25 + (u % 5) * 0.1})`;
+      g.fillStyle = `rgba(255,165,70,${0.25 + (u % 5) * 0.1})`;
       g.beginPath();
       g.arc(px + (u % TILE), py + ((u >> 4) % TILE), 1.1, 0, Math.PI * 2);
       g.fill();
@@ -633,6 +647,7 @@
       walkPhase: 0,
       shotgunAmmo: 0,
       riding: null, // { x0,y0,x1,y1, startedAt, durationMs } while on a zipline
+      lastZiplineAnchor: null,
     };
   }
 
@@ -659,7 +674,7 @@
   }
   const monsters = (LEVEL.monsterSpawns || []).map((spawn) => makeGrotesque(spawn));
 
-  let riddenZiplines = new Set();
+  let ziplinesRiddenCount = 0;
 
   let crates = [];
   let radarUntil = 0;
@@ -674,6 +689,7 @@
     const c = tileCenter(p.spawn.x, p.spawn.y);
     p.x = c.x; p.y = c.y; p.facing = { x: 0, y: 1 };
     p.riding = null;
+    p.lastZiplineAnchor = null;
   }
 
   function resetLevel() {
@@ -698,7 +714,7 @@
       m.frozenUntil = 0;
     });
 
-    riddenZiplines = new Set();
+    ziplinesRiddenCount = 0;
 
     crates = (LEVEL.crateSpawns || []).map((c2) => ({
       x: c2.x, y: c2.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
@@ -814,12 +830,12 @@
     return t.x >= el.x0 && t.x <= el.x1 && t.y >= el.y0 && t.y <= el.y1;
   }
 
+  // The maze has no fixed "next" zipline the way the old 4-roof chain
+  // did -- there are 39 of them and every one is two-way -- so the
+  // scanner just always points straight at the elevator itself. It
+  // won't thread the maze for you, but dead-reckoning toward the goal
+  // is still the right tool for "which general direction."
   function scannerTarget() {
-    const zs = LEVEL.ziplines || [];
-    if (riddenZiplines.size < zs.length) {
-      const z = zs[riddenZiplines.size];
-      return tileCenter(z.x0, z.y0);
-    }
     const el = LEVEL.elevator;
     return tileCenter(Math.round((el.x0 + el.x1) / 2), Math.round((el.y0 + el.y1) / 2));
   }
@@ -1027,22 +1043,39 @@
     });
   }
 
-  // ---- ziplines: walking up to a post rides it, scripted and automatic.
+  // ---- ziplines: walking up to EITHER post rides it in that direction,
+  // scripted and automatic -- the maze rework made every one two-way.
+  // A time-based cooldown alone isn't enough here: a player standing
+  // still exactly on a landing anchor would just auto-fire right back
+  // the instant the cooldown expired, with no input at all. Instead each
+  // player remembers the anchor they just landed on and it stays
+  // disarmed until they've actually moved out of its interact radius at
+  // least once -- stepping away and back deliberately still re-triggers
+  // it, standing still never does.
   function updateZiplines(now) {
     players.forEach((p) => {
+      if (p.lastZiplineAnchor) {
+        const d = Math.hypot(p.x - p.lastZiplineAnchor.x, p.y - p.lastZiplineAnchor.y);
+        if (d > ZIPLINE_INTERACT_RADIUS) p.lastZiplineAnchor = null;
+      }
       if (p.caught || p.riding) return;
-      (LEVEL.ziplines || []).forEach((z, idx) => {
+      for (const z of (LEVEL.ziplines || [])) {
         const c0 = tileCenter(z.x0, z.y0);
-        if (Math.hypot(p.x - c0.x, p.y - c0.y) > ZIPLINE_INTERACT_RADIUS) return;
         const c1 = tileCenter(z.x1, z.y1);
-        const dist = Math.hypot(c1.x - c0.x, c1.y - c0.y);
+        let from = null, to = null;
+        if (Math.hypot(p.x - c0.x, p.y - c0.y) <= ZIPLINE_INTERACT_RADIUS) { from = c0; to = c1; }
+        else if (Math.hypot(p.x - c1.x, p.y - c1.y) <= ZIPLINE_INTERACT_RADIUS) { from = c1; to = c0; }
+        if (!from) continue;
+        if (p.lastZiplineAnchor && from.x === p.lastZiplineAnchor.x && from.y === p.lastZiplineAnchor.y) continue;
+        const dist = Math.hypot(to.x - from.x, to.y - from.y);
         const durationMs = (dist / (PLAYER_SPEED * ZIPLINE_SPEED_MULT)) * 1000;
-        p.x = c0.x; p.y = c0.y;
-        p.riding = { x0: c0.x, y0: c0.y, x1: c1.x, y1: c1.y, startedAt: now, durationMs };
+        p.x = from.x; p.y = from.y;
+        p.riding = { x0: from.x, y0: from.y, x1: to.x, y1: to.y, startedAt: now, durationMs };
         p.invulnerableUntil = Math.max(p.invulnerableUntil, now + durationMs + 500);
-        riddenZiplines.add(idx);
+        ziplinesRiddenCount++;
         playZiplineWhoosh();
-      });
+        break;
+      }
     });
     players.forEach((p) => {
       if (!p.riding) return;
@@ -1053,7 +1086,10 @@
       p.y = p.riding.y0 + ny * t;
       p.facing = { x: nx / len, y: ny / len };
       p.isMoving = true;
-      if (t >= 1) p.riding = null;
+      if (t >= 1) {
+        p.lastZiplineAnchor = { x: p.riding.x1, y: p.riding.y1 };
+        p.riding = null;
+      }
     });
   }
 
@@ -1065,7 +1101,7 @@
       gameState = 'complete';
       playWinJingle();
       if (window.GoofyStory) window.GoofyStory.completeLevel(29);
-      setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+      setTimeout(() => { window.location.href = 'level30.html'; }, 2000);
       return;
     }
     const anyoneIn = players.some((p) => !p.caught && !p.riding && inElevator(p));
@@ -1504,9 +1540,12 @@
   }
 
   // The Grotesque: a tiny, hunched, very dark grey gargoyle-family body
-  // with small nub wings (it scurries, it doesn't fly) and one
-  // bloodshot red eye -- a pale, vein-shot sclera with a dark red iris,
-  // not just a glowing dot like its bigger cousins.
+  // with real (if flightless) wings -- same membrane-and-rim-stroke
+  // build as the Gargoyle/Warden, just scaled to its own tiny radius and
+  // anchored off-center so the span actually reads as wings instead of
+  // a dark blob fused to the body -- and one bloodshot red eye, a pale,
+  // vein-shot sclera with a dark red iris, not just a glowing dot like
+  // its bigger cousins.
   function drawGrotesque(g, now, m) {
     const r = m.radius;
     const bob = Math.sin(m.legPhase) * r * 0.1;
@@ -1514,19 +1553,35 @@
     g.save();
     g.translate(m.x, m.y + bob);
 
-    // small nub wings, idle wiggle only
-    const wingWobble = Math.sin(now * 0.004 + m.seed) * 0.15;
+    // real wings, scaled down -- they flap along with its scurry instead
+    // of just idling, even though it never leaves the ground.
+    const flap = Math.sin(m.legPhase * 0.6 + m.seed) * 0.35;
+    const wingColor = m.state === 'alert' ? '#3a2226' : '#232224';
     [-1, 1].forEach((side) => {
+      const span = r * 5.2; // 2x bigger again on top of the earlier wing fix, direct follow-up request
       g.save();
+      g.translate(0, -r * 0.15);
       g.scale(side, 1);
-      g.rotate(0.5 + wingWobble);
+      g.rotate(0.3 + flap);
       g.beginPath();
       g.moveTo(0, 0);
-      g.quadraticCurveTo(r * 0.9, -r * 0.5, r * 1.3, -r * 0.1);
-      g.quadraticCurveTo(r * 0.7, r * 0.1, 0, 0);
+      g.quadraticCurveTo(span * 0.5, -span * 0.4, span, -span * 0.12);
+      g.quadraticCurveTo(span * 0.55, span * 0.12, span * 0.28, span * 0.05);
+      g.quadraticCurveTo(span * 0.14, span * 0.08, 0, 0);
       g.closePath();
-      g.fillStyle = m.state === 'alert' ? '#3a2226' : '#232224';
+      g.fillStyle = wingColor;
       g.fill();
+      g.strokeStyle = 'rgba(210,210,220,0.3)';
+      g.lineWidth = 0.75;
+      g.stroke();
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 0.4;
+      [0.4, 0.75, 1].forEach((f) => {
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.lineTo(span * f, -span * 0.12 * f);
+        g.stroke();
+      });
       g.restore();
     });
 
@@ -1769,7 +1824,7 @@
 
     maskCtx.clearRect(0, 0, VIEW_W, VIEW_H);
     maskCtx.globalCompositeOperation = 'source-over';
-    maskCtx.fillStyle = 'rgba(40,22,26,0.8)';
+    maskCtx.fillStyle = 'rgba(46,24,14,0.78)';
     maskCtx.fillRect(0, 0, VIEW_W, VIEW_H);
 
     const sz = LEVEL.safeZone;
@@ -1806,7 +1861,7 @@
     ctx.beginPath();
     ctx.rect(vx, 0, VIEW_W, VIEW_H);
     ctx.clip();
-    ctx.fillStyle = '#6a4656';
+    ctx.fillStyle = '#5a3222';
     ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
 
     ctx.save();
@@ -2004,11 +2059,7 @@
 
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
-    if (hudZiplinesEl) {
-      const total = (LEVEL.ziplines || []).length;
-      hudZiplinesEl.textContent = `Ziplines ridden: ${riddenZiplines.size}/${total}`;
-      hudZiplinesEl.classList.toggle('done', riddenZiplines.size === total);
-    }
+    if (hudZiplinesEl) hudZiplinesEl.textContent = `Ziplines ridden: ${ziplinesRiddenCount}`;
   }
 
   let lastFrameTime = null;

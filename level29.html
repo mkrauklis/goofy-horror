@@ -15,7 +15,7 @@
 
 <header class="hero">
   <h1>Level 29 &mdash; Sunrise Escape</h1>
-  <p class="objective">Four bare rooftops in a row, the sky just starting to go pink at the edges instead of pitch dark. No boardwalks this time &mdash; find all <strong>3</strong> ziplines and ride them (at <strong>2.2x</strong> your speed) across the open gaps between roofs, then get everyone into the elevator on the far roof to escape. Fifteen tiny, very dark grey Grotesques with bloodshot red eyes swarm the rooftops &mdash; slow on their own at <strong>0.8x</strong> your speed, but there's a lot of them.</p>
+  <p class="objective">Forty small rooftops in an 8x5 grid, the sky just starting to go pink at the edges instead of pitch dark. No boardwalks &mdash; just a maze of <strong>39</strong> ziplines threading every roof to its neighbors, each one ridden in either direction at <strong>2.2x</strong> your speed. Thread the maze to the elevator on the far corner roof and get everyone into it to escape. Fifteen tiny, very dark grey Grotesques with bloodshot red eyes and oversized wings patrol a random scatter of the rooftops &mdash; slow on their own at <strong>0.8x</strong> your speed, but there's a lot of ground to get lost in.</p>
 </header>
 
 <div class="wrap">
@@ -23,7 +23,7 @@
     <div id="hud">
       <span id="hud-timer">Time: 0:00.0</span>
       <span id="hud-best">Best: --:--</span>
-      <span id="hud-ziplines">Ziplines ridden: 0/3</span>
+      <span id="hud-ziplines">Ziplines ridden: 0</span>
       <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
     </div>
     <div id="game-canvas-holder" class="panel">
@@ -38,27 +38,32 @@
   <p class="level-description">
     Same bare rooftop deco as the wing before this one &mdash; 2x2
     maintenance crates and rooftop fans, no walls, no way inside &mdash;
-    but four separate roofs this time, each one a real gap of open air
-    from the next. Nothing bridges them. The sky's gone from black to a
-    deep, warm pink along the horizon; it's dim, not dark, your own
-    flashlight filling in the difference.
+    but forty small roofs this time instead of four big ones, arranged in
+    an 8x5 grid and each one a real gap of open air from its neighbors.
+    Nothing bridges them. The sky's gone from black to a deep, warm pink
+    along the horizon; it's dim, not dark, your own flashlight filling in
+    the difference.
   </p>
   <p class="level-description">
-    Each gap has exactly one zipline strung across it, post on this
-    roof, landing spot on the next. Walk up to a post and it fires
-    automatically, no button to press &mdash; you're carried straight
-    across at <strong>2.2x</strong> your own speed and can't be caught
-    mid-ride. They only run one way; there's no walking back across a
-    gap once you've crossed it.
+    Every pair of orthogonally neighboring roofs that's actually linked
+    has exactly one zipline strung between them, and the network as a
+    whole is a genuine maze &mdash; there's exactly one zipline route
+    between your starting roof and the elevator on the far corner roof,
+    no shortcuts. Walk up to either post and it fires automatically, no
+    button to press, carrying you straight across at <strong>2.2x</strong>
+    your own speed and leaving you briefly uncatchable mid-ride. Unlike
+    the last wing, these run both ways &mdash; the post you land on will
+    carry you right back the way you came if you walk up to it again.
   </p>
   <p class="level-description">
     The Grotesques are the smallest things in this book &mdash; barely
-    half your size, dark grey all over with one bloodshot red eye apiece
-    &mdash; and individually slower than you at <strong>0.8x</strong>
-    your speed, easy to outrun one at a time. There are <strong>15</strong>
-    of them spread across the four roofs, though, patrolling independently,
-    and getting boxed in by several at once is a real problem a single
-    slow chaser never would be.
+    half your size, dark grey all over with one bloodshot red eye and a
+    pair of wings way out of proportion with the rest of them &mdash; and
+    individually slower than you at <strong>0.8x</strong> your speed,
+    easy to outrun one at a time. There are still only <strong>15</strong>
+    of them, now scattered thin across a random handful of the forty
+    roofs, patrolling independently. The real danger in this wing is the
+    maze itself, not any one chaser.
   </p>
 </div>
 

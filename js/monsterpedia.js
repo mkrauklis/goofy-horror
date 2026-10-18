@@ -35,6 +35,7 @@
   const gargoyleCtx = ctxFor('monster-canvas-gargoyle');
   const wardenCtx = ctxFor('monster-canvas-warden');
   const grotesqueCtx = ctxFor('monster-canvas-grotesque');
+  const garguantuagoyleCtx = ctxFor('monster-canvas-garguantuagoyle');
   const PORTRAIT = 160;
 
   function clear(g, w, h) {
@@ -979,27 +980,42 @@
   }
 
   // The runt of the same family -- half the Warden's radius, no real
-  // flight (small nub wings that just idle-wobble), very dark grey, and
-  // a single pale, vein-shot sclera around a dark red bloodshot iris
-  // instead of a glowing dot -- matches js/game29.js's own Grotesque.
+  // flight despite a pair of wings oversized for its own body, very dark
+  // grey, and a single pale, vein-shot sclera around a dark red
+  // bloodshot iris instead of a glowing dot -- matches js/game29.js's
+  // own Grotesque.
   function drawGrotesque(g, w, h, t) {
     clear(g, w, h);
     g.save();
     g.translate(w / 2, h / 2);
     const radius = 28 * 0.5, seed = 17;
-    const wobble = Math.sin(t * 0.004 + seed) * 0.15;
+    const flap = Math.sin(t * 0.004 + seed) * 0.35;
 
     [-1, 1].forEach((side) => {
+      const span = radius * 5.2;
       g.save();
+      g.translate(0, -radius * 0.15);
       g.scale(side, 1);
-      g.rotate(0.5 + wobble);
+      g.rotate(0.3 + flap);
       g.beginPath();
       g.moveTo(0, 0);
-      g.quadraticCurveTo(radius * 0.9, -radius * 0.5, radius * 1.3, -radius * 0.1);
-      g.quadraticCurveTo(radius * 0.7, radius * 0.1, 0, 0);
+      g.quadraticCurveTo(span * 0.5, -span * 0.4, span, -span * 0.12);
+      g.quadraticCurveTo(span * 0.55, span * 0.12, span * 0.28, span * 0.05);
+      g.quadraticCurveTo(span * 0.14, span * 0.08, 0, 0);
       g.closePath();
       g.fillStyle = '#232224';
       g.fill();
+      g.strokeStyle = 'rgba(210,210,220,0.3)';
+      g.lineWidth = 0.75;
+      g.stroke();
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 0.4;
+      [0.4, 0.75, 1].forEach((f) => {
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.lineTo(span * f, -span * 0.12 * f);
+        g.stroke();
+      });
       g.restore();
     });
 
@@ -1055,6 +1071,102 @@
     g.arc(0, 0, er * 0.16, 0, Math.PI * 2);
     g.fillStyle = '#0a0304';
     g.fill();
+
+    g.restore();
+  }
+
+  // The chapter 6 boss: the same family build blown up to 2.5x scale,
+  // with a flanking cluster of eight small eyes down each side instead
+  // of the usual one -- matches js/game30.js's own portrait pose (phase
+  // 1 only; this entry doesn't get a phase-2 toggle, same precedent as
+  // the Cultivator's own Monsterpedia entry).
+  function drawGarguantuagoyle(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const radius = 50, seed = 7;
+    const flap = t * 0.0035;
+
+    function wing(side, span) {
+      const sweep = Math.sin(flap) * 0.5;
+      g.save();
+      g.translate(0, radius * 0.05);
+      g.scale(side, 1);
+      g.rotate(0.25 + sweep);
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.quadraticCurveTo(span * 0.5, -span * 0.35, span, -span * 0.1);
+      g.quadraticCurveTo(span * 0.6, span * 0.15, span * 0.3, span * 0.05);
+      g.quadraticCurveTo(span * 0.15, span * 0.1, 0, 0);
+      g.closePath();
+      g.fillStyle = '#5a5e64';
+      g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.4)';
+      g.lineWidth = 1.5;
+      g.stroke();
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 0.75;
+      g.stroke();
+      g.restore();
+    }
+    wing(-1, radius * 1.9);
+    wing(1, radius * 1.9);
+
+    const legCount = 7;
+    for (let i = 0; i < legCount; i++) {
+      const a = Math.PI * 0.18 + (i / (legCount - 1)) * Math.PI * 0.64;
+      const len = radius * 0.95;
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len + radius * 0.55;
+      drawTaperedTentacle(g, tx, ty, tx * 0.5, ty * 0.5, radius * 0.1, '#2e3034');
+    }
+
+    const grad = g.createRadialGradient(-radius * 0.3, -radius * 0.3, 2, 0, 0, radius);
+    grad.addColorStop(0, '#7a7e84');
+    grad.addColorStop(1, '#3a3c40');
+    g.beginPath();
+    g.arc(0, 0, radius, 0, Math.PI * 2);
+    g.fillStyle = grad;
+    g.shadowColor = '#000';
+    g.shadowBlur = 14;
+    g.fill();
+    g.shadowBlur = 0;
+    g.strokeStyle = '#202224';
+    g.lineWidth = 3;
+    g.stroke();
+
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + seed * 0.5;
+      const bx = Math.cos(a) * radius * 0.65, by = Math.sin(a) * radius * 0.65;
+      g.beginPath();
+      g.arc(bx, by, radius * 0.1, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(0,0,0,0.2)';
+      g.fill();
+    }
+
+    [-1, 1].forEach((side) => {
+      for (let i = 0; i < 8; i++) {
+        const et = i / 7;
+        const a = (et - 0.5) * Math.PI * 0.75;
+        const ex = side * (radius * 0.55 + Math.cos(a) * radius * 0.3);
+        const ey = Math.sin(a) * radius * 0.78;
+        const er = radius * 0.07 + (i % 3 === 0 ? radius * 0.015 : 0);
+        g.beginPath();
+        g.arc(ex, ey, er * 1.4, 0, Math.PI * 2);
+        g.fillStyle = '#0c0608';
+        g.fill();
+        g.beginPath();
+        g.arc(ex, ey, er, 0, Math.PI * 2);
+        g.fillStyle = '#c81020';
+        g.shadowColor = '#ff2020';
+        g.shadowBlur = 5;
+        g.fill();
+        g.shadowBlur = 0;
+        g.beginPath();
+        g.arc(ex, ey, er * 0.35, 0, Math.PI * 2);
+        g.fillStyle = '#1a0608';
+        g.fill();
+      }
+    });
 
     g.restore();
   }
@@ -2864,6 +2976,7 @@
       drawPortraitOrLock(gargoyleCtx, drawGargoyle, t);
       drawPortraitOrLock(wardenCtx, drawWarden, t);
       drawPortraitOrLock(grotesqueCtx, drawGrotesque, t);
+      drawPortraitOrLock(garguantuagoyleCtx, drawGarguantuagoyle, t);
     }
     requestAnimationFrame(loop);
   }

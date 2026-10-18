@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; Level 30</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 30 &mdash; Landing Zone</h1>
+  <p class="objective">A rooftop helicopter landing pad, sunrise all around it, the whole pad visible on screen at once. The Garguantuagoyle &mdash; a gargoyle 2.5x normal size, sixteen eyes glaring eight to a side &mdash; has 100 HP. A missile rig touches down somewhere on the pad every 10 seconds; grab it and it locks onto the boss at 5x your speed, 5 damage a hit. At 50 HP its colors invert into its Primal Form, 1.2x faster with two new attacks. If one of you falls, you're down for the rest of the fight &mdash; it's only over once everyone has.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-boss">Boss: 100/100 HP</span>
+      <span id="hud-missiles">Missiles: 0 on the field</span>
+      <span id="hud-phase">Phase: 1</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    A bare rooftop landing pad, painted perimeter stripes and a big white
+    "H" at its center, the whole thing visible on screen at once &mdash;
+    nothing to scroll past, every attack readable the moment it starts.
+    There's no wall around it either, just open air and a pink sunrise
+    sky in every direction past the pad's own edge. The only way to hurt
+    the boss is a missile rig that touches down somewhere on the pad
+    every 10 seconds &mdash; walk up to it and it fires on its own,
+    homing in on the boss at <strong>5x</strong> your own speed until it
+    connects for 5 damage. There's no other way to hurt it.
+  </p>
+  <p class="level-description">
+    Four attacks while it's healthy. <strong>Charge</strong>: it folds
+    its wings back, points in a random direction, and barrels that way at
+    <strong>2.5x</strong> your speed until it slams into the pad's own
+    edge. <strong>Reposition &amp; spin</strong>: it glides to a random
+    spot on the pad over 2 seconds, then spins in place for 5 seconds
+    straight, claws out the whole time. <strong>Spear fling</strong>: it
+    plants itself and flings a volley of spears at whoever's closest.
+    <strong>Dive bomb</strong>: it launches straight up and off screen,
+    a shadow its own size appears somewhere on the pad, and a moment
+    later it drops out of the sky onto that exact spot at
+    <strong>3x</strong> your speed.
+  </p>
+  <p class="level-description">
+    At 50 HP its colors invert, "GARGUANTUAGOYLE" flashes up with "PRIMAL
+    FORM" underneath it, and every attack above gets <strong>1.2x</strong>
+    faster on top of its usual speed. It also gains two new ones.
+    <strong>Antimatter barrage</strong>: it hurls a bolt of antimatter at
+    whoever's closest once a second for 5 seconds straight, each one
+    flying at <strong>2.5x</strong> your speed. <strong>Shockwave</strong>:
+    it curls into a ball, then snaps back open and sends a shockwave
+    rippling out to 5 tiles in every direction.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level30/level.js"></script>
+<script src="js/game30.js"></script>
+</body>
+</html>
