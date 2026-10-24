@@ -1,5 +1,6 @@
 (function () {
   const HM = window.HardMode;
+  const FOOT_SURFACE = 'normal'; // which footstep sound to use (js/footsteps.js)
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(30)) {
@@ -547,7 +548,7 @@
     const isMoving = !p.caught && (ix !== 0 || iy !== 0);
     updateStamina(p, now, dt, isMoving);
     applyMovement(p, ix, iy, dt);
-    if (isMoving) p.walkPhase += dt * WALK_CYCLE_SPEED * speedMultiplierFor(p);
+    if (isMoving) window.Footsteps.advance(p, dt * WALK_CYCLE_SPEED * speedMultiplierFor(p), audioCtx, FOOT_SURFACE, speedMultiplierFor(p));
   }
   function updateInputMovement(now, dt) {
     if (PLAYER_MODE === 1) {

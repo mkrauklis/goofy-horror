@@ -1,5 +1,6 @@
 (function () {
   const HM = window.HardMode;
+  const FOOT_SURFACE = 'normal'; // which footstep sound to use (js/footsteps.js)
   // The Halloween chapter has its own unlock chain (see js/story.js): the
   // first level is always open, each later one needs the one before it.
   if (window.GoofyStory && !window.GoofyStory.isHalloweenUnlocked(2)) {
@@ -717,7 +718,7 @@
     const isMoving = !p.caught && (ix !== 0 || iy !== 0);
     updateStamina(p, now, dt, isMoving);
     applyMovement(p, ix, iy, dt);
-    if (isMoving) p.walkPhase += dt * WALK_CYCLE_SPEED * speedMultiplierFor(p);
+    if (isMoving) window.Footsteps.advance(p, dt * WALK_CYCLE_SPEED * speedMultiplierFor(p), audioCtx, FOOT_SURFACE, speedMultiplierFor(p));
   }
 
   function updateInputMovement(now, dt) {
@@ -985,7 +986,7 @@
         gameState = 'complete';
         playWinJingle();
         if (window.GoofyStory) window.GoofyStory.completeHalloween(2);
-        setTimeout(() => { window.location.href = 'index.html'; }, 2500);
+        setTimeout(() => { window.location.href = 'halloween3.html'; }, 2500);
       }
     });
   }
@@ -2143,7 +2144,7 @@
     if (dist > PROXIMITY_WARNING_RADIUS) return;
     const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
     // the screen smears out the closer it gets (instead of a red flash)
-    window.ScreenFx.blur(ctx, vx, 0, VIEW_W, VIEW_H, closeness);
+    window.ScreenFx.proximity(ctx, vx, 0, VIEW_W, VIEW_H, closeness);
   }
 
   // A short "gotcha" cutscene rendered only in the caught player's own half:

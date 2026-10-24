@@ -1,5 +1,6 @@
 (function () {
   const HM = window.HardMode;
+  const FOOT_SURFACE = 'normal'; // which footstep sound to use (js/footsteps.js)
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(31)) {
@@ -536,7 +537,7 @@
       const dx = nx * PLAYER_SPEED * dt, dy = ny * PLAYER_SPEED * dt;
       if (dx !== 0 && canStandAt(p.x + dx, p.y)) p.x += dx;
       if (dy !== 0 && canStandAt(p.x, p.y + dy)) p.y += dy;
-      p.walkPhase += dt * WALK_CYCLE_SPEED;
+      window.Footsteps.advance(p, dt * WALK_CYCLE_SPEED, audioCtx, FOOT_SURFACE, 1);
     });
     if (players.every((p, i) => Math.hypot(p.x - cars[i].x, p.y - cars[i].y) < BOARD_RADIUS)) startChase(now);
   }
@@ -1365,8 +1366,8 @@
   // flashing red).
   function drawDangerVignette(now) {
     const gap = gapNow();
-    if (gap > 320) return;
-    window.ScreenFx.blur(ctx, 0, 0, FULL_W, VIEW_H, 1 - gap / 320);
+    if (gap > CATCH_DIST + 220) return;
+    window.ScreenFx.proximity(ctx, 0, 0, FULL_W, VIEW_H, clamp(1 - (gap - CATCH_DIST) / 220, 0, 1));
   }
 
   function drawBanner(text, color, alpha) {

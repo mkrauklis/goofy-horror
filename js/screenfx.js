@@ -37,5 +37,12 @@
     g.restore();
   }
 
-  window.ScreenFx = { blur };
+  // For a monster closing in: `closeness` runs 0 (far) to 1 (touching). There's
+  // no blur at all until it's right next to you, then it ramps up fast.
+  function proximity(g, x, y, w, h, closeness) {
+    const k = Math.max(0, (closeness - 0.7) / 0.3);
+    blur(g, x, y, w, h, k * k);
+  }
+
+  window.ScreenFx = { blur, proximity };
 })();

@@ -39,6 +39,7 @@
   const multipodCtx = ctxFor('monster-canvas-multipod');
   const hollowJackCtx = ctxFor('monster-canvas-hollowjack');
   const hushCtx = ctxFor('monster-canvas-hush');
+  const masqueCtx = ctxFor('monster-canvas-masque');
   const PORTRAIT = 160;
 
   // While a portrait is being drawn as a member of the Multipod's swarm
@@ -3129,6 +3130,57 @@
     g.restore();
   }
 
+  // The Halloween 3 Masque: tentacled flesh in a cracked mask, both arms
+  // broken (same drawing as in js/halloween3.js, posed facing right).
+  function drawMasque(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2 - 6, h / 2);
+    const r = 26, ang = 0, seed = 5;
+    for (let i = 0; i < 9; i++) {
+      const a = ang + Math.PI * 0.55 + (i / 9) * Math.PI * 1.9 + Math.sin(t * 0.004 + i * 1.7 + seed) * 0.3;
+      const len = r * (1.5 + 0.35 * Math.sin(t * 0.006 + i * 1.3 + seed));
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
+      const bow = Math.sin(t * 0.007 + i * 2.2 + seed) * r * 0.5;
+      drawTaperedTentacle(g, tx, ty, tx / 2 - Math.sin(a) * bow, ty / 2 + Math.cos(a) * bow, r * 0.3, i % 2 ? '#a85360' : '#8a3a46');
+    }
+    g.fillStyle = '#4a1620';
+    g.beginPath(); g.arc(0, 0, r * 1.08, 0, Math.PI * 2); g.fill();
+    const body = g.createRadialGradient(-r * 0.3, -r * 0.3, 2, 0, 0, r * 1.1);
+    body.addColorStop(0, '#d98a8a'); body.addColorStop(0.6, '#a8505c'); body.addColorStop(1, '#6a2430');
+    g.fillStyle = body;
+    g.beginPath();
+    for (let i = 0; i <= 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      const rr = r + Math.sin(t * 0.006 + i * 1.7 + seed) * r * 0.08;
+      if (i === 0) g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); else g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    g.closePath(); g.fill();
+    [-1, 1].forEach((side, k) => {
+      const sway = Math.sin(t * 0.004 + k * 2.4 + seed) * r * 0.18;
+      const sx = r * 0.15, sy = side * r * 0.92;
+      const ex = -r * 0.35 + sway * 0.4, ey = side * r * 1.75;
+      const wx = r * 0.95 + sway, wy = side * r * 1.15;
+      g.strokeStyle = '#c98a80'; g.lineCap = 'round'; g.lineWidth = r * 0.3;
+      g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke();
+      g.lineWidth = r * 0.24;
+      g.beginPath(); g.moveTo(ex, ey); g.lineTo(wx, wy); g.stroke();
+      g.fillStyle = '#e8d8c8';
+      g.beginPath(); g.moveTo(ex - r * 0.1, ey + side * r * 0.05); g.lineTo(ex - r * 0.28, ey + side * r * 0.34); g.lineTo(ex + r * 0.1, ey + side * r * 0.12); g.closePath(); g.fill();
+      g.fillStyle = '#c98a80';
+      g.beginPath(); g.arc(wx, wy, r * 0.2, 0, Math.PI * 2); g.fill();
+    });
+    g.fillStyle = '#efe8dc'; g.strokeStyle = '#8a8070'; g.lineWidth = 1.2;
+    g.beginPath(); g.ellipse(r * 0.42, 0, r * 0.62, r * 0.8, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.fillStyle = '#0a0608';
+    [-1, 1].forEach((side) => { g.beginPath(); g.ellipse(r * 0.5, side * r * 0.3, r * 0.15, r * 0.22, 0, 0, Math.PI * 2); g.fill(); });
+    g.strokeStyle = '#9a1c24'; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(r * 0.78, -r * 0.3); g.quadraticCurveTo(r * 0.98, 0, r * 0.78, r * 0.3); g.stroke();
+    g.strokeStyle = 'rgba(70,60,50,0.7)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(r * 0.2, -r * 0.55); g.lineTo(r * 0.4, -r * 0.2); g.lineTo(r * 0.33, r * 0.05); g.moveTo(r * 0.6, r * 0.5); g.lineTo(r * 0.45, r * 0.25); g.stroke();
+    g.restore();
+  }
+
   // The real portrait drawing for every monster, in Monsterpedia order, so
   // the Level 31 Multipod can be built out of the actual models.
   const MODEL_FNS = [drawCrawler, drawDrifter, drawCaterpillar, drawMimic, drawLurker, drawBoss, drawKnight,
@@ -3255,6 +3307,7 @@
       drawPortraitOrLock(multipodCtx, drawMultipod, t);
       drawPortraitOrLock(hollowJackCtx, drawHollowJack, t);
       drawPortraitOrLock(hushCtx, drawHush, t);
+      drawPortraitOrLock(masqueCtx, drawMasque, t);
     }
     requestAnimationFrame(loop);
   }

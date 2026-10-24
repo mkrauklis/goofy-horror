@@ -1,5 +1,6 @@
 (function () {
   const HM = window.HardMode;
+  const FOOT_SURFACE = 'water'; // which footstep sound to use (js/footsteps.js)
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(19)) {
@@ -745,7 +746,7 @@
     updateStamina(p, now, dt, isMoving);
     applyMovement(p, ix, iy, dt);
     if (isMoving) {
-      p.walkPhase += dt * WALK_CYCLE_SPEED * speedMultiplierFor(p);
+      window.Footsteps.advance(p, dt * WALK_CYCLE_SPEED * speedMultiplierFor(p), audioCtx, FOOT_SURFACE, speedMultiplierFor(p));
       if (now >= p.nextRippleAt) {
         spawnRipple(p.x, p.y + PLAYER_RADIUS * 0.8);
         p.nextRippleAt = now + RIPPLE_INTERVAL_MS;
@@ -2158,7 +2159,7 @@
     if (dist > PROXIMITY_WARNING_RADIUS) return;
     const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
     // the screen smears out the closer it gets (instead of a red flash)
-    window.ScreenFx.blur(ctx, vx, 0, VIEW_W, VIEW_H, closeness);
+    window.ScreenFx.proximity(ctx, vx, 0, VIEW_W, VIEW_H, closeness);
   }
 
   function drawScanner(vx, p, now) {

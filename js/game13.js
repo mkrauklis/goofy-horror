@@ -1,5 +1,6 @@
 (function () {
   const HM = window.HardMode;
+  const FOOT_SURFACE = 'snow'; // which footstep sound to use (js/footsteps.js)
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(13)) {
@@ -757,7 +758,7 @@
     const isMoving = !p.caught && (ix !== 0 || iy !== 0);
     updateStamina(p, now, dt, isMoving);
     applyMovement(p, ix, iy, dt);
-    if (isMoving) p.walkPhase += dt * WALK_CYCLE_SPEED * speedMultiplierFor(p);
+    if (isMoving) window.Footsteps.advance(p, dt * WALK_CYCLE_SPEED * speedMultiplierFor(p), audioCtx, FOOT_SURFACE, speedMultiplierFor(p));
   }
 
   function updateInputMovement(now, dt) {
@@ -2262,7 +2263,7 @@
     if (dist > PROXIMITY_WARNING_RADIUS) return;
     const closeness = 1 - dist / PROXIMITY_WARNING_RADIUS;
     // the screen smears out the closer it gets (instead of a red flash)
-    window.ScreenFx.blur(ctx, vx, 0, VIEW_W, VIEW_H, closeness);
+    window.ScreenFx.proximity(ctx, vx, 0, VIEW_W, VIEW_H, closeness);
   }
 
   // A short "gotcha" cutscene rendered only in the caught player's own half:
