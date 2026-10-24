@@ -3130,8 +3130,8 @@
     g.restore();
   }
 
-  // The Halloween 3 Masque: tentacled flesh in a cracked mask, both arms
-  // broken (same drawing as in js/halloween3.js, posed facing right).
+  // The Halloween 3 Masque: tentacled flesh in a cracked mask, no arms (same
+  // drawing as in js/halloween3.js, posed facing right).
   function drawMasque(g, w, h, t) {
     clear(g, w, h);
     g.save();
@@ -3156,20 +3156,6 @@
       if (i === 0) g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); else g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
     }
     g.closePath(); g.fill();
-    [-1, 1].forEach((side, k) => {
-      const sway = Math.sin(t * 0.004 + k * 2.4 + seed) * r * 0.18;
-      const sx = r * 0.15, sy = side * r * 0.92;
-      const ex = -r * 0.35 + sway * 0.4, ey = side * r * 1.75;
-      const wx = r * 0.95 + sway, wy = side * r * 1.15;
-      g.strokeStyle = '#c98a80'; g.lineCap = 'round'; g.lineWidth = r * 0.3;
-      g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke();
-      g.lineWidth = r * 0.24;
-      g.beginPath(); g.moveTo(ex, ey); g.lineTo(wx, wy); g.stroke();
-      g.fillStyle = '#e8d8c8';
-      g.beginPath(); g.moveTo(ex - r * 0.1, ey + side * r * 0.05); g.lineTo(ex - r * 0.28, ey + side * r * 0.34); g.lineTo(ex + r * 0.1, ey + side * r * 0.12); g.closePath(); g.fill();
-      g.fillStyle = '#c98a80';
-      g.beginPath(); g.arc(wx, wy, r * 0.2, 0, Math.PI * 2); g.fill();
-    });
     g.fillStyle = '#efe8dc'; g.strokeStyle = '#8a8070'; g.lineWidth = 1.2;
     g.beginPath(); g.ellipse(r * 0.42, 0, r * 0.62, r * 0.8, 0, 0, Math.PI * 2); g.fill(); g.stroke();
     g.fillStyle = '#0a0608';

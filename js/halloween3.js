@@ -1714,9 +1714,8 @@
     });
   }
 
-  // The Masque: a heap of tentacled flesh wearing a cracked porcelain mask,
-  // its arms both broken -- bent the wrong way and dangling, a shard of bone
-  // showing at each elbow -- so it drags itself along on its tentacles.
+  // The Masque: a heap of tentacled flesh wearing a cracked porcelain mask. It
+  // has no arms at all -- it drags itself along on its tentacles.
   function drawMonster(g, t, m) {
     const r = m.radius;
     const look = m.lookDir || { x: 1, y: 0 };
@@ -1757,24 +1756,6 @@
 
     g.save();
     g.rotate(ang);
-    // the broken arms: each goes out, then folds the wrong way at the elbow
-    [-1, 1].forEach((side, k) => {
-      const sway = Math.sin(t * 0.004 + k * 2.4 + m.seed) * r * 0.18;
-      const sx = r * 0.15, sy = side * r * 0.92;                       // shoulder
-      const ex = -r * 0.35 + sway * 0.4, ey = side * r * 1.75;         // elbow, out and back
-      const wx = r * 0.95 + sway, wy = side * r * 1.15;                // wrist, flopped forward past the elbow
-      g.strokeStyle = '#c98a80'; g.lineCap = 'round'; g.lineWidth = r * 0.3;
-      g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke();
-      g.lineWidth = r * 0.24;
-      g.beginPath(); g.moveTo(ex, ey); g.lineTo(wx, wy); g.stroke();
-      g.fillStyle = '#e8d8c8';                                          // exposed bone at the break
-      g.beginPath(); g.moveTo(ex - r * 0.1, ey + side * r * 0.05); g.lineTo(ex - r * 0.28, ey + side * r * 0.34); g.lineTo(ex + r * 0.1, ey + side * r * 0.12); g.closePath(); g.fill();
-      g.fillStyle = '#c98a80';
-      g.beginPath(); g.arc(wx, wy, r * 0.2, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#7a2f3a'; g.lineWidth = 1.2;                    // dark bruise lines
-      g.beginPath(); g.moveTo(ex - r * 0.1, ey); g.lineTo(ex + r * 0.4, ey - side * r * 0.2); g.stroke();
-    });
-
     // the mask, strapped over the front of the body
     g.fillStyle = '#efe8dc';
     g.strokeStyle = '#8a8070'; g.lineWidth = 1.2;
