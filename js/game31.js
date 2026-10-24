@@ -26,7 +26,7 @@
   const FOOT_VIEW_W = PLAYER_MODE === 1 ? FULL_W : FULL_W / 2;
   const FOOT_ZOOM = 1;
   const CHASE_ZOOM_MAX = 0.62;
-  const CHASE_ZOOM_MIN = 0.34;
+  const CHASE_ZOOM_MIN = 0.3;
 
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
@@ -1477,21 +1477,24 @@
       if (PLAYER_MODE === 2) { ctx.strokeStyle = '#2a3a44'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(FOOT_VIEW_W, 0); ctx.lineTo(FOOT_VIEW_W, VIEW_H); ctx.stroke(); }
       return;
     }
-    // chase: the camera leads the cars a little, eases toward them, and
-    // pulls back when the two cars spread apart so both stay on screen
+    // chase: the Multipod is pinned to the left edge of the screen the whole
+    // time. The camera sits wherever puts the swarm against that edge, and
+    // zooms out as needed (the swarm falling back after a hit, a car
+    // pulling ahead, the two cars spreading apart) so the front car stays
+    // on screen too.
     const alive = aliveCars();
     const focus = alive.length ? alive : cars;
-    const minX = Math.min(...focus.map((c) => c.x)), maxX = Math.max(...focus.map((c) => c.x));
+    const frontX = Math.max(...focus.map((c) => c.x));
     const avgY = focus.reduce((s, c) => s + c.y, 0) / focus.length;
-    const lead = leadCar();
-    const tx = (minX + maxX) / 2 + Math.cos(lead.heading) * 150 * (lead.v / CAR_MAX);
-    const ty = avgY + Math.sin(lead.heading) * 150 * (lead.v / CAR_MAX);
-    const k = Math.min(1, dt * 5);
-    cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
-    const wantZoom = clamp(FULL_W / (maxX - minX + 560), CHASE_ZOOM_MIN, CHASE_ZOOM_MAX);
+    const EDGE_INSET = 64, FRONT_MARGIN = 100;
+    const span = Math.max(frontX - boss.x, 200);
+    const wantZoom = clamp((FULL_W - EDGE_INSET - FRONT_MARGIN) / span, CHASE_ZOOM_MIN, CHASE_ZOOM_MAX);
+    const k = Math.min(1, dt * 6);
     chaseZoom += (wantZoom - chaseZoom) * k;
     const halfH = VIEW_H / 2 / chaseZoom;
-    const camX = cam.x, camY = clamp(cam.y, halfH, WORLD_H - halfH);
+    const camX = boss.x + (FULL_W / 2 - EDGE_INSET) / chaseZoom;
+    const camY = clamp((avgY + boss.y) / 2, halfH, WORLD_H - halfH);
+    cam.x = camX; cam.y = camY;
     drawViewWorld(0, FULL_W, camX, camY, chaseZoom, now);
     drawForestDarkness(camX, camY, chaseZoom);
     if (gameState === 'chase') {
