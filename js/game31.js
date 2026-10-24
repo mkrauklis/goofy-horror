@@ -68,18 +68,28 @@
   const NUKE_MS = 14000;
   const NUKE_IMPACT_MS = 2600;
   const VICTORY_REDIRECT_MS = 3500;
-  // The credits that roll once the bomb has gone off. Times are ms from the
-  // credits' start; each line fades in, holds, then fades out.
-  const CREDITS_LINES = [
-    { text: 'CREDITS', at: 600, to: 4800, y: -34, size: 13, color: '#8a8f99' },
-    { text: 'yetidude-creator', at: 1400, to: 4800, y: 4, size: 30, color: '#e8e2d6' },
-    { text: 'are you happy with what you’ve done.', at: 6000, to: 13200, y: -44, size: 20, color: '#d8d2c6' },
-    { text: 'have you accomplished anything.', at: 8000, to: 13200, y: -4, size: 20, color: '#d8d2c6' },
-    { text: 'did you really win', at: 10000, to: 13200, y: 36, size: 20, color: '#c9564a' },
-    { text: 'thanks for playing.', at: 14400, to: 21000, y: -22, size: 26, color: '#e8e2d6' },
-    { text: 'especially bigredness and FGM.', at: 16400, to: 21000, y: 24, size: 18, color: '#d88af0' },
+  // The credits that roll once the bomb has gone off: scrolled up the
+  // screen like movie credits, then "THE END..." and a sting for "FOR NOW...".
+  // gap = extra blank space (px) above that line.
+  const CREDITS_TEXT = [
+    { text: 'CREDITS', size: 13, color: '#8a8f99' },
+    { text: 'yetidude-creator', size: 30, color: '#e8e2d6', gap: 6 },
+    { text: 'are you happy with what you’ve done.', size: 20, color: '#d8d2c6', gap: 90 },
+    { text: 'have you accomplished anything.', size: 20, color: '#d8d2c6', gap: 14 },
+    { text: 'did you really win', size: 20, color: '#c9564a', gap: 14 },
+    { text: 'thanks for playing.', size: 26, color: '#e8e2d6', gap: 90 },
+    { text: 'especially bigredness and FGM.', size: 18, color: '#d88af0', gap: 10 },
+    { text: 'and a special shout out to', size: 14, color: '#8a8f99', gap: 40 },
+    { text: 'mdhkay', size: 22, color: '#d88af0', gap: 4 },
+    { text: 'for testing the game.', size: 14, color: '#8a8f99', gap: 4 },
   ];
-  const CREDITS_MS = 22000;
+  const CREDITS_SCROLL_SPEED = 40; // px/s
+  let creditsTotalH = 0;
+  CREDITS_TEXT.forEach((l) => { creditsTotalH += (l.gap || 0); l.pos = creditsTotalH; creditsTotalH += l.size * 1.7; });
+  const CREDITS_SCROLL_MS = (VIEW_H + 30 + creditsTotalH + 30) / CREDITS_SCROLL_SPEED * 1000;
+  // after the scroll: THE END, an ellipsis fading in dot by dot, then FOR NOW...
+  const END_DOTS_AT = [2200, 3200, 4200], END_OUT_AT = 6400, FORNOW_AT = 8000, FORNOW_OUT_AT = 11800, END_TAIL_MS = 12800;
+  const CREDITS_MS = CREDITS_SCROLL_MS + END_TAIL_MS;
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
@@ -279,7 +289,7 @@
     if (e.key === 'Enter') {
       if (gameState === 'wiped') resetLevel();
       else if (gameState === 'nuke' && performance.now() - nukeStartedAt > 1500) nukeStartedAt = performance.now() - NUKE_MS;
-      else if (gameState === 'credits' && performance.now() - creditsStartedAt > 1500) creditsStartedAt = performance.now() - CREDITS_MS;
+      else if (gameState === 'credits' && performance.now() - creditsStartedAt > 1500 && performance.now() - creditsStartedAt < CREDITS_SCROLL_MS) creditsStartedAt = performance.now() - CREDITS_SCROLL_MS;
     }
   });
   window.addEventListener('keyup', (e) => {
@@ -431,6 +441,7 @@
   let dyingStartedAt = 0;
   let nukeStartedAt = 0;
   let creditsStartedAt = 0;
+  let stingPlayed = false;
   let shake = 0;
   let chaseZoom = CHASE_ZOOM_MAX;
 
@@ -809,9 +820,20 @@
     if (now - nukeStartedAt >= NUKE_MS) {
       gameState = 'credits';
       creditsStartedAt = now;
+      stingPlayed = false;
     }
   }
+  // "dun dun dunnnnn"
+  function playSting() {
+    [[0, 0.45], [0.5, 0.45], [1.0, 3.2]].forEach(([d, dur], i) => {
+      const f = i < 2 ? 110 : 82.4;
+      playTone(f, dur, 'sawtooth', 0.4, d);
+      playTone(f / 2, dur, 'square', 0.3, d);
+      playTone(f * 2, dur, 'triangle', 0.18, d);
+    });
+  }
   function updateCredits(now) {
+    if (!stingPlayed && now - creditsStartedAt >= CREDITS_SCROLL_MS + FORNOW_AT - 1000) { stingPlayed = true; playSting(); }
     if (now - creditsStartedAt >= CREDITS_MS) {
       gameState = 'victory';
       setTimeout(() => { window.location.href = 'index.html'; }, VICTORY_REDIRECT_MS);
@@ -1503,15 +1525,42 @@
   function drawCredits(g, t) {
     g.fillStyle = '#000'; g.fillRect(0, 0, FULL_W, VIEW_H);
     g.textAlign = 'center';
-    CREDITS_LINES.forEach((l) => {
-      const a = Math.min(clamp((t - l.at) / 900, 0, 1), clamp((l.to - t) / 900, 0, 1));
-      if (a <= 0) return;
-      g.globalAlpha = a;
-      g.font = `${l.size}px monospace`; g.fillStyle = l.color;
-      g.fillText(l.text, FULL_W / 2, VIEW_H / 2 + l.y + l.size * 0.35);
-    });
-    g.globalAlpha = 1;
-    if (t > 1500 && t < CREDITS_MS - 1500) { g.font = '10px monospace'; g.textAlign = 'right'; g.fillStyle = 'rgba(255,255,255,0.3)'; g.fillText('ENTER: SKIP', FULL_W - 10, VIEW_H - 12); }
+    if (t < CREDITS_SCROLL_MS) {
+      const top = VIEW_H + 30 - CREDITS_SCROLL_SPEED * t / 1000;
+      CREDITS_TEXT.forEach((l) => {
+        const y = top + l.pos + l.size;
+        if (y < -30 || y > VIEW_H + 30) return;
+        g.font = `${l.size}px monospace`; g.fillStyle = l.color;
+        g.fillText(l.text, FULL_W / 2, y);
+      });
+      if (t > 1500) { g.font = '10px monospace'; g.textAlign = 'right'; g.fillStyle = 'rgba(255,255,255,0.3)'; g.fillText('ENTER: SKIP', FULL_W - 10, VIEW_H - 12); }
+      return;
+    }
+    const e = t - CREDITS_SCROLL_MS;
+    const cy = VIEW_H / 2;
+    if (e < END_OUT_AT + 700) {
+      const a = Math.min(clamp(e / 1200, 0, 1), clamp((END_OUT_AT + 700 - e) / 700, 0, 1));
+      const size = 44;
+      g.font = `bold ${size}px monospace`; g.textAlign = 'left';
+      const full = 'THE END...';
+      const cw = g.measureText('M').width;
+      const x0 = FULL_W / 2 - cw * full.length / 2;
+      const base = cy + size * 0.35;
+      g.globalAlpha = a; g.fillStyle = '#e8e2d6';
+      g.fillText('THE END', x0, base);
+      END_DOTS_AT.forEach((at, i) => {
+        const da = clamp((e - at) / 800, 0, 1) * clamp((END_OUT_AT + 700 - e) / 700, 0, 1);
+        g.globalAlpha = da; g.fillText('.', x0 + cw * (7 + i), base);
+      });
+      g.globalAlpha = 1;
+    } else if (e >= FORNOW_AT) {
+      const a = clamp((FORNOW_OUT_AT + 900 - e) / 900, 0, 1);
+      const flash = clamp(1 - (e - FORNOW_AT) / 350, 0, 1);
+      if (flash > 0) { g.fillStyle = `rgba(140,20,20,${0.55 * flash})`; g.fillRect(0, 0, FULL_W, VIEW_H); }
+      g.globalAlpha = a; g.font = 'bold 54px monospace'; g.textAlign = 'center'; g.fillStyle = '#c9302a';
+      g.fillText('FOR NOW...', FULL_W / 2, cy + 19);
+      g.globalAlpha = 1;
+    }
   }
 
   function render(now, dt) {
