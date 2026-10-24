@@ -14,6 +14,8 @@
 //                                              metal clanks, a stuttering plucked arp
 //   gargoyle (Level 30, the Garguantuagoyle)-- gothic blast-beat metal: tremolo
 //                                              picking under a choir/organ pad
+//   candy    (Halloween 5, the Candy Kraken) -- a bouncy, sinister carnival oompah
+//                                              with a music-box lead
 //
 // A level starts its track with BossMusic.start({ audioCtx, dest, theme:
 // 'name', isActive, intensity }). `isActive()` says whether the fight is on
@@ -115,6 +117,24 @@
       leadBars: [0, 1, 2, 3], leadInten: 0, leadTimbre: 'pluck',
       guitar: { k: 14, accentLP: 3000, chugLP: 1300, wave: 'square', accentLen: 1.5, chugLen: 0.7 },
       drums: 'industrial',
+    },
+    candy: {
+      root: 98, bpm: 148,
+      bars: [
+        [0, N, N, N, [7, 12], N, N, N, 0, N, N, N, [7, 12], N, N, N],
+        [-2, N, N, N, [5, 10], N, N, N, -2, N, N, N, [5, 10], N, N, N],
+        [3, N, N, N, [10, 15], N, N, N, 3, N, N, N, [10, 15], N, N, N],
+        [0, N, 3, N, 5, N, 6, N, 7, N, 6, N, 5, N, 3, N],
+      ],
+      lead: [
+        [12, N, 15, N, 19, N, 15, N, 12, N, 15, N, 19, N, N, N],
+        [10, N, 14, N, 17, N, 14, N, 10, N, 14, N, 17, N, N, N],
+        [15, N, 19, N, 22, N, 19, N, 15, N, 19, N, 22, N, N, N],
+        [24, N, 22, N, 19, N, 15, N, 12, N, 15, N, 19, N, 24, N],
+      ],
+      leadBars: [0, 1, 2, 3], leadInten: 0, leadTimbre: 'pluck',
+      guitar: { k: 3, accentLP: 2200, chugLP: 1200, wave: 'square', accentLen: 1.6, chugLen: 1.0 },
+      drums: 'march',
     },
     gargoyle: {
       root: 98, bpm: 176,

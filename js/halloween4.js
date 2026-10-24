@@ -994,7 +994,7 @@
         gameState = 'complete';
         playWinJingle();
         if (window.GoofyStory) window.GoofyStory.completeHalloween(4);
-        setTimeout(() => { window.location.href = 'index.html'; }, 2500);
+        setTimeout(() => { window.location.href = 'halloween5.html'; }, 2500);
       }
     });
   }
