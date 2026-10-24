@@ -39,7 +39,11 @@
   const multipodCtx = ctxFor('monster-canvas-multipod');
   const PORTRAIT = 160;
 
+  // While a portrait is being drawn as a member of the Multipod's swarm
+  // (see window.MonsterModels) it must not wipe the canvas it's sharing.
+  let swarmMode = false;
   function clear(g, w, h) {
+    if (swarmMode) return;
     g.clearRect(0, 0, w, h);
   }
 
@@ -1191,13 +1195,13 @@
   }
 
 
-  // ---- The Multipod (Level 31): every monster in the game in one swarm.
-  // The member drawing is shared verbatim with js/game31.js.
-  // The Multipod: every monster in the game, packed into one swarm. Each
-  // member is a small stand-in for one of the game's creature families --
-  // not a pixel-for-pixel copy of any one level's drawing code, just
-  // enough of each one's signature (teeth, wings, tentacles, gears, cap,
-  // spikes, a lot of eyes) to read as "all of them at once."
+  // ---- The Multipod (Level 31): every monster in the game, bosses included,
+  // in one swarm. The layout and member drawing are shared verbatim with
+  // js/game31.js; each member is drawn with the real portrait function
+  // for its monster (see window.MonsterModels below).
+  // The Multipod: every monster in the game, bosses included, packed into
+  // one swarm, each drawn with that monster's own model. Bosses are drawn
+  // much bigger.
   function swarmRng(seed) {
     let a = seed >>> 0;
     return function () {
@@ -1208,122 +1212,46 @@
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
-  const SWARM_TYPES = 14;
-  function makeSwarmMembers(count, spread, seed) {
+  // id order matches the Monsterpedia. Second value = size relative to the
+  // swarm's spread: small pack creatures, normal, big armored ones, bosses.
+  const SWARM_DEFS = [
+    ['Crawler', 0.16], ['Drifter', 0.17], ['Caterpillar', 0.16], ['Mimic', 0.16], ['Crate Lurker', 0.15],
+    ['Ashen One', 0.34], ['Knight', 0.17], ['Mine Dweller', 0.18], ['Vault Guardian', 0.24], ['Chain Wraith', 0.15],
+    ['Dig Worm', 0.2], ['Last Knight', 0.34], ['Frost Tentacle', 0.17], ['Mutation', 0.17], ['Brood', 0.09],
+    ['Thaw Spider', 0.16], ['Frozen Mutation', 0.34], ['Flood Eel', 0.17], ['Bog', 0.19], ['Current Eel', 0.17],
+    ['Drain Swarm', 0.08], ['Cistern', 0.34], ['Grass Drifter', 0.17], ['Kindling', 0.16], ['Stalker', 0.16],
+    ['Sentry', 0.17], ['Cultivator', 0.34], ['Reacher', 0.17], ['Gargoyle', 0.17], ['Warden', 0.17],
+    ['Grotesque', 0.09], ['Garguantuagoyle', 0.36],
+  ];
+  // One of every monster, plus a few extra of the ones that come in packs
+  // (the Brood, the Drain Swarm, the Grotesques).
+  const SWARM_EXTRAS = [14, 14, 14, 14, 20, 20, 20, 20, 20, 20, 30, 30, 30, 30, 30, 30];
+  function makeSwarmMembers(spread, seed) {
     const r = swarmRng(seed);
-    const arr = [];
-    for (let i = 0; i < count; i++) {
-      arr.push({
-        ang: r() * Math.PI * 2, rad: Math.sqrt(r()) * spread,
-        size: spread * (0.11 + r() * 0.15), type: i % SWARM_TYPES,
-        phase: r() * 10, spin: r() - 0.5,
-      });
-    }
+    const ids = SWARM_DEFS.map((_, i) => i).concat(SWARM_EXTRAS);
+    const arr = ids.map((id) => ({
+      id, ang: r() * Math.PI * 2, rad: Math.sqrt(r()) * spread,
+      size: spread * SWARM_DEFS[id][1] * (0.92 + r() * 0.16),
+      phase: r() * 10, spin: r() - 0.5,
+    }));
     arr.sort((a, b) => b.size - a.size);
     return arr;
   }
   function swCirc(g, x, y, r, fill) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = fill; g.fill(); }
-  function swTri(g, x1, y1, x2, y2, x3, y3, fill) {
-    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.lineTo(x3, y3); g.closePath(); g.fillStyle = fill; g.fill();
-  }
-  function drawSwarmMember(g, type, s, now, ph, flash) {
-    g.lineJoin = 'round';
-    g.lineCap = 'round';
-    switch (type) {
-      case 0: // blob with a ring of teeth
-        swCirc(g, 0, 0, s, '#5a2a6e'); g.strokeStyle = '#2a1233'; g.lineWidth = 2; g.stroke();
-        swCirc(g, s * 0.3, 0, s * 0.3, '#e8d0d0'); swCirc(g, s * 0.36, 0, s * 0.15, '#c81020');
-        [-1, 0, 1].forEach((k) => swTri(g, s * 0.78, k * s * 0.34 - s * 0.12, s * 1.15, k * s * 0.34, s * 0.78, k * s * 0.34 + s * 0.12, '#f4f0e8'));
-        break;
-      case 1: // gargoyle
-        swTri(g, -s * 0.2, -s * 0.2, -s * 0.9, -s * 1.6, s * 0.3, -s * 0.8, '#52525c');
-        swTri(g, -s * 0.2, s * 0.2, -s * 0.9, s * 1.6, s * 0.3, s * 0.8, '#52525c');
-        swCirc(g, 0, 0, s, '#4a4e54'); g.strokeStyle = '#17181a'; g.lineWidth = 2; g.stroke();
-        swCirc(g, s * 0.45, 0, s * 0.2, '#e03030');
-        break;
-      case 2: // warden: four wings
-        [[-1, 1.7], [1, 1.7], [-1, 1.1], [1, 1.1]].forEach(([sd, len], i) => {
-          const off = i < 2 ? -0.25 : 0.2;
-          swTri(g, off * s, sd * s * 0.2, -s * 0.8, sd * s * len, s * 0.4, sd * s * len * 0.5, i < 2 ? '#8a8e96' : '#6e7278');
-        });
-        swCirc(g, 0, 0, s, '#9a9ea6'); g.strokeStyle = '#3a3c40'; g.lineWidth = 2; g.stroke();
-        swCirc(g, s * 0.4, 0, s * 0.22, '#4a6a8a');
-        break;
-      case 3: // grotesque
-        swTri(g, 0, -s * 0.2, -s * 0.5, -s * 1.5, s * 0.3, -s * 0.7, '#1c1a1c');
-        swTri(g, 0, s * 0.2, -s * 0.5, s * 1.5, s * 0.3, s * 0.7, '#1c1a1c');
-        swCirc(g, 0, 0, s, '#232224');
-        swCirc(g, s * 0.2, 0, s * 0.5, '#d8b8b4'); swCirc(g, s * 0.26, 0, s * 0.25, '#c81020'); swCirc(g, s * 0.28, 0, s * 0.1, '#0a0304');
-        break;
-      case 4: // reacher: lashing tentacles
-        for (let k = 0; k < 6; k++) {
-          const a = k * 1.05 + Math.sin(now * 0.004 + ph + k) * 0.4;
-          g.strokeStyle = '#6a2a80'; g.lineWidth = s * 0.22;
-          g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a) * s * 1.7, Math.sin(a) * s * 1.7); g.stroke();
-        }
-        swCirc(g, 0, 0, s, '#8a3aa0'); g.strokeStyle = '#231228'; g.lineWidth = 2; g.stroke();
-        g.beginPath(); g.ellipse(s * 0.2, 0, s * 0.35, s * 0.2, 0, 0, Math.PI * 2); g.fillStyle = '#8a2a40'; g.fill();
-        break;
-      case 5: // caterpillar
-        swCirc(g, -s * 1.1, 0, s * 0.6, '#5a9a3a'); swCirc(g, -s * 0.5, 0, s * 0.75, '#6aa84a');
-        swCirc(g, s * 0.3, 0, s * 0.85, '#7ab85a');
-        swCirc(g, s * 0.55, -s * 0.3, s * 0.18, '#c81020'); swCirc(g, s * 0.55, s * 0.3, s * 0.18, '#c81020');
-        break;
-      case 6: // robot with gears
-        g.fillStyle = '#8a8c80'; g.fillRect(-s, -s, s * 2, s * 2);
-        g.strokeStyle = '#3a3c34'; g.lineWidth = 2; g.strokeRect(-s, -s, s * 2, s * 2);
-        g.save(); g.rotate(now * 0.004 + ph);
-        for (let k = 0; k < 6; k++) { g.rotate(Math.PI / 3); g.fillStyle = '#6a6a5e'; g.fillRect(s * 0.4, -s * 0.12, s * 0.3, s * 0.24); }
-        g.restore();
-        swCirc(g, 0, 0, s * 0.45, '#6a6a5e'); swCirc(g, s * 0.1, 0, s * 0.22, '#4ab0ff');
-        break;
-      case 7: // mushroom
-        g.fillStyle = '#d9d2c0'; g.fillRect(-s * 0.9, -s * 0.28, s * 1.2, s * 0.56);
-        g.beginPath(); g.ellipse(s * 0.2, 0, s * 0.75, s, 0, -Math.PI / 2, Math.PI / 2, true);
-        g.fillStyle = '#c94a6a'; g.fill();
-        swCirc(g, s * 0.35, -s * 0.4, s * 0.14, 'rgba(255,255,255,0.7)'); swCirc(g, s * 0.5, s * 0.25, s * 0.12, 'rgba(255,255,255,0.7)');
-        break;
-      case 8: // ghost
-        swCirc(g, 0, 0, s, 'rgba(228,234,246,0.92)');
-        swCirc(g, s * 0.3, -s * 0.32, s * 0.2, '#111'); swCirc(g, s * 0.3, s * 0.32, s * 0.2, '#111');
-        g.beginPath(); g.ellipse(s * 0.62, 0, s * 0.12, s * 0.22, 0, 0, Math.PI * 2); g.fillStyle = '#111'; g.fill();
-        break;
-      case 9: { // slime
-        const wob = 1 + Math.sin(now * 0.006 + ph) * 0.12;
-        g.save(); g.scale(wob, 2 - wob);
-        swCirc(g, 0, 0, s, '#5ac84a'); g.strokeStyle = '#2a7a22'; g.lineWidth = 2; g.stroke();
-        g.restore();
-        swCirc(g, s * 0.35, -s * 0.28, s * 0.2, '#fff'); swCirc(g, s * 0.35, s * 0.28, s * 0.2, '#fff');
-        swCirc(g, s * 0.42, -s * 0.28, s * 0.09, '#111'); swCirc(g, s * 0.42, s * 0.28, s * 0.09, '#111');
-        break;
-      }
-      case 10: // spiky
-        for (let k = 0; k < 9; k++) {
-          const a = (k / 9) * Math.PI * 2;
-          swTri(g, Math.cos(a - 0.2) * s * 0.8, Math.sin(a - 0.2) * s * 0.8, Math.cos(a) * s * 1.55, Math.sin(a) * s * 1.55, Math.cos(a + 0.2) * s * 0.8, Math.sin(a + 0.2) * s * 0.8, '#d9792a');
-        }
-        swCirc(g, 0, 0, s * 0.85, '#a8501a'); swCirc(g, s * 0.3, 0, s * 0.25, '#ffd23d');
-        break;
-      case 11: // eyeball cluster
-        swCirc(g, 0, 0, s, '#e8d8d0'); g.strokeStyle = '#8a6a60'; g.lineWidth = 2; g.stroke();
-        [[0.35, 0], [-0.1, -0.45], [-0.1, 0.45], [-0.55, 0.1], [0.2, -0.65]].forEach(([x, y]) => {
-          swCirc(g, x * s, y * s, s * 0.22, '#fff'); swCirc(g, x * s + s * 0.05, y * s, s * 0.12, '#c81020');
-        });
-        break;
-      case 12: { // frozen mutation
-        g.beginPath();
-        for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; g.lineTo(Math.cos(a) * s * 1.1, Math.sin(a) * s * 1.1); }
-        g.closePath(); g.fillStyle = '#9fd8ff'; g.fill(); g.strokeStyle = '#e8f8ff'; g.lineWidth = 2; g.stroke();
-        g.strokeStyle = 'rgba(255,255,255,0.7)'; g.beginPath(); g.moveTo(-s * 0.6, -s * 0.3); g.lineTo(0, 0); g.lineTo(s * 0.5, -s * 0.6); g.moveTo(0, 0); g.lineTo(s * 0.2, s * 0.7); g.stroke();
-        swCirc(g, s * 0.1, 0, s * 0.2, '#d83a3a');
-        break;
-      }
-      default: // knight
-        swTri(g, -s * 0.8, 0, -s * 1.5, -s * 0.5, -s * 1.3, s * 0.5, '#c0392b');
-        swCirc(g, 0, 0, s, '#7a7f8a'); g.strokeStyle = '#2a2d33'; g.lineWidth = 2; g.stroke();
-        g.fillStyle = '#111'; g.fillRect(s * 0.2, -s * 0.14, s * 0.7, s * 0.28);
-        swCirc(g, s * 0.62, 0, s * 0.07, '#ff3a3a');
-    }
+  // Each member IS the actual model of the monster it's based on: the same
+  // portrait drawing the Monsterpedia uses (window.MonsterModels, from
+  // js/monsterpedia.js), scaled so its overall reach is about 1.5x the
+  // member's body size. The model is rendered once into a cached sprite
+  // (refreshed ~10x a second, so it still animates) rather than redrawn in
+  // full for every one of the swarm's members every frame.
+  function drawSwarmMember(g, id, s, now, ph, flash) {
+    const M = window.MonsterModels;
+    if (!M) return;
+    const k = (s * 1.5) / M.extent(id);
+    g.save();
+    g.scale(k, k);
+    g.drawImage(M.sprite(id, now), -80, -80);
+    g.restore();
     if (flash) swCirc(g, 0, 0, s * 1.1, 'rgba(255,255,255,0.6)');
   }
   function drawSwarm(g, cx, cy, heading, now, members, spread, flash, scatter) {
@@ -1337,15 +1265,15 @@
       g.translate(cx + u * cs - w * sn, cy + u * sn + w * cs);
       g.rotate(heading + Math.sin(now * 0.003 + m.phase) * 0.25 + (scatter ? scatter * m.spin * 6 : 0));
       if (scatter) g.globalAlpha = Math.max(0, 1 - scatter);
-      drawSwarmMember(g, m.type, m.size, now, m.phase, flash);
+      drawSwarmMember(g, m.id, m.size, now, m.phase, flash);
       g.restore();
     });
   }
 
-  const multipodMembers = makeSwarmMembers(40, 60, 3131);
+  const multipodMembers = makeSwarmMembers(52, 3131);
   function drawMultipod(g, w, h, t) {
     clear(g, w, h);
-    drawSwarm(g, w / 2, h / 2, 0, t, multipodMembers, 60, false, 0);
+    drawSwarm(g, w / 2, h / 2, 0, t, multipodMembers, 52, false, 0);
   }
 
   function drawCaterpillar(g, w, h, t) {
@@ -3089,6 +3017,63 @@
     drawOneTinyEel(g, w * 0.4, h * 0.75, 16, t);
   }
 
+
+  // The real portrait drawing for every monster, in Monsterpedia order, so
+  // the Level 31 Multipod can be built out of the actual models.
+  const MODEL_FNS = [drawCrawler, drawDrifter, drawCaterpillar, drawMimic, drawLurker, drawBoss, drawKnight,
+    drawWinged, drawVaultGuardian, drawWraith, drawDigWorm, drawLastKnight, drawFrostTentacleCreature,
+    drawMutation, drawBrood, drawThawSpider, drawFrozenMutation, drawEel, drawGreatEel, drawCurrentEel,
+    drawTinyEels, drawCistern, drawGrassDrifter, drawKindling, drawStalker, drawSentry, drawCultivator,
+    drawReacher, drawGargoyle, drawWarden, drawGrotesque, drawGarguantuagoyle];
+  let modelExtents = null;
+  function measureModelExtents() {
+    const c = document.createElement('canvas');
+    c.width = PORTRAIT; c.height = PORTRAIT;
+    const g = c.getContext('2d');
+    modelExtents = MODEL_FNS.map((fn) => {
+      g.clearRect(0, 0, PORTRAIT, PORTRAIT);
+      fn(g, PORTRAIT, PORTRAIT, 0, false);
+      const d = g.getImageData(0, 0, PORTRAIT, PORTRAIT).data;
+      let ext = 12;
+      for (let y = 0; y < PORTRAIT; y++) {
+        for (let x = 0; x < PORTRAIT; x++) {
+          if (d[(y * PORTRAIT + x) * 4 + 3] > 24) ext = Math.max(ext, Math.abs(x - PORTRAIT / 2), Math.abs(y - PORTRAIT / 2));
+        }
+      }
+      return ext;
+    });
+  }
+  const modelSprites = {};
+  window.MonsterModels = {
+    // a cached 160x160 canvas with monster `id` centered in it, redrawn at
+    // most every 100ms
+    sprite(id, t) {
+      let e = modelSprites[id];
+      if (!e) {
+        const c = document.createElement('canvas');
+        c.width = PORTRAIT; c.height = PORTRAIT;
+        e = modelSprites[id] = { c, g: c.getContext('2d'), t: -1e9 };
+      }
+      if (t - e.t > 100) {
+        e.g.clearRect(0, 0, PORTRAIT, PORTRAIT);
+        MODEL_FNS[id](e.g, PORTRAIT, PORTRAIT, t, false);
+        e.t = t;
+      }
+      return e.c;
+    },
+    // half the portrait's overall reach (body plus appendages), in portrait px
+    extent(id) { if (!modelExtents) measureModelExtents(); return modelExtents[id]; },
+    // draws monster `id` centered on the current origin, unscaled
+    draw(id, g, t) {
+      swarmMode = true;
+      g.save();
+      g.translate(-PORTRAIT / 2, -PORTRAIT / 2);
+      MODEL_FNS[id](g, PORTRAIT, PORTRAIT, t, false);
+      g.restore();
+      swarmMode = false;
+    },
+  };
+
   function drawPortraitOrLock(ctx, drawFn, t, phase2) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
@@ -3160,5 +3145,7 @@
     }
     requestAnimationFrame(loop);
   }
-  requestAnimationFrame(loop);
+  // (Level 31 loads this file only for window.MonsterModels -- no portrait
+  // canvases there, so nothing to animate.)
+  if (document.getElementById('monster-canvas-crawler')) requestAnimationFrame(loop);
 })();

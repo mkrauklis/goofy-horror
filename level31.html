@@ -15,7 +15,7 @@
 
 <header class="hero">
   <h1>Level 31 &mdash; The Way Out</h1>
-  <p class="objective">Broad daylight, out front of the facility, a car parked in the lot. Everyone gets in &mdash; and the moment you do, the doors burst open and <strong>the Multipod</strong> comes out after you: every monster you've met, fused into one screaming swarm, running you down at <strong>3x</strong> your walking speed. The car matches it. Drive the ring road around the grounds and keep firing missiles over your shoulder &mdash; it has <strong>500 HP</strong> and every missile takes off <strong>25</strong>. Let it catch you and that's the end of the road.</p>
+  <p class="objective">Broad daylight, out front of the facility, a car parked in the lot for each of you. Everyone gets in &mdash; and the moment you do, the doors burst open and <strong>the Multipod</strong> comes out after you: every monster you've met, bosses included, fused into one swarm, running you down at <strong>3x</strong> your walking speed. One straight road, a forest that swallows the light, and no finish line &mdash; it doesn't end until the Multipod does. It has <strong>500 HP</strong>; every missile takes off <strong>25</strong> (<strong>12.5</strong> each when there are two of you).</p>
 </header>
 
 <div class="wrap">
@@ -34,38 +34,46 @@
       <div id="game-message"></div>
   </div>
   </div>
-  <p class="hint">On foot &mdash; Player 1 (orange): W A S D &nbsp;&middot;&nbsp; Player 2 (green): Arrow keys. In the car &mdash; <strong>drive</strong> with W A S D (W gas, S brake/reverse), <strong>fire</strong> a missile with Space (Player 2: Up Arrow or Space). Solo, the arrow keys drive too.<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+  <p class="hint">On foot &mdash; Player 1 (orange): W A S D &nbsp;&middot;&nbsp; Player 2 (green): Arrow keys. In the car &mdash; <strong>Solo:</strong> drive with W A S D (or the arrows; W gas, S brake/reverse), fire with Space. <strong>Two players:</strong> Player 1 drives with W A S D and fires with Space; Player 2 drives with the arrows and fires with Enter.<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
 </div>
 
 <div class="wrap">
   <p class="level-description">
-    No darkness this time. The sun's out, the lawn's mowed, and the
+    No darkness at first. The sun's out, the lawn's mowed, and the
     facility you spent thirty levels getting through is just a big grey
-    building behind a parking lot. A red car sits in the lot with the
-    keys in it. Walk everyone up to it &mdash; it won't go until all of
-    you are standing there.
+    building behind a parking lot. A car sits waiting for each of you,
+    already pointed down the one road out. Walk up to yours &mdash; it
+    won't go until everyone's in.
   </p>
   <p class="level-description">
-    The car does <strong>3x</strong> your walking speed. Stay on the
-    asphalt: the grass drags you down to half speed, trees and the
-    building stop you dead, and traffic cones along the ring road just
-    get knocked flat (at a cost to your speed). One of you drives; the
-    other fires. Playing alone, you do both.
+    The cars do <strong>3x</strong> your walking speed. Stay on the
+    asphalt: the grass drags you down to half speed, and the trees and the
+    building stop you dead. Past the treeline the forest is dense enough
+    to be a wall on both sides &mdash; and it gets <strong>darker</strong>
+    the deeper you go, until the only light is your headlights. Traffic
+    cones just get knocked flat, at a cost to your speed. Playing alone,
+    you drive and fire both; with two, one of you drives each car and
+    each fires their own missiles.
   </p>
   <p class="level-description">
-    The Multipod is every creature in this game at once &mdash; drifters,
-    gargoyles, wardens, grotesques, reachers, caterpillars, robots,
-    mushrooms and the rest &mdash; one swarm, <strong>500 HP</strong>,
-    chasing at <strong>3x</strong>. It follows your exact tire tracks, so
-    it never cuts a corner, but any time you slow down it closes the gap
-    for good. Missiles home in on it at <strong>5x</strong> walking
-    speed for <strong>25</strong> damage each &mdash; twenty hits ends it,
-    and every hit knocks it back down your trail.
+    The Multipod is every creature in this game at once, drawn with their
+    real models &mdash; drifters, wardens, grotesques, the Cistern, the
+    Last Knight, the Garguantuagoyle and the rest. It runs at your
+    rear car at <strong>3x</strong>, and if it falls behind it
+    <strong>sprints up to 5x</strong> to close the gap. Every
+    <strong>2.5 seconds</strong> it also hurls one of the projectiles
+    from this book at you &mdash; a gear, a rocket, an icicle, a feather,
+    antimatter, a coral ball, a spore, a chain ball, a slug, a chunk of
+    floor &mdash; at <strong>6x</strong> your walking speed, aimed where
+    you're about to be. <strong>One hit and that car is destroyed.</strong>
+    Missiles home in on it at <strong>5x</strong> walking speed and knock
+    it back; if the last car goes, so does the run.
   </p>
 </div>
 
 <script src="js/story.js"></script>
 <script src="levels/level31/level.js"></script>
+<script src="js/monsterpedia.js"></script>
 <script src="js/game31.js"></script>
 </body>
 </html>
