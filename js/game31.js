@@ -58,12 +58,12 @@
   const THROW_HIT_RADIUS = 24;
   const CATCHUP_START = 560;
   const CATCHUP_FULL = 1000;
-  const BOSS_SPREAD = 120;
-  const BOSS_HIT_RADIUS = 112;
+  const BOSS_SPREAD = 180; // 1.5x the original 120
+  const BOSS_HIT_RADIUS = 168;
   const BOSS_EMERGE_MS = 1200;
   const BOSS_RAMP_MS = 600;
   const HIT_KNOCKBACK = 170;
-  const CATCH_DIST = 95;
+  const CATCH_DIST = 142;
   const DYING_MS = 2600;
   const NUKE_MS = 14000;
   const NUKE_IMPACT_MS = 2600;
@@ -1236,12 +1236,12 @@
   }
 
   function drawBossBar(now) {
-    const barW = 280, barH = 11, bx = (FULL_W - barW) / 2, by = 18;
+    const barW = 340, barH = 15, bx = (FULL_W - barW) / 2, by = 22;
     const frac = clamp(boss.hp / BOSS_MAX_HEALTH, 0, 1);
     ctx.save();
-    ctx.fillStyle = 'rgba(5,8,12,0.7)'; ctx.fillRect(bx - 7, by - 17, barW + 14, barH + 24);
-    ctx.font = '11px monospace'; ctx.textAlign = 'center';
-    ctx.fillStyle = '#d88af0';
+    ctx.fillStyle = 'rgba(5,8,12,0.75)'; ctx.fillRect(bx - 8, by - 21, barW + 16, barH + 30);
+    ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#e6a8ff';
     ctx.fillText(boss.hp > 0 ? `THE MULTIPOD (${fmtHp(boss.hp)}/${BOSS_MAX_HEALTH})` : 'THE MULTIPOD — DESTROYED', FULL_W / 2, by - 4);
     ctx.fillStyle = '#1a1a1c'; ctx.fillRect(bx, by, barW, barH);
     const grad = ctx.createLinearGradient(bx, 0, bx + barW, 0);
@@ -1253,6 +1253,28 @@
       ctx.font = 'bold 11px monospace'; ctx.fillStyle = `rgba(255,90,90,${0.6 + 0.4 * Math.sin(now / 90)})`;
       ctx.fillText(`SPRINTING — ${boss.speedMult.toFixed(1)}x`, FULL_W / 2, by + barH + 14);
     }
+    ctx.restore();
+  }
+
+  // A health bar riding on the swarm itself, so you can read it while
+  // you're watching the thing that's chasing you.
+  function drawBossHealthTag(camX, camY, z) {
+    if (gameState !== 'chase' && gameState !== 'dying') return;
+    if (boss.emerge < 1 && gameState === 'chase') return;
+    const s = worldToScreen(0, FULL_W, camX, camY, z, boss.x, boss.y);
+    const w = 170, h = 12;
+    const cx = clamp(s.x + 30, w / 2 + 8, FULL_W - w / 2 - 8);
+    const cy = clamp(s.y - BOSS_SPREAD * 1.3 * z - 18, 70, VIEW_H - 40);
+    const frac = clamp(boss.hp / BOSS_MAX_HEALTH, 0, 1);
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,8,12,0.8)'; ctx.fillRect(cx - w / 2 - 5, cy - 19, w + 10, h + 26);
+    ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+    ctx.fillText(`${fmtHp(boss.hp)} / ${BOSS_MAX_HEALTH} HP`, cx, cy - 6);
+    ctx.fillStyle = '#2a1a30'; ctx.fillRect(cx - w / 2, cy, w, h);
+    const g = ctx.createLinearGradient(cx - w / 2, 0, cx + w / 2, 0);
+    g.addColorStop(0, frac < 0.3 ? '#ff6a6a' : '#d88af0'); g.addColorStop(1, frac < 0.3 ? '#a02020' : '#7a2aa8');
+    ctx.fillStyle = g; ctx.fillRect(cx - w / 2, cy, w * frac, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.strokeRect(cx - w / 2 + 0.5, cy + 0.5, w - 1, h - 1);
     ctx.restore();
   }
 
@@ -1486,7 +1508,7 @@
     const focus = alive.length ? alive : cars;
     const frontX = Math.max(...focus.map((c) => c.x));
     const avgY = focus.reduce((s, c) => s + c.y, 0) / focus.length;
-    const EDGE_INSET = 64, FRONT_MARGIN = 100;
+    const EDGE_INSET = 96, FRONT_MARGIN = 100;
     const span = Math.max(frontX - boss.x, 200);
     const wantZoom = clamp((FULL_W - EDGE_INSET - FRONT_MARGIN) / span, CHASE_ZOOM_MIN, CHASE_ZOOM_MAX);
     const k = Math.min(1, dt * 6);
@@ -1497,6 +1519,7 @@
     cam.x = camX; cam.y = camY;
     drawViewWorld(0, FULL_W, camX, camY, chaseZoom, now);
     drawForestDarkness(camX, camY, chaseZoom);
+    drawBossHealthTag(camX, camY, chaseZoom);
     if (gameState === 'chase') {
       drawDangerVignette(now);
       drawBossPointer(camX, camY, chaseZoom, now);
