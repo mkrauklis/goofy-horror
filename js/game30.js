@@ -77,11 +77,12 @@
   const SPIN_MS = 5000;
   const SPIN_MOVE_SPEED = PLAYER_SPEED * 1.5;
 
-  // 3. Spear fling: a stationary volley aimed at whoever's closest.
-  const SPEAR_COUNT = 5;
-  const SPEAR_INTERVAL_MS = 650;
-  const SPEAR_SPEED = PLAYER_SPEED * 2.1;
-  const SPEAR_HIT_RADIUS = 15;
+  // 3. Feather fling: a stationary volley of razor feathers at whoever's
+  // closest, flung at 6x player speed.
+  const FEATHER_COUNT = 5;
+  const FEATHER_INTERVAL_MS = 650;
+  const FEATHER_SPEED = PLAYER_SPEED * 6;
+  const FEATHER_HIT_RADIUS = 15;
 
   // 4. Dive bomb: launches off screen, a shadow its own size appears
   // somewhere on the pad, then it drops onto that exact spot.
@@ -598,7 +599,7 @@
       lookDir: { x: 0, y: 1 }, defeated: false, frozenUntil: 0, phase2: false,
       intangible: false,
 
-      phase: 'idle', // 'idle' | 'charge' | 'reposition' | 'spearfling' | 'divebomb' | 'antimatter' | 'curlshockwave'
+      phase: 'idle', // 'idle' | 'charge' | 'reposition' | 'featherfling' | 'divebomb' | 'antimatter' | 'curlshockwave'
       phaseStartedAt: 0,
       nextIdleUntil: 0,
       lastAttack: null,
@@ -612,9 +613,9 @@
       repoStartX: 0, repoStartY: 0, repoTargetX: 0, repoTargetY: 0,
       spinDir: { x: 1, y: 0 },
 
-      // spear fling
-      spearsThrown: 0,
-      nextSpearAt: 0,
+      // feather fling
+      feathersThrown: 0,
+      nextFeatherAt: 0,
 
       // dive bomb
       diveSubPhase: 'rising', // 'rising' | 'shadow' | 'diving'
@@ -636,7 +637,7 @@
   let missilePickups = []; // { x, y }
   let missileProjectiles = []; // { x, y }
   let nextMissileSpawnAt = 0;
-  let spears = []; // { x, y, vx, vy }
+  let feathers = []; // { x, y, vx, vy }
   let antimatterBolts = []; // { x, y, vx, vy }
   let explosions = [];
   let particles = [];
@@ -848,7 +849,7 @@
 
     missilePickups = []; missileProjectiles = [];
     nextMissileSpawnAt = performance.now() + MISSILE_SPAWN_INTERVAL_MS;
-    spears = []; antimatterBolts = []; explosions = [];
+    feathers = []; antimatterBolts = []; explosions = [];
     bossHealth = BOSS_MAX_HEALTH;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
@@ -931,11 +932,11 @@
     gameState = 'dying';
     deathStartedAt = now;
     deathTarget = nearestPlayer(boss.x, boss.y);
-    spears = []; antimatterBolts = []; missileProjectiles = []; missilePickups = [];
+    feathers = []; antimatterBolts = []; missileProjectiles = []; missilePickups = [];
   }
 
   // ======================= THE ATTACK CYCLE =======================
-  const PHASE1_ATTACKS = ['charge', 'reposition', 'spearfling', 'divebomb'];
+  const PHASE1_ATTACKS = ['charge', 'reposition', 'featherfling', 'divebomb'];
   const PHASE2_ONLY_ATTACKS = ['antimatter', 'curlshockwave'];
 
   function attackPool() {
@@ -968,9 +969,9 @@
       boss.repoStartX = boss.x; boss.repoStartY = boss.y;
       const target = randomArenaPoint(boss.radius * 1.2);
       boss.repoTargetX = target.x; boss.repoTargetY = target.y;
-    } else if (kind === 'spearfling') {
-      boss.spearsThrown = 0;
-      boss.nextSpearAt = now;
+    } else if (kind === 'featherfling') {
+      boss.feathersThrown = 0;
+      boss.nextFeatherAt = now;
     } else if (kind === 'divebomb') {
       boss.diveSubPhase = 'rising';
       boss.intangible = true;
@@ -1043,16 +1044,16 @@
     if (now - boss.spinStartedAt >= SPIN_MS / speedMult(now)) finishAttack(now);
   }
 
-  function updateSpearflingAttack(now) {
-    if (boss.spearsThrown < SPEAR_COUNT && now >= boss.nextSpearAt) {
-      boss.nextSpearAt = now + SPEAR_INTERVAL_MS / speedMult(now);
-      boss.spearsThrown++;
+  function updateFeatherflingAttack(now) {
+    if (boss.feathersThrown < FEATHER_COUNT && now >= boss.nextFeatherAt) {
+      boss.nextFeatherAt = now + FEATHER_INTERVAL_MS / speedMult(now);
+      boss.feathersThrown++;
       const target = nearestPlayer(boss.x, boss.y);
       const dx = target.x - boss.x, dy = target.y - boss.y;
       const d = Math.hypot(dx, dy) || 1;
-      spears.push({ x: boss.x, y: boss.y, vx: (dx / d) * SPEAR_SPEED * speedMult(now), vy: (dy / d) * SPEAR_SPEED * speedMult(now) });
+      feathers.push({ x: boss.x, y: boss.y, vx: (dx / d) * FEATHER_SPEED * speedMult(now), vy: (dy / d) * FEATHER_SPEED * speedMult(now) });
     }
-    if (boss.spearsThrown >= SPEAR_COUNT) finishAttack(now);
+    if (boss.feathersThrown >= FEATHER_COUNT) finishAttack(now);
   }
 
   function updateDivebombAttack(now, dt) {
@@ -1132,7 +1133,7 @@
       case 'idle': updateBossIdle(now, dt); break;
       case 'charge': updateChargeAttack(now, dt); break;
       case 'reposition': updateRepositionAttack(now, dt); break;
-      case 'spearfling': updateSpearflingAttack(now); break;
+      case 'featherfling': updateFeatherflingAttack(now); break;
       case 'divebomb': updateDivebombAttack(now, dt); break;
       case 'antimatter': updateAntimatterAttack(now); break;
       case 'curlshockwave': updateCurlShockwaveAttack(now); break;
@@ -1140,17 +1141,23 @@
     }
   }
 
-  function updateSpears(now, dt) {
-    for (let i = spears.length - 1; i >= 0; i--) {
-      const s = spears[i];
+  function updateFeathers(now, dt) {
+    for (let i = feathers.length - 1; i >= 0; i--) {
+      const s = feathers[i];
+      const px = s.x, py = s.y;
       s.x += s.vx * dt; s.y += s.vy * dt;
-      if (s.x < 0 || s.y < 0 || s.x > WORLD_W || s.y > WORLD_H) { spears.splice(i, 1); continue; }
+      if (s.x < 0 || s.y < 0 || s.x > WORLD_W || s.y > WORLD_H) { feathers.splice(i, 1); continue; }
       let hit = false;
       players.forEach((p) => {
         if (hit || p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
-        if (Math.hypot(p.x - s.x, p.y - s.y) < SPEAR_HIT_RADIUS) { triggerCaught(p, now); hit = true; }
+        // swept test along this frame's travel -- at 6x speed a plain
+        // point check would tunnel straight through a player at low fps
+        const sx = s.x - px, sy = s.y - py;
+        const len2 = sx * sx + sy * sy || 1;
+        const t = clamp(((p.x - px) * sx + (p.y - py) * sy) / len2, 0, 1);
+        if (Math.hypot(p.x - (px + sx * t), p.y - (py + sy * t)) < FEATHER_HIT_RADIUS) { triggerCaught(p, now); hit = true; }
       });
-      if (hit) spears.splice(i, 1);
+      if (hit) feathers.splice(i, 1);
     }
   }
   function updateAntimatterBolts(now, dt) {
@@ -1428,18 +1435,24 @@
   // still read clearly instead of shrinking into near-invisible specks,
   // which was making the attacks feel like they weren't doing anything.
   const ATTACK_VISUAL_SCALE = 2.4;
-  function drawSpears(g) {
-    spears.forEach((s) => {
+  function drawFeathers(g) {
+    feathers.forEach((s) => {
       g.save();
       g.translate(s.x, s.y);
       g.rotate(Math.atan2(s.vy, s.vx));
       g.scale(ATTACK_VISUAL_SCALE, ATTACK_VISUAL_SCALE);
-      g.strokeStyle = '#8a6a3a'; g.lineWidth = 2.5; g.lineCap = 'round';
-      g.beginPath(); g.moveTo(-14, 0); g.lineTo(8, 0); g.stroke();
-      g.fillStyle = '#c0c0c8';
-      g.beginPath(); g.moveTo(8, 0); g.lineTo(16, -3); g.lineTo(16, 3); g.closePath(); g.fill();
-      g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 0.8;
-      g.beginPath(); g.moveTo(8, 0); g.lineTo(16, -3); g.lineTo(16, 3); g.closePath(); g.stroke();
+      // motion streak, then a pale vaned feather with a dark quill
+      g.strokeStyle = 'rgba(235,235,245,0.35)'; g.lineWidth = 2; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(-26, 0); g.lineTo(-10, 0); g.stroke();
+      g.beginPath();
+      g.moveTo(-12, 0);
+      g.quadraticCurveTo(-2, -6, 14, 0);
+      g.quadraticCurveTo(-2, 6, -12, 0);
+      g.closePath();
+      g.fillStyle = '#e8e8f0'; g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 0.8; g.stroke();
+      g.strokeStyle = '#55555e'; g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(-14, 0); g.lineTo(14, 0); g.stroke();
       g.restore();
     });
   }
@@ -2069,7 +2082,7 @@
     drawCrates(ctx);
     drawDiveShadow(ctx, now);
     drawMissiles(ctx, now);
-    drawSpears(ctx);
+    drawFeathers(ctx);
     drawAntimatterBolts(ctx);
     drawBoss(ctx, now);
     drawShockwaveRing(ctx, now);
@@ -2147,7 +2160,7 @@
         updateSmokeBombs(now);
         updateMissiles(now, dt);
         updateBoss(now, dt);
-        updateSpears(now, dt);
+        updateFeathers(now, dt);
         updateAntimatterBolts(now, dt);
         updateShotgunDefense(now);
         updateCatch(now);
