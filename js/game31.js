@@ -67,7 +67,19 @@
   const DYING_MS = 2600;
   const NUKE_MS = 14000;
   const NUKE_IMPACT_MS = 2600;
-  const VICTORY_REDIRECT_MS = 8000;
+  const VICTORY_REDIRECT_MS = 3500;
+  // The credits that roll once the bomb has gone off. Times are ms from the
+  // credits' start; each line fades in, holds, then fades out.
+  const CREDITS_LINES = [
+    { text: 'CREDITS', at: 600, to: 4800, y: -34, size: 13, color: '#8a8f99' },
+    { text: 'yetidude-creator', at: 1400, to: 4800, y: 4, size: 30, color: '#e8e2d6' },
+    { text: 'are you happy with what you’ve done.', at: 6000, to: 13200, y: -44, size: 20, color: '#d8d2c6' },
+    { text: 'have you accomplished anything.', at: 8000, to: 13200, y: -4, size: 20, color: '#d8d2c6' },
+    { text: 'did you really win', at: 10000, to: 13200, y: 36, size: 20, color: '#c9564a' },
+    { text: 'thanks for playing.', at: 14400, to: 21000, y: -22, size: 26, color: '#e8e2d6' },
+    { text: 'especially bigredness and FGM.', at: 16400, to: 21000, y: 24, size: 18, color: '#d88af0' },
+  ];
+  const CREDITS_MS = 22000;
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
@@ -156,7 +168,6 @@
   function playCrash() { sweep(300, 30, 0.7, 'sawtooth', 0.4); }
   function playDoorBurst() { sweep(90, 30, 0.9, 'sawtooth', 0.35); }
   function playBoard() { [440, 660].forEach((f, i) => playTone(f, 0.18, 'triangle', 0.2, i * 0.1)); }
-  function playWinJingle() { [523, 659, 784, 1046, 1318].forEach((f, i) => playTone(f, 0.4, 'triangle', 0.22, i * 0.16)); }
   function playThrow() { sweep(520, 180, 0.25, 'square', 0.15); }
   function playNukeBoom() { sweep(110, 22, 2.4, 'sawtooth', 0.55); sweep(70, 18, 3.2, 'square', 0.3); }
 
@@ -268,6 +279,7 @@
     if (e.key === 'Enter') {
       if (gameState === 'wiped') resetLevel();
       else if (gameState === 'nuke' && performance.now() - nukeStartedAt > 1500) nukeStartedAt = performance.now() - NUKE_MS;
+      else if (gameState === 'credits' && performance.now() - creditsStartedAt > 1500) creditsStartedAt = performance.now() - CREDITS_MS;
     }
   });
   window.addEventListener('keyup', (e) => {
@@ -413,11 +425,12 @@
   function fmtHp(v) { return Number.isInteger(v) ? String(v) : v.toFixed(1); }
   let runStartTime = performance.now();
   let elapsedMs = 0;
-  // 'foot' | 'chase' | 'dying' | 'nuke' | 'victory' | 'wiped'
+  // 'foot' | 'chase' | 'dying' | 'nuke' | 'credits' | 'victory' | 'wiped'
   let gameState = 'foot';
   let chaseStartedAt = 0;
   let dyingStartedAt = 0;
   let nukeStartedAt = 0;
+  let creditsStartedAt = 0;
   let shake = 0;
   let chaseZoom = CHASE_ZOOM_MAX;
 
@@ -794,8 +807,13 @@
   }
   function updateNuke(now) {
     if (now - nukeStartedAt >= NUKE_MS) {
+      gameState = 'credits';
+      creditsStartedAt = now;
+    }
+  }
+  function updateCredits(now) {
+    if (now - creditsStartedAt >= CREDITS_MS) {
       gameState = 'victory';
-      playWinJingle();
       setTimeout(() => { window.location.href = 'index.html'; }, VICTORY_REDIRECT_MS);
     }
   }
@@ -1482,9 +1500,24 @@
     if (fade > 0) { g.fillStyle = `rgba(0,0,0,${fade})`; g.fillRect(0, 0, W, H); }
   }
 
+  function drawCredits(g, t) {
+    g.fillStyle = '#000'; g.fillRect(0, 0, FULL_W, VIEW_H);
+    g.textAlign = 'center';
+    CREDITS_LINES.forEach((l) => {
+      const a = Math.min(clamp((t - l.at) / 900, 0, 1), clamp((l.to - t) / 900, 0, 1));
+      if (a <= 0) return;
+      g.globalAlpha = a;
+      g.font = `${l.size}px monospace`; g.fillStyle = l.color;
+      g.fillText(l.text, FULL_W / 2, VIEW_H / 2 + l.y + l.size * 0.35);
+    });
+    g.globalAlpha = 1;
+    if (t > 1500 && t < CREDITS_MS - 1500) { g.font = '10px monospace'; g.textAlign = 'right'; g.fillStyle = 'rgba(255,255,255,0.3)'; g.fillText('ENTER: SKIP', FULL_W - 10, VIEW_H - 12); }
+  }
+
   function render(now, dt) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (gameState === 'nuke') { drawNukeScene(ctx, now - nukeStartedAt); return; }
+    if (gameState === 'credits') { drawCredits(ctx, now - creditsStartedAt); return; }
     if (gameState === 'victory') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, FULL_W, VIEW_H); return; }
     if (gameState === 'foot') {
       players.forEach((p, i) => {
@@ -1539,7 +1572,7 @@
       messageEl.innerHTML = 'THE MULTIPOD IS COMING APART&hellip;';
     } else if (gameState === 'victory') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'YOU MADE IT OUT.<br>THE FACILITY IS BEHIND YOU.<br><br>THE END';
+      messageEl.innerHTML = 'THE END';
     } else {
       messageEl.style.display = 'none';
     }
@@ -1548,7 +1581,7 @@
     if (hudBossEl) hudBossEl.textContent = gameState === 'foot' ? 'Multipod: asleep' : (boss.hp > 0 ? `Multipod: ${fmtHp(boss.hp)}/${BOSS_MAX_HEALTH} HP` : 'Multipod: destroyed');
     if (hudGapEl) hudGapEl.textContent = gameState === 'chase' ? `Gap: ${Math.round(gapNow() / TILE)} tiles` : 'Gap: --';
     if (hudSpeedEl) hudSpeedEl.textContent = `Speed: ${cars.map((c) => Math.round(Math.abs(c.v) / CAR_MAX * 180)).join(' / ')} mph`;
-    if (hudPhaseEl) hudPhaseEl.textContent = { foot: 'On foot', chase: 'Chase', dying: 'Chase', nuke: 'Escaped', victory: 'Escaped', wiped: 'Crashed' }[gameState];
+    if (hudPhaseEl) hudPhaseEl.textContent = { foot: 'On foot', chase: 'Chase', dying: 'Chase', nuke: 'Escaped', credits: 'Escaped', victory: 'Escaped', wiped: 'Crashed' }[gameState];
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
   }
@@ -1579,6 +1612,8 @@
         updateMissiles(now, dt);
       } else if (gameState === 'nuke') {
         updateNuke(now);
+      } else if (gameState === 'credits') {
+        updateCredits(now);
       } else if (gameState === 'wiped') {
         updateEngineSound(0);
       }
