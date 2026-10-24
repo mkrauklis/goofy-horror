@@ -1556,6 +1556,20 @@
     }
   }
 
+  // Primal Form swaps the sixteen small eyes for one giant eye flashing
+  // black and white (deliberately NOT run through bossColor -- it's
+  // already an alternation between the two extremes).
+  function drawGiantEye(g, radius, t) {
+    const on = Math.floor(t / 140) % 2 === 0;
+    const a = on ? '#ffffff' : '#000000';
+    const b = on ? '#000000' : '#ffffff';
+    const er = radius * 0.62;
+    g.beginPath(); g.arc(0, -radius * 0.02, er * 1.12, 0, Math.PI * 2); g.fillStyle = b; g.fill();
+    g.beginPath(); g.arc(0, -radius * 0.02, er, 0, Math.PI * 2); g.fillStyle = a; g.fill();
+    g.beginPath(); g.arc(0, -radius * 0.02, er * 0.5, 0, Math.PI * 2); g.fillStyle = b; g.fill();
+    g.beginPath(); g.ellipse(0, -radius * 0.02, er * 0.14, er * 0.45, 0, 0, Math.PI * 2); g.fillStyle = a; g.fill();
+  }
+
   function drawBoss(g, t) {
     if (boss.defeated && gameState !== 'dying') return;
     if (boss.intangible && gameState === 'playing') return; // off-screen for dive bomb's rise/shadow telegraph
@@ -1613,8 +1627,11 @@
     // wings fold flat against the body during a charge telegraph or the
     // curl windup, otherwise they beat normally.
     const wingSpanMult = (telegraphing || curled) ? 0.35 : 1;
-    drawWing(g, -1, flap, bossColor('#5a5e64'), radius * 2.9 * wingSpanMult, radius * 0.05);
-    drawWing(g, 1, flap, bossColor('#5a5e64'), radius * 2.9 * wingSpanMult, radius * 0.05);
+    // Primal Form's wings are 1.5x bigger on top of the (already enlarged)
+    // phase-1 span, direct request.
+    const wingSpan = radius * 2.9 * (boss.phase2 ? 1.5 : 1) * wingSpanMult;
+    drawWing(g, -1, flap, bossColor('#5a5e64'), wingSpan, radius * 0.05);
+    drawWing(g, 1, flap, bossColor('#5a5e64'), wingSpan, radius * 0.05);
 
     const legCount = 7;
     for (let i = 0; i < legCount; i++) {
@@ -1649,8 +1666,11 @@
       g.fill();
     }
 
-    drawEyeCluster(g, -1, radius, seed);
-    drawEyeCluster(g, 1, radius, seed);
+    if (boss.phase2) drawGiantEye(g, radius, t);
+    else {
+      drawEyeCluster(g, -1, radius, seed);
+      drawEyeCluster(g, 1, radius, seed);
+    }
     g.restore();
 
     if (telegraphing) {

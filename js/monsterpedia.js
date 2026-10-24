@@ -606,9 +606,9 @@
 
   // The Cultivator's portrait -- a compact standalone version of its
   // in-game look (js/game25.js's drawCultivatorBody/drawRobotGears/
-  // drawMoss/drawBossEye/drawMushroomCap), not phase-2 aware since this
-  // portrait doesn't toggle.
-  function drawCultivatorGears(g, radius, seed) {
+  // drawMoss/drawBossEye/drawMushroomCap); click the portrait to see its
+  // phase 2.
+  function drawCultivatorGears(g, radius, seed, phase2) {
     const count = 6;
     for (let i = 0; i < count; i++) {
       const h = Math.imul(Math.floor(seed * 1000) + i * 97, 2654435761);
@@ -630,7 +630,7 @@
         g.lineTo(Math.cos(a1) * gr, Math.sin(a1) * gr);
       }
       g.closePath();
-      g.fillStyle = '#6a6a5e';
+      g.fillStyle = phase2 ? '#8a5a3a' : '#6a6a5e';
       g.fill();
       g.restore();
     }
@@ -638,7 +638,7 @@
   // Real grass growing out of the hull, same swaying-strand convention
   // as Level 17's Bog portrait uses for its seaweed, not a scatter of
   // moss dots.
-  function drawCultivatorGrass(g, radius, seed, t) {
+  function drawCultivatorGrass(g, radius, seed, t, phase2) {
     const clumps = 9;
     for (let c = 0; c < clumps; c++) {
       const h = Math.imul(Math.floor(seed * 1000) + c * 131, 2246822519);
@@ -654,7 +654,9 @@
         const sway = Math.sin(t * 0.0022 + phase) * radius * 0.06;
         const tipX = baseX + Math.cos(bladeAngle) * len + sway;
         const tipY = baseY + Math.sin(bladeAngle) * len;
-        g.strokeStyle = i % 2 === 0 ? '#3a7a2a' : '#4c9436';
+        g.strokeStyle = phase2
+          ? (i % 2 === 0 ? '#9a8a3a' : '#b4a24a')
+          : (i % 2 === 0 ? '#3a7a2a' : '#4c9436');
         g.lineWidth = Math.max(1, radius * 0.045);
         g.lineCap = 'round';
         g.beginPath();
@@ -664,18 +666,20 @@
       }
     }
   }
-  function drawCultivator(g, w, h, t) {
+  // phase2 = the "rusting" form from js/game25.js: yellowed grass, rust-
+  // brown plating with rust streaks, red eye.
+  function drawCultivator(g, w, h, t, phase2) {
     clear(g, w, h);
     g.save();
     g.translate(w / 2, h / 2);
     const radius = 30, seed = 63;
     const grad = g.createRadialGradient(-radius * 0.3, -radius * 0.35, radius * 0.1, 0, 0, radius * 1.05);
-    grad.addColorStop(0, '#6a756a');
-    grad.addColorStop(0.6, '#4a5248');
-    grad.addColorStop(1, '#2e332e');
+    grad.addColorStop(0, phase2 ? '#8a7260' : '#6a756a');
+    grad.addColorStop(0.6, phase2 ? '#6a5240' : '#4a5248');
+    grad.addColorStop(1, phase2 ? '#3a2a20' : '#2e332e');
     g.fillStyle = grad;
     g.beginPath(); g.arc(0, 0, radius, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = '#2a3a2a';
+    g.strokeStyle = phase2 ? '#8a3a2a' : '#2a3a2a';
     g.lineWidth = 3;
     g.stroke();
     g.save();
@@ -690,13 +694,25 @@
       const a = (i / seams) * Math.PI * 2;
       g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a) * radius, Math.sin(a) * radius); g.stroke();
     }
+    if (phase2) {
+      g.strokeStyle = 'rgba(140,60,20,0.5)';
+      g.lineWidth = 2;
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 + 0.7;
+        g.beginPath();
+        g.moveTo(Math.cos(a) * radius, Math.sin(a) * radius);
+        g.lineTo(Math.cos(a) * radius * 0.3, Math.sin(a) * radius * 0.3 + radius * 0.3);
+        g.stroke();
+      }
+    }
     g.restore();
-    drawCultivatorGears(g, radius, seed);
-    drawCultivatorGrass(g, radius, seed, t);
+    drawCultivatorGears(g, radius, seed, phase2);
+    drawCultivatorGrass(g, radius, seed, t, phase2);
     g.save();
-    g.shadowColor = '#4ab0ff'; g.shadowBlur = 8;
+    const cultEye = phase2 ? '#ff3b3b' : '#4ab0ff';
+    g.shadowColor = cultEye; g.shadowBlur = 8;
     g.beginPath(); g.arc(0, -radius * 0.05, radius * 0.22, 0, Math.PI * 2);
-    g.fillStyle = '#4ab0ff'; g.fill(); g.shadowBlur = 0;
+    g.fillStyle = cultEye; g.fill(); g.shadowBlur = 0;
     g.beginPath(); g.arc(0, -radius * 0.05, radius * 0.09, 0, Math.PI * 2);
     g.fillStyle = '#050208'; g.fill();
     g.restore();
@@ -1077,15 +1093,23 @@
 
   // The chapter 6 boss: the same family build blown up to 2.5x scale,
   // with a flanking cluster of eight small eyes down each side instead
-  // of the usual one -- matches js/game30.js's own portrait pose (phase
-  // 1 only; this entry doesn't get a phase-2 toggle, same precedent as
-  // the Cultivator's own Monsterpedia entry).
-  function drawGarguantuagoyle(g, w, h, t) {
+  // of the usual one -- matches js/game30.js's own portrait pose. Click
+  // the portrait for phase 2 ("Primal Form"): every color genuinely
+  // inverted, wings 1.5x bigger, and the sixteen eyes collapse into one
+  // giant eye flashing black and white.
+  function drawGarguantuagoyle(g, w, h, t, phase2) {
     clear(g, w, h);
     g.save();
     g.translate(w / 2, h / 2);
     const radius = 50, seed = 7;
     const flap = t * 0.0035;
+    if (phase2) g.scale(0.72, 0.72); // room for the 1.5x wings inside the portrait
+    const inv = (hex) => {
+      const n = parseInt(hex.slice(1), 16);
+      const f = (v) => (255 - v).toString(16).padStart(2, '0');
+      return `#${f((n >> 16) & 255)}${f((n >> 8) & 255)}${f(n & 255)}`;
+    };
+    const col = (hex) => (phase2 ? inv(hex) : hex);
 
     function wing(side, span) {
       const sweep = Math.sin(flap) * 0.5;
@@ -1099,9 +1123,9 @@
       g.quadraticCurveTo(span * 0.6, span * 0.15, span * 0.3, span * 0.05);
       g.quadraticCurveTo(span * 0.15, span * 0.1, 0, 0);
       g.closePath();
-      g.fillStyle = '#5a5e64';
+      g.fillStyle = col('#5a5e64');
       g.fill();
-      g.strokeStyle = 'rgba(255,255,255,0.4)';
+      g.strokeStyle = phase2 ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)';
       g.lineWidth = 1.5;
       g.stroke();
       g.strokeStyle = 'rgba(0,0,0,0.5)';
@@ -1109,20 +1133,21 @@
       g.stroke();
       g.restore();
     }
-    wing(-1, radius * 2.9);
-    wing(1, radius * 2.9);
+    const wingSpan = radius * 2.9 * (phase2 ? 1.5 : 1);
+    wing(-1, wingSpan);
+    wing(1, wingSpan);
 
     const legCount = 7;
     for (let i = 0; i < legCount; i++) {
       const a = Math.PI * 0.18 + (i / (legCount - 1)) * Math.PI * 0.64;
       const len = radius * 0.95;
       const tx = Math.cos(a) * len, ty = Math.sin(a) * len + radius * 0.55;
-      drawTaperedTentacle(g, tx, ty, tx * 0.5, ty * 0.5, radius * 0.1, '#2e3034');
+      drawTaperedTentacle(g, tx, ty, tx * 0.5, ty * 0.5, radius * 0.1, col('#2e3034'));
     }
 
     const grad = g.createRadialGradient(-radius * 0.3, -radius * 0.3, 2, 0, 0, radius);
-    grad.addColorStop(0, '#7a7e84');
-    grad.addColorStop(1, '#3a3c40');
+    grad.addColorStop(0, col('#7a7e84'));
+    grad.addColorStop(1, col('#3a3c40'));
     g.beginPath();
     g.arc(0, 0, radius, 0, Math.PI * 2);
     g.fillStyle = grad;
@@ -1130,7 +1155,7 @@
     g.shadowBlur = 14;
     g.fill();
     g.shadowBlur = 0;
-    g.strokeStyle = '#202224';
+    g.strokeStyle = col('#202224');
     g.lineWidth = 3;
     g.stroke();
 
@@ -1143,30 +1168,54 @@
       g.fill();
     }
 
-    [-1, 1].forEach((side) => {
-      for (let i = 0; i < 8; i++) {
-        const et = i / 7;
-        const a = (et - 0.5) * Math.PI * 0.75;
-        const ex = side * (radius * 0.55 + Math.cos(a) * radius * 0.3);
-        const ey = Math.sin(a) * radius * 0.78;
-        const er = radius * 0.07 + (i % 3 === 0 ? radius * 0.015 : 0);
-        g.beginPath();
-        g.arc(ex, ey, er * 1.4, 0, Math.PI * 2);
-        g.fillStyle = '#0c0608';
-        g.fill();
-        g.beginPath();
-        g.arc(ex, ey, er, 0, Math.PI * 2);
-        g.fillStyle = '#c81020';
-        g.shadowColor = '#ff2020';
-        g.shadowBlur = 5;
-        g.fill();
-        g.shadowBlur = 0;
-        g.beginPath();
-        g.arc(ex, ey, er * 0.35, 0, Math.PI * 2);
-        g.fillStyle = '#1a0608';
-        g.fill();
-      }
-    });
+    if (phase2) {
+      // one giant eye, flashing black and white
+      const on = Math.floor(t / 140) % 2 === 0;
+      const a = on ? '#ffffff' : '#000000';
+      const b = on ? '#000000' : '#ffffff';
+      const er = radius * 0.62;
+      g.beginPath();
+      g.arc(0, -radius * 0.02, er * 1.12, 0, Math.PI * 2);
+      g.fillStyle = b;
+      g.fill();
+      g.beginPath();
+      g.arc(0, -radius * 0.02, er, 0, Math.PI * 2);
+      g.fillStyle = a;
+      g.fill();
+      g.beginPath();
+      g.arc(0, -radius * 0.02, er * 0.5, 0, Math.PI * 2);
+      g.fillStyle = b;
+      g.fill();
+      g.beginPath();
+      g.ellipse(0, -radius * 0.02, er * 0.14, er * 0.45, 0, 0, Math.PI * 2);
+      g.fillStyle = a;
+      g.fill();
+    } else {
+      [-1, 1].forEach((side) => {
+        for (let i = 0; i < 8; i++) {
+          const et = i / 7;
+          const ang = (et - 0.5) * Math.PI * 0.75;
+          const ex = side * (radius * 0.55 + Math.cos(ang) * radius * 0.3);
+          const ey = Math.sin(ang) * radius * 0.78;
+          const er = radius * 0.07 + (i % 3 === 0 ? radius * 0.015 : 0);
+          g.beginPath();
+          g.arc(ex, ey, er * 1.4, 0, Math.PI * 2);
+          g.fillStyle = '#0c0608';
+          g.fill();
+          g.beginPath();
+          g.arc(ex, ey, er, 0, Math.PI * 2);
+          g.fillStyle = '#c81020';
+          g.shadowColor = '#ff2020';
+          g.shadowBlur = 5;
+          g.fill();
+          g.shadowBlur = 0;
+          g.beginPath();
+          g.arc(ex, ey, er * 0.35, 0, Math.PI * 2);
+          g.fillStyle = '#1a0608';
+          g.fill();
+        }
+      });
+    }
 
     g.restore();
   }
@@ -2935,6 +2984,8 @@
   wirePhase2Toggle(lastKnightCtx);
   wirePhase2Toggle(frozenMutationCtx);
   wirePhase2Toggle(cisternCtx);
+  wirePhase2Toggle(cultivatorCtx);
+  wirePhase2Toggle(garguantuagoyleCtx);
 
   // This page redraws seventeen fully-detailed monster portraits at once, so
   // it caps itself around 30fps instead of riding requestAnimationFrame's
@@ -2971,12 +3022,12 @@
       drawPortraitOrLock(kindlingCtx, drawKindling, t);
       drawPortraitOrLock(stalkerCtx, drawStalker, t);
       drawPortraitOrLock(sentryCtx, drawSentry, t);
-      drawPortraitOrLock(cultivatorCtx, drawCultivator, t);
+      drawPortraitOrLock(cultivatorCtx, drawCultivator, t, phase2Shown.has(cultivatorCtx));
       drawPortraitOrLock(reacherCtx, drawReacher, t);
       drawPortraitOrLock(gargoyleCtx, drawGargoyle, t);
       drawPortraitOrLock(wardenCtx, drawWarden, t);
       drawPortraitOrLock(grotesqueCtx, drawGrotesque, t);
-      drawPortraitOrLock(garguantuagoyleCtx, drawGarguantuagoyle, t);
+      drawPortraitOrLock(garguantuagoyleCtx, drawGarguantuagoyle, t, phase2Shown.has(garguantuagoyleCtx));
     }
     requestAnimationFrame(loop);
   }
