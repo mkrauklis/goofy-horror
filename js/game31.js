@@ -401,7 +401,7 @@
     g.scale(k, k);
     g.drawImage(M.sprite(id, now), -80, -80);
     g.restore();
-    if (flash) swCirc(g, 0, 0, s * 1.1, 'rgba(255,255,255,0.6)');
+    if (flash) swCirc(g, 0, 0, s * 1.1, `rgba(255,255,255,${0.6 * flash})`);
   }
   function drawSwarm(g, cx, cy, heading, now, members, spread, flash, scatter) {
     const cs = Math.cos(heading), sn = Math.sin(heading);
@@ -459,7 +459,7 @@
   const doorPos = { x: LEVEL.door.x * TILE + TILE / 2, y: (LEVEL.door.y + 0.5) * TILE };
 
   const members = makeSwarmMembers(BOSS_SPREAD, 3131);
-  const boss = { hp: BOSS_MAX_HEALTH, x: 0, y: 0, heading: 0, emerge: 0, flashUntil: 0, speedMult: 3, nextThrowAt: 0 };
+  const boss = { hp: BOSS_MAX_HEALTH, x: 0, y: 0, heading: 0, emerge: 0, flashUntil: 0, speedMult: 3, nextThrowAt: 0, knockLeft: 0 };
 
   let missiles = [];
   let thrown = [];
@@ -500,7 +500,7 @@
       c.x = carStarts[i].x; c.y = carStarts[i].y; c.heading = carStarts[i].heading;
       c.v = 0; c.nextFireAt = 0; c.braking = false; c.alive = true;
     });
-    boss.hp = BOSS_MAX_HEALTH; boss.emerge = 0; boss.flashUntil = 0; boss.speedMult = 3;
+    boss.hp = BOSS_MAX_HEALTH; boss.emerge = 0; boss.flashUntil = 0; boss.speedMult = 3; boss.knockLeft = 0;
     boss.x = doorPos.x; boss.y = doorPos.y; boss.heading = 0;
     missiles = []; thrown = []; particles = []; explosions = []; floatingTexts = [];
     gameState = 'foot';
@@ -735,12 +735,12 @@
   function hitBoss(now) {
     boss.hp = Math.max(0, boss.hp - MISSILE_DAMAGE);
     boss.flashUntil = now + 150;
-    boss.x -= HIT_KNOCKBACK; // straight road: back down it
+    boss.knockLeft += HIT_KNOCKBACK; // straight road: back down it, eased in over a few frames in updateBoss (the camera is pinned to the boss, so a one-frame jump would snap the whole screen)
     const ox = (Math.random() - 0.5) * BOSS_SPREAD, oy = (Math.random() - 0.5) * BOSS_SPREAD;
     spawnExplosion(boss.x + ox, boss.y + oy);
     spawnParticles(boss.x + ox, boss.y + oy, 14, '#ff8a2a', 300, 0.7, 4);
     spawnFloatingText(boss.x + ox, boss.y + oy - 20, `-${fmtHp(MISSILE_DAMAGE)}`);
-    shake = Math.max(shake, 5);
+    shake = Math.max(shake, 3);
     playHit();
     if (boss.hp <= 0) startDying(now);
   }
@@ -767,6 +767,9 @@
     // it back) buy you a breather, not an escape.
     const sprint = clamp((d - CATCHUP_START) / (CATCHUP_FULL - CATCHUP_START), 0, 1);
     boss.speedMult = lerp(3, 5, sprint);
+    const eased = boss.knockLeft * Math.min(1, dt * 9);
+    boss.knockLeft -= eased;
+    boss.x -= eased;
     const step = PLAYER_SPEED * boss.speedMult * ramp * dt;
     boss.x += (dx / d) * Math.min(step, d);
     boss.y += (dy / d) * Math.min(step, d);
@@ -1160,7 +1163,7 @@
 
   function drawBossWorld(g, now) {
     if (gameState === 'foot') return;
-    const flash = now < boss.flashUntil;
+    const flash = clamp((boss.flashUntil - now) / 150, 0, 1);
     const dyingT = gameState === 'dying' ? clamp((now - dyingStartedAt) / DYING_MS, 0, 1) : 0;
     g.save();
     if (boss.emerge < 1) g.globalAlpha = boss.emerge;
