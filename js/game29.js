@@ -1833,8 +1833,8 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 100 * nvgMult, 1);
-      punchLight(maskCtx, s.x, s.y, 250 * nvgMult, 0.85);
+      punchLight(maskCtx, s.x, s.y, 100 * nvgMult * HM.flicker(pl), 1);
+      punchLight(maskCtx, s.x, s.y, 250 * nvgMult * HM.flicker(pl), 0.85);
     });
   }
 

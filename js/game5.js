@@ -2728,8 +2728,8 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 90 * ZOOM * nvgMult, 1);
-      punchLight(maskCtx, s.x, s.y, 230 * ZOOM * nvgMult, 0.85);
+      punchLight(maskCtx, s.x, s.y, 90 * ZOOM * nvgMult * HM.flicker(pl), 1);
+      punchLight(maskCtx, s.x, s.y, 230 * ZOOM * nvgMult * HM.flicker(pl), 0.85);
     });
 
     fireLightPunches().forEach((fc) => {

@@ -1941,8 +1941,8 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 150 * zoom * nvgMult, 1);
-      punchLight(maskCtx, s.x, s.y, 340 * zoom * nvgMult, 0.85);
+      punchLight(maskCtx, s.x, s.y, 150 * zoom * nvgMult * HM.flicker(pl), 1);
+      punchLight(maskCtx, s.x, s.y, 340 * zoom * nvgMult * HM.flicker(pl), 0.85);
     });
     if (!boss.defeated && !boss.intangible) {
       const bs = worldToScreen(boss.x, boss.y);

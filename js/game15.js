@@ -3002,8 +3002,8 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 140 * zoom * nvgMult, 1);
-      punchLight(maskCtx, s.x, s.y, 320 * zoom * nvgMult, 0.85);
+      punchLight(maskCtx, s.x, s.y, 140 * zoom * nvgMult * HM.flicker(pl), 1);
+      punchLight(maskCtx, s.x, s.y, 320 * zoom * nvgMult * HM.flicker(pl), 0.85);
     });
 
     const bs = worldToScreen(boss.x, boss.y);

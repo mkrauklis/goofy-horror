@@ -2017,8 +2017,8 @@
       if (stalking) {
         punchLight(maskCtx, s.x, s.y, STALKWALK_LIGHT_RADIUS * zoom, 1);
       } else {
-        punchLight(maskCtx, s.x, s.y, 150 * zoom * nvgMult, 1);
-        punchLight(maskCtx, s.x, s.y, 340 * zoom * nvgMult, 0.85);
+        punchLight(maskCtx, s.x, s.y, 150 * zoom * nvgMult * HM.flicker(pl), 1);
+        punchLight(maskCtx, s.x, s.y, 340 * zoom * nvgMult * HM.flicker(pl), 0.85);
       }
     });
     if (!stalking) {

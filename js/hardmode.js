@@ -12,6 +12,7 @@
 //   * monsters are drawn pale with red eyes
 //   * bosses have 1.5x the health
 //   * enemy projectiles fly 1.25x faster
+//   * your flashlight flickers at random
 (function () {
   const KEY = 'goofy-horror-hard-mode';
   let on = false;
@@ -76,6 +77,34 @@
     g.drawImage(scratch, 0, 0, size, size, m.x - half, m.y - half, size, size);
   }
 
+  // ---- flickering flashlight ----
+  // Each player's light gets its own random flicker events: mostly small
+  // flutters, now and then a sharp dip, rarely a near blackout. `key` is the
+  // player object. Called more than once per frame per player (the inner and
+  // outer light), so the value is cached for a few ms.
+  const flickerState = new Map();
+  function flicker(key) {
+    if (!on) return 1;
+    const now = performance.now();
+    let st = flickerState.get(key);
+    if (!st) { st = { nextAt: now + 1000 + Math.random() * 2000, until: 0, level: 1, evalAt: 0, value: 1 }; flickerState.set(key, st); }
+    if (now - st.evalAt < 8) return st.value;
+    st.evalAt = now;
+    if (now >= st.nextAt) {
+      const roll = Math.random();
+      let dur;
+      if (roll < 0.55) { st.level = 0.55 + Math.random() * 0.3; dur = 60 + Math.random() * 120; }      // flutter
+      else if (roll < 0.88) { st.level = 0.22 + Math.random() * 0.25; dur = 50 + Math.random() * 90; } // sharp dip
+      else { st.level = 0.05 + Math.random() * 0.1; dur = 100 + Math.random() * 260; }                  // near blackout
+      st.until = now + dur;
+      // sometimes it stutters twice in a row
+      st.nextAt = now + dur + (Math.random() < 0.3 ? 70 + Math.random() * 120 : 600 + Math.random() * 2600);
+    }
+    if (now < st.until) st.value = Math.min(1, st.level * (0.8 + Math.random() * 0.35));
+    else st.value = 0.97 + Math.random() * 0.03;
+    return st.value;
+  }
+
   const id = (v) => v;
   function applyChrome() {
     if (!on) return;
@@ -104,5 +133,6 @@
     drain: on ? (v) => v * STAMINA_DRAIN : id,
     bossHp: on ? (v) => Math.round(v * BOSS_HEALTH * 2) / 2 : id,
     monster,
+    flicker,
   };
 })();

@@ -2333,8 +2333,8 @@
     const flashlightMult = lightsOn ? 1 : 0.25;
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 90 * nvgMult * flashlightMult, 1);
-      punchLight(maskCtx, s.x, s.y, 230 * nvgMult * flashlightMult, 0.85);
+      punchLight(maskCtx, s.x, s.y, 90 * nvgMult * flashlightMult * HM.flicker(pl), 1);
+      punchLight(maskCtx, s.x, s.y, 230 * nvgMult * flashlightMult * HM.flicker(pl), 0.85);
     });
 
     // Wall torches light their own small pool regardless of the flashlight --

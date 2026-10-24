@@ -1501,7 +1501,7 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, PLAYER_LIGHT_RADIUS * zoom, 1);
+      punchLight(maskCtx, s.x, s.y, PLAYER_LIGHT_RADIUS * zoom * HM.flicker(pl), 1);
     });
     permanentBlueCoral.forEach((bs) => {
       const s = worldToScreen(bs.x, bs.y);
