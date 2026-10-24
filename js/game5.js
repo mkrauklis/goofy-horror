@@ -202,13 +202,6 @@
   let ambientGain = null;
   let ambientSubOsc = null;
   let ambientMidGain = null;
-  let bossMusicGain = null;
-  let bossBassFilter = null;
-  let bossBassGain = null;
-  let bossLeadGain = null;
-  let bossNoiseBuffer = null;
-  let bossStep = 0;
-  let bossPulseTimer = null;
 
   function ensureAudio() {
     if (audioCtx) return;
@@ -268,133 +261,16 @@
     ambientMidGain = addDroneVoice(97, 'sawtooth', 0, 0.15, 6).gain; // dissonant edge, fades in with tension
     addDroneVoice(660, 'triangle', 0.05, 0.02, 40); // faint distant ringing
 
-    // A real short loop -- a bassline riff, a kick/hat pulse, and a
-    // call-and-response lead motif -- instead of randomized stabs, so it
-    // reads as an actual boss theme rather than noise. The whole level is
-    // the boss encounter (unlike earlier levels, there's no separate "safe"
-    // state to score against), so it runs continuously once music is on,
-    // and its tempo climbs as bossHealth drops so the fight escalates toward
-    // the last couple of bombs.
-    bossMusicGain = audioCtx.createGain();
-    bossMusicGain.gain.value = 0.55;
-    bossMusicGain.connect(musicMasterGain);
-
-    // The riff and kick share a gentle lowpass so the sawtooth reads as a
-    // rounded synth-bass tone rather than a buzzy raw wave.
-    bossBassFilter = audioCtx.createBiquadFilter();
-    bossBassFilter.type = 'lowpass';
-    bossBassFilter.frequency.value = 900;
-    bossBassFilter.Q.value = 0.7;
-    bossBassGain = audioCtx.createGain();
-    bossBassGain.gain.value = 1;
-    bossBassFilter.connect(bossBassGain);
-    bossBassGain.connect(bossMusicGain);
-
-    bossLeadGain = audioCtx.createGain();
-    bossLeadGain.gain.value = 1;
-    bossLeadGain.connect(bossMusicGain);
-
-    bossNoiseBuffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * 0.08), audioCtx.sampleRate);
-    const noiseData = bossNoiseBuffer.getChannelData(0);
-    for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
-
-    bossStep = 0;
-    scheduleBossStep();
-  }
-
-  // A minor-key riff and lead phrase, low register for the ostinato, an
-  // octave up for the melody -- deliberately a fixed, memorable pattern
-  // rather than randomized notes.
-  const BOSS_NOTE = { A1: 55.0, C2: 65.41, D2: 73.42, E2: 82.41, G2: 98.0, A2: 110.0, C3: 130.81, D3: 146.83, E3: 164.81 };
-  const BOSS_BASS_RIFF = [
-    BOSS_NOTE.A1, 0, BOSS_NOTE.C2, 0, BOSS_NOTE.A1, 0, BOSS_NOTE.E2, 0,
-    BOSS_NOTE.A1, 0, BOSS_NOTE.C2, 0, BOSS_NOTE.G2, 0, BOSS_NOTE.E2, 0,
-  ];
-  const BOSS_LEAD_PHRASE = [BOSS_NOTE.A2, BOSS_NOTE.C3, BOSS_NOTE.D3, BOSS_NOTE.E3, BOSS_NOTE.D3, BOSS_NOTE.C3, BOSS_NOTE.A2, BOSS_NOTE.G2];
-
-  function playBossBassNote(freq, t, dur, peak) {
-    const osc = audioCtx.createOscillator();
-    const env = audioCtx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.value = freq;
-    env.gain.setValueAtTime(0.0001, t);
-    env.gain.exponentialRampToValueAtTime(peak, t + 0.015);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(env);
-    env.connect(bossBassFilter);
-    osc.start(t);
-    osc.stop(t + dur + 0.02);
-  }
-
-  function playBossLeadNote(freq, t, dur, peak) {
-    const osc = audioCtx.createOscillator();
-    const env = audioCtx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.value = freq;
-    env.gain.setValueAtTime(0.0001, t);
-    env.gain.exponentialRampToValueAtTime(peak, t + 0.02);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(env);
-    env.connect(bossLeadGain);
-    osc.start(t);
-    osc.stop(t + dur + 0.02);
-  }
-
-  function playBossKick(t) {
-    const osc = audioCtx.createOscillator();
-    const env = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(130, t);
-    osc.frequency.exponentialRampToValueAtTime(42, t + 0.12);
-    env.gain.setValueAtTime(0.5, t);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-    osc.connect(env);
-    env.connect(bossBassGain);
-    osc.start(t);
-    osc.stop(t + 0.18);
-  }
-
-  function playBossHat(t, peak) {
-    const src = audioCtx.createBufferSource();
-    src.buffer = bossNoiseBuffer;
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.value = 7000;
-    const env = audioCtx.createGain();
-    env.gain.setValueAtTime(peak, t);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
-    src.connect(filter);
-    filter.connect(env);
-    env.connect(bossLeadGain);
-    src.start(t);
-  }
-
-  // Self-rescheduling via setTimeout at 16th-note resolution rather than a
-  // fixed-interval clock, so tempo can change between steps just by
-  // changing how long until the next call.
-  function scheduleBossStep() {
-    if (!audioCtx || !bossBassGain) return;
-    if (boss.defeated) { bossPulseTimer = null; return; }
-
-    const healthFrac = bossHealthFrac();
-    const bpm = 96 + (1 - healthFrac) * 48; // 96 BPM at full health -> 144 BPM near defeat
-    const stepDur = 60 / bpm / 4;
-    const t = audioCtx.currentTime;
-    const i = bossStep % 16;
-    const bar = Math.floor(bossStep / 16) % 2;
-
-    const bassNote = BOSS_BASS_RIFF[i];
-    if (bassNote) playBossBassNote(bassNote, t, stepDur * 1.8, 0.18 + (1 - healthFrac) * 0.07);
-    if (i === 0 || i === 8) playBossKick(t);
-    if (i % 2 === 1) playBossHat(t, 0.04 + (1 - healthFrac) * 0.02);
-
-    // The lead phrase answers the riff every other bar, call-and-response.
-    if (bar === 1 && i < 8) {
-      playBossLeadNote(BOSS_LEAD_PHRASE[i], t + stepDur * 0.15, stepDur * 1.6, 0.07);
+    // The boss theme: the whole level is the boss encounter, so it runs
+    // continuously once music is on, and gets more frantic as bossHealth
+    // drops toward the last couple of bombs. See js/bossmusic.js.
+    if (window.BossMusic) {
+      window.BossMusic.start({
+        audioCtx, dest: musicMasterGain, theme: { root: 82.4, bpm: 150 },
+        isActive: () => !boss.defeated,
+        intensity: () => 1 - bossHealthFrac(),
+      });
     }
-
-    bossStep++;
-    bossPulseTimer = setTimeout(scheduleBossStep, stepDur * 1000);
   }
 
   function playTone(freq, duration, type, peakGain, delay) {
@@ -965,10 +841,6 @@
     for (let i = 0; i < BOMB_LIVE_COUNT; i++) spawnBomb();
     doorUnlocked = false;
 
-    // A replay after a win leaves the sequencer stopped (see
-    // scheduleBossStep's boss.defeated check) -- restart it now that the
-    // boss is alive again.
-    if (audioCtx && bossPulseTimer === null) { bossStep = 0; scheduleBossStep(); }
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
       x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)],

@@ -232,6 +232,15 @@
     addDroneVoice(21, 'sine', 0.4, 0.03, 0.8);
     ambientMidGain = addDroneVoice(94, 'sawtooth', 0, 0.15, 6).gain;
     addDroneVoice(640, 'triangle', 0.05, 0.02, 40);
+    // the boss theme: only while the fight is actually on, and more
+    // frantic as the boss's health drops
+    if (window.BossMusic) {
+      window.BossMusic.start({
+        audioCtx, dest: musicMasterGain, theme: { root: 98, bpm: 170 },
+        isActive: () => gameState === 'playing' && !boss.defeated,
+        intensity: () => 1 - bossHealthFrac(),
+      });
+    }
   }
 
   function updateAmbientTension() {

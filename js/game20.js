@@ -179,15 +179,11 @@
   let ambientGain = null;
   let ambientSubOsc = null;
   let ambientMidGain = null;
-  // The actual boss-battle track -- a pulsing bass/kick/lead pattern
-  // scheduled a beat at a time (see scheduleBossMusicStep) rather than a
-  // fixed loop, so phase 2 can just replay the same pattern faster and
-  // louder instead of needing a whole second track.
-  let bossMusicGain = null;
-  let bossMusicTimer = null;
+  // The boss-battle track (js/bossmusic.js), started by startBossMusic once
+  // the intro's over; phase 2 just makes it more intense.
+  let bossMusic = null;
   let bossMusicStarted = false;
   let bossMusicPhase2 = false;
-  let bossMusicStep = 0;
 
   function ensureAudio() {
     if (audioCtx) return;
@@ -244,71 +240,6 @@
     addDroneVoice(19.3, 'sine', 0.4, 0.03, 0.7); // sub-octave rumble
     ambientMidGain = addDroneVoice(91, 'sawtooth', 0, 0.12, 5).gain; // dissonant edge, fades in with tension
     addDroneVoice(540, 'triangle', 0.04, 0.02, 30); // faint distant ringing
-
-    bossMusicGain = audioCtx.createGain();
-    bossMusicGain.gain.value = 0.55;
-    bossMusicGain.connect(musicMasterGain);
-  }
-
-  // A-minor-ish bass riff, a kick on every other step, and a sparse lead
-  // that only sounds on non-rest steps -- aquatic and a little eerie
-  // rather than triumphant, to match the boss. Phase 2 replays the exact
-  // same pattern at a faster tempo with a louder lead pitched up an
-  // octave, which reads as "the same fight, now hungrier" instead of a
-  // jarring track switch.
-  const BOSS_MUSIC_BASS = [55, 55, 65.4, 55, 61.7, 55, 73.4, 65.4];
-  const BOSS_MUSIC_LEAD = [0, 220, 0, 261.6, 0, 220, 246.9, 0];
-
-  function scheduleBossMusicStep() {
-    if (!bossMusicStarted || !audioCtx || !bossMusicGain) return;
-    const bpm = bossMusicPhase2 ? 150 : 112;
-    const stepSec = 60 / bpm / 2;
-    const i = bossMusicStep % BOSS_MUSIC_BASS.length;
-    const t = audioCtx.currentTime;
-
-    const bassOsc = audioCtx.createOscillator();
-    const bassGain = audioCtx.createGain();
-    bassOsc.type = 'triangle';
-    bassOsc.frequency.value = BOSS_MUSIC_BASS[i];
-    bassGain.gain.setValueAtTime(0.0001, t);
-    bassGain.gain.exponentialRampToValueAtTime(bossMusicPhase2 ? 0.3 : 0.22, t + 0.015);
-    bassGain.gain.exponentialRampToValueAtTime(0.0001, t + stepSec * 0.9);
-    bassOsc.connect(bassGain);
-    bassGain.connect(bossMusicGain);
-    bassOsc.start(t);
-    bassOsc.stop(t + stepSec);
-
-    if (i % 2 === 0) {
-      const kick = audioCtx.createOscillator();
-      const kickGain = audioCtx.createGain();
-      kick.type = 'sine';
-      kick.frequency.setValueAtTime(110, t);
-      kick.frequency.exponentialRampToValueAtTime(38, t + 0.09);
-      kickGain.gain.setValueAtTime(0.3, t);
-      kickGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-      kick.connect(kickGain);
-      kickGain.connect(bossMusicGain);
-      kick.start(t);
-      kick.stop(t + 0.14);
-    }
-
-    const leadFreq = BOSS_MUSIC_LEAD[i];
-    if (leadFreq) {
-      const leadOsc = audioCtx.createOscillator();
-      const leadGain = audioCtx.createGain();
-      leadOsc.type = 'square';
-      leadOsc.frequency.value = bossMusicPhase2 ? leadFreq * 2 : leadFreq;
-      leadGain.gain.setValueAtTime(0.0001, t);
-      leadGain.gain.exponentialRampToValueAtTime(bossMusicPhase2 ? 0.15 : 0.09, t + 0.02);
-      leadGain.gain.exponentialRampToValueAtTime(0.0001, t + stepSec * 0.75);
-      leadOsc.connect(leadGain);
-      leadGain.connect(bossMusicGain);
-      leadOsc.start(t);
-      leadOsc.stop(t + stepSec);
-    }
-
-    bossMusicStep++;
-    bossMusicTimer = setTimeout(scheduleBossMusicStep, stepSec * 1000);
   }
 
   function startBossMusic() {
@@ -316,16 +247,17 @@
     ensureAudio();
     if (!audioCtx) return;
     bossMusicStarted = true;
-    bossMusicStep = 0;
-    scheduleBossMusicStep();
+    if (!bossMusic && window.BossMusic) {
+      bossMusic = window.BossMusic.start({
+        audioCtx, dest: musicMasterGain, theme: { root: 77.8, bpm: 160 },
+        isActive: () => bossMusicStarted,
+        intensity: () => (bossMusicPhase2 ? 0.9 : 0.3),
+      });
+    }
   }
 
   function stopBossMusic() {
     bossMusicStarted = false;
-    if (bossMusicTimer) {
-      clearTimeout(bossMusicTimer);
-      bossMusicTimer = null;
-    }
   }
 
   function playTone(freq, duration, type, peakGain, delay) {

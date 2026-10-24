@@ -235,15 +235,6 @@
   let ambientGain = null;
   let ambientSubOsc = null;
   let ambientMidGain = null;
-  let bossMusicGain = null;
-  let bossBassFilter = null;
-  let bossBassGain = null;
-  let bossLeadGain = null;
-  let bossWellDelay = null;
-  let bossWellFeedback = null;
-  let bossNoiseBuffer = null;
-  let bossStep = 0;
-  let bossPulseTimer = null;
 
   function ensureAudio() {
     if (audioCtx) return;
@@ -298,169 +289,15 @@
     ambientMidGain = addDroneVoice(97, 'sawtooth', 0, 0.15, 6).gain;
     addDroneVoice(660, 'triangle', 0.05, 0.02, 40);
 
-    bossMusicGain = audioCtx.createGain();
-    bossMusicGain.gain.value = 0.55;
-    bossMusicGain.connect(musicMasterGain);
-
-    bossBassFilter = audioCtx.createBiquadFilter();
-    bossBassFilter.type = 'lowpass';
-    bossBassFilter.frequency.value = 420; // muffled, like it's rising up a stone shaft
-    bossBassFilter.Q.value = 0.6;
-    bossBassGain = audioCtx.createGain();
-    bossBassGain.gain.value = 1;
-    bossBassFilter.connect(bossBassGain);
-    bossBassGain.connect(bossMusicGain);
-
-    bossLeadGain = audioCtx.createGain();
-    bossLeadGain.gain.value = 1;
-
-    // A well-shaft echo: every drip/lead note repeats, fainter, four times
-    // on a slow feedback loop -- the one thing that makes this boss's
-    // theme read as "dwelling somewhere hollow and far down" rather than
-    // just another quiet minor-key riff.
-    bossWellDelay = audioCtx.createDelay(1);
-    bossWellDelay.delayTime.value = 0.34;
-    bossWellFeedback = audioCtx.createGain();
-    bossWellFeedback.gain.value = 0.46;
-    const wellDamp = audioCtx.createBiquadFilter();
-    wellDamp.type = 'lowpass';
-    wellDamp.frequency.value = 1800;
-    bossLeadGain.connect(bossMusicGain);
-    bossLeadGain.connect(bossWellDelay);
-    bossWellDelay.connect(wellDamp);
-    wellDamp.connect(bossWellFeedback);
-    bossWellFeedback.connect(bossWellDelay);
-    bossWellFeedback.connect(bossMusicGain);
-
-    bossNoiseBuffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * 0.08), audioCtx.sampleRate);
-    const noiseData = bossNoiseBuffer.getChannelData(0);
-    for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
-
-    bossStep = 0;
-    scheduleBossStep();
-  }
-
-  // A hollow, dripping well-dweller theme -- low, sparse, mostly rests,
-  // in place of every other boss's busier riff. The well-echo delay above
-  // does most of the work; the notes themselves just need room for it to
-  // be heard.
-  const BOSS_NOTE = { D1: 36.71, F1: 43.65, G1: 49.0, A1: 55.0, C2: 65.41, D2: 73.42, F2: 87.31, G2: 98.0, A2: 110.0 };
-  const BOSS_BASS_RIFF = [
-    BOSS_NOTE.D1, 0, 0, 0, 0, 0, BOSS_NOTE.F1, 0,
-    0, 0, BOSS_NOTE.G1, 0, 0, 0, 0, 0,
-  ];
-  const BOSS_LEAD_PHRASE = [BOSS_NOTE.D2, 0, BOSS_NOTE.A1, 0, BOSS_NOTE.C2, 0, BOSS_NOTE.G1, 0];
-
-  // The chase's own theme -- once phase 2 actually starts moving, the
-  // well-dweller's hollow dripping gives way to something fast and
-  // driving: a kick on nearly every beat, a bass riff that doesn't rest,
-  // and an urgent high lead, still running through the same well-echo
-  // delay so it reads as the same creature, just hunting now instead of
-  // waiting in the dark.
-  const CHASE_NOTE = { D2: 73.42, F2: 87.31, G2: 98.0, A2: 110.0, C3: 130.81, D3: 146.83, F3: 174.61 };
-  const CHASE_BASS_RIFF = [
-    CHASE_NOTE.D2, 0, CHASE_NOTE.D2, 0, CHASE_NOTE.F2, 0, CHASE_NOTE.D2, 0,
-    CHASE_NOTE.A2, 0, CHASE_NOTE.G2, 0, CHASE_NOTE.F2, 0, CHASE_NOTE.D2, CHASE_NOTE.F2,
-  ];
-  const CHASE_LEAD_PHRASE = [
-    CHASE_NOTE.D3, CHASE_NOTE.F3, CHASE_NOTE.D3, CHASE_NOTE.C3,
-    CHASE_NOTE.D3, CHASE_NOTE.F3, CHASE_NOTE.A2, CHASE_NOTE.G2,
-  ];
-  const CHASE_BPM = 150;
-
-  function playBossBassNote(freq, t, dur, peak) {
-    const osc = audioCtx.createOscillator();
-    const env = audioCtx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.value = freq;
-    env.gain.setValueAtTime(0.0001, t);
-    env.gain.exponentialRampToValueAtTime(peak, t + 0.015);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(env);
-    env.connect(bossBassFilter);
-    osc.start(t);
-    osc.stop(t + dur + 0.02);
-  }
-
-  function playBossLeadNote(freq, t, dur, peak) {
-    const osc = audioCtx.createOscillator();
-    const env = audioCtx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.value = freq;
-    env.gain.setValueAtTime(0.0001, t);
-    env.gain.exponentialRampToValueAtTime(peak, t + 0.02);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(env);
-    env.connect(bossLeadGain);
-    osc.start(t);
-    osc.stop(t + dur + 0.02);
-  }
-
-  function playBossKick(t) {
-    const osc = audioCtx.createOscillator();
-    const env = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(95, t);
-    osc.frequency.exponentialRampToValueAtTime(32, t + 0.3);
-    env.gain.setValueAtTime(0.5, t);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
-    osc.connect(env);
-    env.connect(bossBassGain);
-    osc.start(t);
-    osc.stop(t + 0.4);
-  }
-
-  // A single glassy drip -- a short, high triangle blip that falls
-  // through the well-echo delay and repeats, fainter, trailing off into
-  // the dark. Replaces the usual hi-hat.
-  function playBossDrip(t, peak) {
-    const osc = audioCtx.createOscillator();
-    const env = audioCtx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(1900 + Math.random() * 300, t);
-    osc.frequency.exponentialRampToValueAtTime(900, t + 0.09);
-    env.gain.setValueAtTime(peak, t);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-    osc.connect(env);
-    env.connect(bossLeadGain);
-    osc.start(t);
-    osc.stop(t + 0.14);
-  }
-
-  function scheduleBossStep() {
-    if (!audioCtx || !bossBassGain) return;
-    if (boss.defeated) { bossPulseTimer = null; return; }
-
-    // Slow and sparse everywhere except the chase itself -- a
-    // well-dweller doesn't rush, and the long rests are what let the
-    // echo actually be heard between hits, but once it's actually
-    // hunting down the hallway that patience is gone.
-    const chasing = boss.phase2 && boss.chaseSubPhase === 'moving';
-    const healthFrac = bossHealthFrac();
-    const bpm = chasing ? CHASE_BPM : 58 + (1 - healthFrac) * 18;
-    const stepDur = 60 / bpm / 4;
-    const t = audioCtx.currentTime;
-    const i = bossStep % 16;
-    const bar = Math.floor(bossStep / 16) % 2;
-
-    const bassRiff = chasing ? CHASE_BASS_RIFF : BOSS_BASS_RIFF;
-    const leadPhrase = chasing ? CHASE_LEAD_PHRASE : BOSS_LEAD_PHRASE;
-
-    const bassNote = bassRiff[i];
-    if (bassNote) {
-      playBossBassNote(bassNote, t, stepDur * (chasing ? 1.6 : 3.2), chasing ? 0.26 : 0.22 + (1 - healthFrac) * 0.08);
+    // The boss theme -- see js/bossmusic.js. Gets more frantic as the
+    // boss's health drops.
+    if (window.BossMusic) {
+      window.BossMusic.start({
+        audioCtx, dest: musicMasterGain, theme: { root: 87.3, bpm: 140 },
+        isActive: () => !boss.defeated,
+        intensity: () => 1 - bossHealthFrac(),
+      });
     }
-    if (chasing ? i % 2 === 0 : (i === 0 || i === 10)) playBossKick(t);
-    if (!chasing && (i === 3 || i === 11 || i === 14)) playBossDrip(t, 0.09 + (1 - healthFrac) * 0.04);
-    if (chasing && i % 4 === 2) playBossDrip(t, 0.13);
-
-    if (bar === 1 || chasing) {
-      const leadNote = leadPhrase[i % leadPhrase.length];
-      if (leadNote) playBossLeadNote(leadNote, t, stepDur * (chasing ? 1.3 : 2.4), chasing ? 0.12 : 0.08);
-    }
-
-    bossStep++;
-    bossPulseTimer = setTimeout(scheduleBossStep, stepDur * 1000);
   }
 
   function playTone(freq, duration, type, peakGain, delay) {
@@ -1033,8 +870,6 @@
     torches = [];
     nextTorchSpawnAt = performance.now() + TORCH_SPAWN_INTERVAL_MS;
     hallwayTorchState = LEVEL.hallwayTorchPoints.map((p) => ({ x: p.x, y: p.y, nextAt: 0 }));
-
-    if (audioCtx && bossPulseTimer === null) { bossStep = 0; scheduleBossStep(); }
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
       x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)],
