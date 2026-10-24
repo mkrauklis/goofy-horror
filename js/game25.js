@@ -1,4 +1,5 @@
 (function () {
+  const HM = window.HardMode;
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(25)) {
@@ -43,12 +44,12 @@
   const BOSS_INTRO_ZOOM_MULT = 1.7;
   const BOSS_INTRO_SHAKE_MAG = 7;
   const BOSS_INTRO_GRACE_MS = 3000;
-  const BOSS_IDLE_SPEED = PLAYER_SPEED * 0.3;
+  const BOSS_IDLE_SPEED = HM.speed(PLAYER_SPEED * 0.3);
   const BOSS_IDLE_MIN_MS = 900;
   const BOSS_IDLE_MAX_MS = 1700;
 
-  const BOSS_MAX_HEALTH = 25;
-  const PHASE2_HEALTH_THRESHOLD = 15;
+  const BOSS_MAX_HEALTH = HM.bossHp(25);
+  const PHASE2_HEALTH_THRESHOLD = HM.bossHp(15);
   const PHASE2_CUTSCENE_MS = 3000;
   const PHASE2_NAME_COLOR = '#ffd23d';
   const PHASE2_SUBTITLE = 'RUSTING';
@@ -58,7 +59,7 @@
   // of despawning, until its own lifetime runs out.
   const GEARTHROW_DURATION_MS = 10000;
   const GEARTHROW_INTERVAL_MS = 2000;
-  const GEAR_SPEED = PLAYER_SPEED * 2;
+  const GEAR_SPEED = HM.proj(PLAYER_SPEED * 2);
   const GEAR_HIT_RADIUS = 16;
   const GEAR_LIFETIME_MS = 7000;
 
@@ -85,7 +86,7 @@
   // touches.
   const ROCKET_COUNT = 8;
   const ROCKET_INTERVAL_MS = 320;
-  const ROCKET_SPEED = PLAYER_SPEED * 2.2;
+  const ROCKET_SPEED = HM.proj(PLAYER_SPEED * 2.2);
   const ROCKET_BLAST_RADIUS = TILE * 1.3;
 
   // Phase 2, gained in addition to the four above once it's rusting.
@@ -118,9 +119,9 @@
   const DEATH_STUMBLE_MS = 1200;
   const DEATH_FALL_MS = 1600;
 
-  const RADAR_DURATION_MS = 10000;
-  const ENERGY_DURATION_MS = 10000;
-  const SCANNER_DURATION_MS = 10000;
+  const RADAR_DURATION_MS = HM.ability(10000);
+  const ENERGY_DURATION_MS = HM.ability(10000);
+  const SCANNER_DURATION_MS = HM.ability(10000);
   // The freeze item (CO2) has no effect on this boss at all -- see
   // applyItemEffect's 'co2' branch -- but the tranquilizer shotgun's own
   // stun still uses frozenUntil/this multiplier.
@@ -128,12 +129,12 @@
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
   const SMOKE_FUSE_MS = 3000;
-  const SMOKE_DURATION_MS = 10000;
+  const SMOKE_DURATION_MS = HM.ability(10000);
   const SMOKE_RADIUS = 70;
-  const NVG_DURATION_MS = 10000;
+  const NVG_DURATION_MS = HM.ability(10000);
   const NVG_RANGE_MULT = 2;
   const CRATE_ITEMS = ['radar', 'co2', 'scanner', 'smoke', 'nightvision', 'shotgun-ammo', 'energy'];
-  const SHOTGUN_STUN_MS = 4000;
+  const SHOTGUN_STUN_MS = HM.ability(4000);
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
 
@@ -142,7 +143,7 @@
   const STAMINA_MAX = 15;
   const SPRINT_SPEED_MULT = 2;
   const EXHAUSTED_SPEED_MULT = 0.5;
-  const SPRINT_DRAIN_RATE = STAMINA_MAX / 15;
+  const SPRINT_DRAIN_RATE = HM.drain(STAMINA_MAX / 15);
   const EXHAUSTED_MS = 5000;
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000);
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2;

@@ -5,7 +5,13 @@
 // goofy-horror-best-levelN keys (see index.html) -- this is purely about
 // which levels are unlocked/finished, not how fast you did it.
 (function () {
-  const KEY = 'goofy-horror-story';
+  // Hard mode (js/hardmode.js) is a whole separate run with its own save, so
+  // playing it never touches your normal progress.
+  const HARD = !!(window.HardMode && window.HardMode.on);
+  const NORMAL_KEY = 'goofy-horror-story';
+  const KEY = HARD ? 'goofy-horror-story-hard' : NORMAL_KEY;
+  // Set the first time the final level is beaten; what unlocks hard mode.
+  const BEATEN_KEY = 'goofy-horror-beaten';
   const TOTAL_LEVELS = 31;
 
   function load() {
@@ -46,6 +52,22 @@
     if (!isCompleted(n)) state.completed.push(n);
     if (n + 1 > state.unlocked && n + 1 <= TOTAL_LEVELS) state.unlocked = n + 1;
     persist();
+    if (n === TOTAL_LEVELS) {
+      try { localStorage.setItem(BEATEN_KEY, '1'); } catch (e) { /* ignore */ }
+    }
+  }
+
+  // True once the game has been beaten (in a normal run -- a save from before
+  // hard mode existed that already has the finale counts too).
+  function isHardUnlocked() {
+    try {
+      if (localStorage.getItem(BEATEN_KEY) === '1') return true;
+      const raw = localStorage.getItem(NORMAL_KEY);
+      const parsed = raw && JSON.parse(raw);
+      return !!(parsed && Array.isArray(parsed.completed) && parsed.completed.indexOf(TOTAL_LEVELS) !== -1);
+    } catch (e) {
+      return false;
+    }
   }
 
   // Where "Continue" on the menu should send you: the first level not
@@ -244,6 +266,7 @@
     completeLevel,
     nextLevel,
     isStoryComplete,
+    isHardUnlocked,
     resetProgress,
     getPlayerMode,
     setPlayerMode,

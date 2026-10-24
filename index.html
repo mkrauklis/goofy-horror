@@ -32,6 +32,10 @@
     </div>
     <button id="story-reset" class="story-reset-btn" type="button">Reset progress</button>
   </div>
+  <div id="hard-cta" class="hard-cta" hidden>
+    <button id="hard-toggle" class="hard-toggle-btn" type="button">&#9760; Hard Mode: Off</button>
+    <p id="hard-note" class="hard-note"></p>
+  </div>
   <section class="chapter chapter-1">
   <h2 class="chapter-divider">Chapter 1</h2>
   <div class="menu-list">
@@ -345,6 +349,7 @@
   <p class="hint">Player 1 (orange): W A S D &nbsp;&middot;&nbsp; Player 2 (green): Arrow keys &nbsp;&middot;&nbsp; local split-screen co-op, sound plays after your first key press in a level</p>
 </div>
 
+<script src="js/hardmode.js"></script>
 <script src="js/story.js"></script>
 <script>
   // Best times are saved per-level by each game's own script under
@@ -379,11 +384,33 @@
     const continueBtn = document.getElementById('story-continue');
     const next = story.nextLevel();
     continueBtn.href = `level${next}.html`;
-    continueBtn.textContent = story.isStoryComplete()
+    const hardTag = window.HardMode && window.HardMode.on ? 'Hard Mode: ' : '';
+    continueBtn.textContent = hardTag + (story.isStoryComplete()
       ? 'Replay the Finale'
-      : next === 1 ? 'Start the Story' : `Continue — Level ${next}`;
+      : next === 1 ? 'Start the Story' : `Continue — Level ${next}`);
   }
   renderStoryState();
+
+  // Hard mode unlocks the first time the game is beaten. It's a whole
+  // separate run with its own save (js/hardmode.js, js/story.js).
+  function renderHardMode() {
+    const story = window.GoofyStory, hard = window.HardMode;
+    const cta = document.getElementById('hard-cta');
+    if (!story || !hard || !story.isHardUnlocked()) return;
+    cta.hidden = false;
+    const btn = document.getElementById('hard-toggle');
+    btn.textContent = `☠ Hard Mode: ${hard.on ? 'On' : 'Off'}`;
+    btn.classList.toggle('active', hard.on);
+    document.getElementById('hard-note').textContent = hard.on
+      ? 'Hard mode run — its own progress, separate from your normal save. Darker and paler, stamina burns 2x as fast, monsters are 1.25x faster (chase scenes excepted) with pale skin and red eyes, abilities last half as long, bosses have 1.5x the health and projectiles fly 1.25x faster.'
+      : 'You beat the game. Want to go again, harder? Hard mode is a separate run with its own progress.';
+  }
+  renderHardMode();
+  document.getElementById('hard-toggle').addEventListener('click', () => {
+    if (!window.HardMode) return;
+    window.HardMode.set(!window.HardMode.on);
+    window.location.reload();
+  });
 
   document.getElementById('story-reset').addEventListener('click', () => {
     if (!window.GoofyStory) return;

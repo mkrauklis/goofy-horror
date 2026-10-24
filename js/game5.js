@@ -1,4 +1,5 @@
 (function () {
+  const HM = window.HardMode;
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(5)) {
@@ -48,7 +49,7 @@
   // original Crawler's numbers (radius 16, catch 20) rather than picked
   // arbitrarily.
   const BOSS_RADIUS = 16 * 8;
-  const BOSS_LURE_SPEED = PLAYER_SPEED * 0.5;
+  const BOSS_LURE_SPEED = HM.speed(PLAYER_SPEED * 0.5);
   const BOSS_CATCH_RADIUS = BOSS_RADIUS * 1.25;
   const REPATH_MS = 500; // only used while lured by a meat item -- see the 'lured' boss state
   const BOSS_NAME = 'THE BOSS';
@@ -68,7 +69,7 @@
   // each separated by a short recovery pause where it drifts toward
   // whoever's nearest. Every ATTACKS_PER_STUN'th attack it's stunned
   // instead -- see BOMB_DAMAGE_* for why that window matters.
-  const BOSS_IDLE_SPEED = PLAYER_SPEED * 0.35;
+  const BOSS_IDLE_SPEED = HM.speed(PLAYER_SPEED * 0.35);
   const BOSS_IDLE_MIN_MS = 700;
   // A grace window after the level first loads, before the boss's very
   // first attack -- gives players a moment to get oriented instead of
@@ -78,7 +79,7 @@
 
   // 1. Spin: bounces off the arena walls DVD-logo style at high speed.
   const SPIN_DURATION_MS = 5000;
-  const SPIN_SPEED = PLAYER_SPEED * 5;
+  const SPIN_SPEED = HM.speed(PLAYER_SPEED * 5);
 
   // 2. Throw: 3 chunks of rubble land near the players after a telegraphed
   // delay -- a red circle marks each landing spot for the full delay.
@@ -94,7 +95,7 @@
   // 4. Charge: three straight-line dashes at a chosen player, each with a
   // brief wind-up (so there's *some* warning) and recovery beat.
   const CHARGE_COUNT = 3;
-  const CHARGE_SPEED = PLAYER_SPEED * 3;
+  const CHARGE_SPEED = HM.speed(PLAYER_SPEED * 3);
   const CHARGE_WINDUP_MS = 350;
   const CHARGE_MAX_DASH_MS = 1200;
   const CHARGE_RECOVER_MS = 450;
@@ -127,28 +128,28 @@
   // landing one outside that window does 2.5, so the stun window is still
   // where the fight is won fastest.
   const BOMB_LIVE_COUNT = 3;
-  const BOSS_MAX_HEALTH = 25;
+  const BOSS_MAX_HEALTH = HM.bossHp(25);
   const BOMB_DAMAGE_STUNNED = 5;
   const BOMB_DAMAGE_NORMAL = 2.5;
 
-  const RADAR_DURATION_MS = 10000;
+  const RADAR_DURATION_MS = HM.ability(10000);
   // An energy bar grants infinite stamina (no sprint drain, instant
   // cure from exhausted) for this long -- same team-wide-buff
   // convention as radar/scanner/night vision, not tied to one player.
-  const ENERGY_DURATION_MS = 10000;
-  const SCANNER_DURATION_MS = 10000;
-  const FREEZE_DURATION_MS = 10000;
+  const ENERGY_DURATION_MS = HM.ability(10000);
+  const SCANNER_DURATION_MS = HM.ability(10000);
+  const FREEZE_DURATION_MS = HM.ability(10000);
   const EAT_DURATION_MS = 3000;
   const CRATE_RESPAWN_MS = 60000;
   const MEAT_REFILL_COOLDOWN_MS = 1500; // how often a revisited meat crate can be re-eaten
   const CATCH_CUTSCENE_MS = 2000;
   const SMOKE_FUSE_MS = 3000;
-  const SMOKE_DURATION_MS = 10000;
+  const SMOKE_DURATION_MS = HM.ability(10000);
   const SMOKE_RADIUS = 70;
-  const NVG_DURATION_MS = 10000;
+  const NVG_DURATION_MS = HM.ability(10000);
   const NVG_RANGE_MULT = 2;
   const CRATE_ITEMS = ['radar', 'meat', 'co2', 'scanner', 'smoke', 'nightvision', 'shotgun-ammo', 'energy'];
-  const SHOTGUN_STUN_MS = 5000;
+  const SHOTGUN_STUN_MS = HM.ability(5000);
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
 
@@ -157,7 +158,7 @@
   const STAMINA_MAX = 15; // seconds of sprint fuel
   const SPRINT_SPEED_MULT = 2;
   const EXHAUSTED_SPEED_MULT = 0.5;
-  const SPRINT_DRAIN_RATE = STAMINA_MAX / 15; // empties over 15s of continuous sprint
+  const SPRINT_DRAIN_RATE = HM.drain(STAMINA_MAX / 15); // empties over 15s of continuous sprint
   const EXHAUSTED_MS = 5000;
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking

@@ -441,6 +441,46 @@ header.hero p {
   color: var(--ink);
 }
 
+.hard-cta {
+  text-align: center;
+  margin: -0.5rem auto 1.5rem;
+  max-width: 640px;
+}
+
+.hard-toggle-btn {
+  background: none;
+  border: 1px solid #7a2a24;
+  border-radius: 2px;
+  color: #d8695e;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: bold;
+  padding: 0.55rem 1.2rem;
+  cursor: pointer;
+}
+
+.hard-toggle-btn:hover {
+  border-color: #ff4a3a;
+  color: #ff6a5a;
+}
+
+.hard-toggle-btn.active {
+  background: #5a1a16;
+  border-color: #ff4a3a;
+  color: #ffd9d4;
+}
+
+.hard-note {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  color: var(--dim);
+}
+
+html.hard-mode .story-continue-btn {
+  background: #5a1a16;
+  border-color: #ff4a3a;
+}
+
 .lock-note {
   margin-top: 0.4rem !important;
   font-size: 0.8rem;

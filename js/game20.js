@@ -1,4 +1,5 @@
 (function () {
+  const HM = window.HardMode;
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(20)) {
@@ -41,13 +42,13 @@
 
   // ---- the boss ----
   const BOSS_NAME = 'THE CISTERN';
-  const BOSS_MAX_HEALTH = 50;
-  const PHASE2_HEALTH_THRESHOLD = 25;
+  const BOSS_MAX_HEALTH = HM.bossHp(50);
+  const PHASE2_HEALTH_THRESHOLD = HM.bossHp(25);
   const PHASE2_SPEED_MULT = 1.1; // "attacks are 1.1x faster" in phase 2
   const BOSS_RADIUS = 34;
   const BOSS_SEGMENT_COUNT = 16;
   const BOSS_SEGMENT_SPACING = 20;
-  const BOSS_IDLE_SPEED = PLAYER_SPEED * 0.55;
+  const BOSS_IDLE_SPEED = HM.speed(PLAYER_SPEED * 0.55);
   const BOSS_IDLE_MIN_MS = 700;
   const BOSS_IDLE_MAX_MS = 1400;
 
@@ -94,7 +95,7 @@
   // at once in a tight spread, twice as often as the original single shot.
   const BARRAGE_DURATION_MS = 5000;
   const BARRAGE_FIRE_INTERVAL_MS = 275;
-  const BARRAGE_PROJECTILE_SPEED = PLAYER_SPEED * 2.2;
+  const BARRAGE_PROJECTILE_SPEED = HM.proj(PLAYER_SPEED * 2.2);
   const BARRAGE_VOLLEY_COUNT = 2;
   const BARRAGE_VOLLEY_SPREAD = 0.12; // radians between the two balls in a volley
 
@@ -103,7 +104,7 @@
   const WAVESPLASH_DURATION_MS = 10000;
   const WAVESPLASH_INTERVAL_MS = 2500;
   const WAVESPLASH_COUNT = 8;
-  const WAVESPLASH_SPEED = PLAYER_SPEED * 2.2;
+  const WAVESPLASH_SPEED = HM.proj(PLAYER_SPEED * 2.2);
 
   const PROJECTILE_HIT_RADIUS = 20;
 
@@ -141,7 +142,7 @@
   const STAMINA_MAX = 15; // seconds of sprint fuel
   const SPRINT_SPEED_MULT = 2;
   const EXHAUSTED_SPEED_MULT = 0.5;
-  const SPRINT_DRAIN_RATE = STAMINA_MAX / 15; // empties over 15s of continuous sprint
+  const SPRINT_DRAIN_RATE = HM.drain(STAMINA_MAX / 15); // empties over 15s of continuous sprint
   const EXHAUSTED_MS = 5000;
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking

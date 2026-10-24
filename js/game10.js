@@ -1,4 +1,5 @@
 (function () {
+  const HM = window.HardMode;
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(10)) {
@@ -56,7 +57,7 @@
   const BOSS_INTRO_ZOOM_MULT = 1.7;
   const BOSS_INTRO_SHAKE_MAG = 7;
 
-  const BOSS_IDLE_SPEED = PLAYER_SPEED * 0.35;
+  const BOSS_IDLE_SPEED = HM.speed(PLAYER_SPEED * 0.35);
   const BOSS_IDLE_MIN_MS = 700;
   // A grace window after the level first loads, before the boss's very
   // first attack -- gives players a moment to get oriented instead of
@@ -67,11 +68,11 @@
   // Phase 2 kicks in at half health: the rubies turn blue and start
   // producing fire, and the whole boss moves 1.5x faster across every
   // attack below -- see speedMult().
-  const PHASE2_HEALTH_THRESHOLD = 25;
+  const PHASE2_HEALTH_THRESHOLD = HM.bossHp(25);
   const PHASE2_SPEED_MULT = 1.5;
 
   // 1. Charge: one straight-line dash, sword pointed forward, 5x speed.
-  const CHARGE_SPEED_BASE = PLAYER_SPEED * 5;
+  const CHARGE_SPEED_BASE = HM.speed(PLAYER_SPEED * 5);
   const CHARGE_WINDUP_MS = 400;
   const CHARGE_MAX_DASH_MS = 1400;
   const CHARGE_RECOVER_MS = 500;
@@ -104,7 +105,7 @@
   // The dynamite sticks players use against the boss: up to DYNAMITE_LIVE_COUNT
   // sit on the map at once, respawning elsewhere the instant one goes off.
   const DYNAMITE_LIVE_COUNT = 3;
-  const BOSS_MAX_HEALTH = 50;
+  const BOSS_MAX_HEALTH = HM.bossHp(50);
   const DYNAMITE_DAMAGE_STUNNED = 3;
   const DYNAMITE_DAMAGE_NORMAL = 1;
 
@@ -115,22 +116,22 @@
   const ICICLE_COUNT = 7;
   const SNOW_COUNT = 90;
 
-  const RADAR_DURATION_MS = 10000;
+  const RADAR_DURATION_MS = HM.ability(10000);
   // An energy bar grants infinite stamina (no sprint drain, instant
   // cure from exhausted) for this long -- same team-wide-buff
   // convention as radar/scanner/night vision, not tied to one player.
-  const ENERGY_DURATION_MS = 10000;
-  const SCANNER_DURATION_MS = 10000;
-  const FREEZE_DURATION_MS = 10000;
+  const ENERGY_DURATION_MS = HM.ability(10000);
+  const SCANNER_DURATION_MS = HM.ability(10000);
+  const FREEZE_DURATION_MS = HM.ability(10000);
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
   const SMOKE_FUSE_MS = 3000;
-  const SMOKE_DURATION_MS = 10000;
+  const SMOKE_DURATION_MS = HM.ability(10000);
   const SMOKE_RADIUS = 70;
-  const NVG_DURATION_MS = 10000;
+  const NVG_DURATION_MS = HM.ability(10000);
   const NVG_RANGE_MULT = 2;
   const CRATE_ITEMS = ['radar', 'co2', 'scanner', 'smoke', 'nightvision', 'shotgun-ammo', 'energy'];
-  const SHOTGUN_STUN_MS = 5000;
+  const SHOTGUN_STUN_MS = HM.ability(5000);
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
 
@@ -139,7 +140,7 @@
   const STAMINA_MAX = 15;
   const SPRINT_SPEED_MULT = 2;
   const EXHAUSTED_SPEED_MULT = 0.5;
-  const SPRINT_DRAIN_RATE = STAMINA_MAX / 15;
+  const SPRINT_DRAIN_RATE = HM.drain(STAMINA_MAX / 15);
   const EXHAUSTED_MS = 5000;
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000);
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2;

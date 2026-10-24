@@ -1,4 +1,5 @@
 (function () {
+  const HM = window.HardMode;
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(31)) {
@@ -44,9 +45,9 @@
   // at 3x player speed. A solo missile does 25; with two cars each car's
   // missiles do half of that (12.5), so the pair of you still do the same
   // damage per volley.
-  const BOSS_MAX_HEALTH = 500;
+  const BOSS_MAX_HEALTH = HM.bossHp(500);
   const MISSILE_DAMAGE = PLAYER_MODE === 1 ? 25 : 12.5;
-  const MISSILE_SPEED = PLAYER_SPEED * 5;
+  const MISSILE_SPEED = HM.proj(PLAYER_SPEED * 5);
   const MISSILE_TURN = 6.5;
   const MISSILE_COOLDOWN_MS = 1100;
   const MISSILE_LIFE_MS = 6000;
@@ -54,7 +55,7 @@
   // Every 2.5s the swarm hurls one of the game's own projectiles at a car,
   // at 6x walking speed, led to where the car's going. One hit and it's dead.
   const THROW_INTERVAL_MS = 2500;
-  const THROW_SPEED = PLAYER_SPEED * 6;
+  const THROW_SPEED = HM.proj(PLAYER_SPEED * 6);
   const THROW_HIT_RADIUS = 24;
   const CATCHUP_START = 560;
   const CATCHUP_FULL = 1000;

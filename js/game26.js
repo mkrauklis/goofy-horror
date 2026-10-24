@@ -1,4 +1,5 @@
 (function () {
+  const HM = window.HardMode;
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(26)) {
@@ -31,27 +32,27 @@
   // took longer than usual.
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  const MONSTER_SPEED = PLAYER_SPEED * 1.0;
+  const MONSTER_SPEED = HM.speed(PLAYER_SPEED * 1.0);
   const MONSTER_SIGHT_RADIUS = 220;
   const ALERT_GRACE_MS = 2500;
   const REPATH_MS = 500;
   const CATCH_RADIUS = 22;
   const PROXIMITY_WARNING_RADIUS = 380;
-  const RADAR_DURATION_MS = 10000;
-  const ENERGY_DURATION_MS = 10000;
-  const SCANNER_DURATION_MS = 10000;
-  const FREEZE_DURATION_MS = 10000;
+  const RADAR_DURATION_MS = HM.ability(10000);
+  const ENERGY_DURATION_MS = HM.ability(10000);
+  const SCANNER_DURATION_MS = HM.ability(10000);
+  const FREEZE_DURATION_MS = HM.ability(10000);
   const FREEZE_RADIUS_TILES = 15; // freezes only reach the Reacher if it's this close to where the item was used
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
-  const SUPER_RADAR_DURATION_MS = 10000;
+  const SUPER_RADAR_DURATION_MS = HM.ability(10000);
   const SMOKE_FUSE_MS = 3000;
-  const SMOKE_DURATION_MS = 10000;
+  const SMOKE_DURATION_MS = HM.ability(10000);
   const SMOKE_RADIUS = 70;
-  const NVG_DURATION_MS = 10000;
+  const NVG_DURATION_MS = HM.ability(10000);
   const NVG_RANGE_MULT = 2;
   const CRATE_ITEMS = ['radar', 'co2', 'scanner', 'super-radar', 'smoke', 'nightvision', 'shotgun-ammo', 'energy'];
-  const SHOTGUN_STUN_MS = 5000;
+  const SHOTGUN_STUN_MS = HM.ability(5000);
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
 
@@ -66,7 +67,7 @@
   // 24's Sentry) -- a real flying projectile, not an instant hitscan, so
   // it can be seen coming and dodged.
   const MISSILE_INTERVAL_MS = 3000;
-  const MISSILE_SPEED = PLAYER_SPEED * 2.5;
+  const MISSILE_SPEED = HM.proj(PLAYER_SPEED * 2.5);
   const MISSILE_HIT_RADIUS = TILE * 0.65;
   const MISSILE_LIFETIME_MS = 4500;
 
@@ -75,7 +76,7 @@
   const STAMINA_MAX = 15; // seconds of sprint fuel
   const SPRINT_SPEED_MULT = 2;
   const EXHAUSTED_SPEED_MULT = 0.5;
-  const SPRINT_DRAIN_RATE = STAMINA_MAX / 15; // empties over 15s of continuous sprint
+  const SPRINT_DRAIN_RATE = HM.drain(STAMINA_MAX / 15); // empties over 15s of continuous sprint
   const EXHAUSTED_MS = 5000;
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking
@@ -1977,7 +1978,7 @@
     drawTiles(ctx, camX, camY, now);
     drawSmokeBombs(ctx, now);
     drawMissiles(ctx);
-    drawReacher(ctx, now, mon);
+    HM.monster(ctx, mon, (c) => drawReacher(c, now, mon));
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();

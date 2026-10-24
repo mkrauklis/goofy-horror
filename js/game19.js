@@ -1,4 +1,5 @@
 (function () {
+  const HM = window.HardMode;
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(19)) {
@@ -33,28 +34,28 @@
   // player (not hidden in the safe zone or smoke) is nearest. The swarm
   // itself is the threat, not a single creature's AI.
   const EEL_COUNT = 10;
-  const EEL_SPEED = PLAYER_SPEED * 1.2;
+  const EEL_SPEED = HM.speed(PLAYER_SPEED * 1.2);
   const CATCH_RADIUS = 16;
   const REPATH_MS = 500;
   const DRAIN_DURATION_MS = 2500;
-  const RADAR_DURATION_MS = 10000;
-  const ENERGY_DURATION_MS = 10000;
-  const SCANNER_DURATION_MS = 10000;
-  const FREEZE_DURATION_MS = 10000;
+  const RADAR_DURATION_MS = HM.ability(10000);
+  const ENERGY_DURATION_MS = HM.ability(10000);
+  const SCANNER_DURATION_MS = HM.ability(10000);
+  const FREEZE_DURATION_MS = HM.ability(10000);
   const FREEZE_RADIUS_TILES = 15; // freezes only reach monsters this close to where the item was used
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
-  const SUPER_RADAR_DURATION_MS = 10000;
+  const SUPER_RADAR_DURATION_MS = HM.ability(10000);
   const SMOKE_FUSE_MS = 3000;
-  const SMOKE_DURATION_MS = 10000;
+  const SMOKE_DURATION_MS = HM.ability(10000);
   const SMOKE_RADIUS = 70;
-  const NVG_DURATION_MS = 10000;
+  const NVG_DURATION_MS = HM.ability(10000);
   const NVG_RANGE_MULT = 2;
   // No meat lure or decoy here -- the swarm has no single-target detection
   // state for either to hook into (every eel just always beelines for the
   // nearest player), so those two item types are dropped for this level.
   const CRATE_ITEMS = ['radar', 'co2', 'scanner', 'super-radar', 'smoke', 'nightvision', 'shotgun-ammo', 'energy'];
-  const SHOTGUN_STUN_MS = 5000;
+  const SHOTGUN_STUN_MS = HM.ability(5000);
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
 
@@ -63,7 +64,7 @@
   const STAMINA_MAX = 15; // seconds of sprint fuel
   const SPRINT_SPEED_MULT = 2;
   const EXHAUSTED_SPEED_MULT = 0.5;
-  const SPRINT_DRAIN_RATE = STAMINA_MAX / 15; // empties over 15s of continuous sprint
+  const SPRINT_DRAIN_RATE = HM.drain(STAMINA_MAX / 15); // empties over 15s of continuous sprint
   const EXHAUSTED_MS = 5000;
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000); // refills to half over the 5s penalty
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2; // half that rate while just walking
@@ -1708,7 +1709,7 @@
   }
 
   function drawEels(g, t) {
-    monsters.forEach((m) => drawEel(g, m, t));
+    monsters.forEach((m) => HM.monster(g, m, (c) => drawEel(c, m, t)));
   }
 
   // No eye on this one -- a mouth instead, same convention as the Dig

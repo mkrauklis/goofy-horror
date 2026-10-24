@@ -1,4 +1,5 @@
 (function () {
+  const HM = window.HardMode;
   // Story mode gate: direct URL access can't skip ahead even though the
   // menu already hides the link for a locked level.
   if (window.GoofyStory && !window.GoofyStory.isUnlocked(15)) {
@@ -60,7 +61,7 @@
   const BOSS_INTRO_ZOOM_MULT = 1.7;
   const BOSS_INTRO_SHAKE_MAG = 7;
 
-  const BOSS_IDLE_SPEED = PLAYER_SPEED * 0.3;
+  const BOSS_IDLE_SPEED = HM.speed(PLAYER_SPEED * 0.3);
   const BOSS_IDLE_MIN_MS = 700;
   // A grace window after the level first loads, before the boss's very
   // first attack -- gives players a moment to get oriented instead of
@@ -76,14 +77,14 @@
   const SPLIT_WINDUP_MS = 2000;
   const SPLIT_DURATION_MS = 9000;
   const SPLIT_CLONE_RADIUS = BOSS_RADIUS * 0.72;
-  const SPLIT_CLONE_SPEED = PLAYER_SPEED * 1.2;
+  const SPLIT_CLONE_SPEED = HM.speed(PLAYER_SPEED * 1.2);
 
   // 2. Icicle shower: fires a shard at the nearest player every
   // ICICLE_FIRE_INTERVAL_MS for ICICLESHOOT_DURATION_MS straight, each one
   // a straight-line shot at 1.5x speed from wherever the boss is standing.
   const ICICLESHOOT_DURATION_MS = 5000;
   const ICICLE_FIRE_INTERVAL_MS = 550;
-  const ICICLE_PROJECTILE_SPEED = PLAYER_SPEED * 1.5;
+  const ICICLE_PROJECTILE_SPEED = HM.proj(PLAYER_SPEED * 1.5);
   const ICICLE_HIT_RADIUS = 20;
 
   // 3. Wall push: a solid ice wall rises along ONE arena edge -- picked
@@ -115,7 +116,7 @@
   const ORBIT_RADIUS_MULT = 1.8;
   const ORBIT_ANGULAR_SPEED = 2.2; // radians/second
   const ORBIT_LAUNCH_INTERVAL_MS = 650;
-  const ORBIT_ICICLE_SPEED = PLAYER_SPEED * 1.65;
+  const ORBIT_ICICLE_SPEED = HM.proj(PLAYER_SPEED * 1.65);
 
   // Torches: the only way to actually hurt this boss. One spawns
   // somewhere on the open floor every TORCH_SPAWN_INTERVAL_MS as long as
@@ -125,7 +126,7 @@
   const TORCH_MAX_LIVE = 5;
   const TORCH_DAMAGE = 2;
   const TORCH_RESPAWN_MS = 8000; // phase 2's hallway points, after a pickup
-  const BOSS_MAX_HEALTH = 25;
+  const BOSS_MAX_HEALTH = HM.bossHp(25);
 
   // Phase 2: at 15 HP the boss stops dead and the gate opens, but it
   // doesn't give chase yet -- a barrier 10 tiles into the hallway holds
@@ -145,7 +146,7 @@
   // the normal tiers) until it's back in view. A big crate directly in
   // its path doesn't stop it either -- it smashes straight through (see
   // breakBigCrateAt).
-  const PHASE2_HEALTH_THRESHOLD = 15;
+  const PHASE2_HEALTH_THRESHOLD = HM.bossHp(15);
   const CHASE_INTRO_MS = 2500;
   const CHASE_SPEED_BASE = PLAYER_SPEED * 1.25;
   const CHASE_SPEED_CLOSE = PLAYER_SPEED * 0.8;
@@ -153,7 +154,7 @@
   const CHASE_SPEED_OFFCAM = PLAYER_SPEED * 2.5;
   const CHASE_CLOSE_DIST = TILE * 6;
   const CHASE_FAR_DIST = TILE * 12;
-  const CHASE_ICICLE_SPEED = PLAYER_SPEED * 2.625;
+  const CHASE_ICICLE_SPEED = HM.proj(PLAYER_SPEED * 2.625);
   const CHASE_ICICLE_INTERVAL_MS = 3000;
   // Once it's spawned into the hallway, the boss reads as filling the
   // whole corridor (HALL_W=5 tiles -- see gen_level15.py) rather than
@@ -168,22 +169,22 @@
   const WATERWAVE_CUTSCENE_MS = 3000;
   const WATER_PARTICLE_COUNT = 110;
 
-  const RADAR_DURATION_MS = 10000;
+  const RADAR_DURATION_MS = HM.ability(10000);
   // An energy bar grants infinite stamina (no sprint drain, instant
   // cure from exhausted) for this long -- same team-wide-buff
   // convention as radar/scanner/night vision, not tied to one player.
-  const ENERGY_DURATION_MS = 10000;
-  const SCANNER_DURATION_MS = 10000;
-  const FREEZE_DURATION_MS = 10000;
+  const ENERGY_DURATION_MS = HM.ability(10000);
+  const SCANNER_DURATION_MS = HM.ability(10000);
+  const FREEZE_DURATION_MS = HM.ability(10000);
   const CRATE_RESPAWN_MS = 60000;
   const CATCH_CUTSCENE_MS = 2000;
   const SMOKE_FUSE_MS = 3000;
-  const SMOKE_DURATION_MS = 10000;
+  const SMOKE_DURATION_MS = HM.ability(10000);
   const SMOKE_RADIUS = 70;
-  const NVG_DURATION_MS = 10000;
+  const NVG_DURATION_MS = HM.ability(10000);
   const NVG_RANGE_MULT = 2;
   const CRATE_ITEMS = ['radar', 'co2', 'scanner', 'smoke', 'nightvision', 'shotgun-ammo', 'energy'];
-  const SHOTGUN_STUN_MS = 5000;
+  const SHOTGUN_STUN_MS = HM.ability(5000);
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
 
@@ -199,7 +200,7 @@
   const STAMINA_MAX = 15;
   const SPRINT_SPEED_MULT = 2;
   const EXHAUSTED_SPEED_MULT = 0.5;
-  const SPRINT_DRAIN_RATE = STAMINA_MAX / 15;
+  const SPRINT_DRAIN_RATE = HM.drain(STAMINA_MAX / 15);
   const EXHAUSTED_MS = 5000;
   const EXHAUSTED_REGEN_RATE = (STAMINA_MAX / 2) / (EXHAUSTED_MS / 1000);
   const NORMAL_REGEN_RATE = EXHAUSTED_REGEN_RATE / 2;
