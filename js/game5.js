@@ -123,13 +123,13 @@
 
   // The bombs players themselves use against the boss: up to BOMB_LIVE_COUNT
   // sit on the map at once. Health is a flat point count now, not a
-  // percentage -- a hit only really counts while the boss is stunned (5
-  // points); landing one outside that window still chips it, but only 1
-  // point, so the stun window is still where the fight is actually won.
+  // percentage -- a hit while the boss is stunned does double (5 points);
+  // landing one outside that window does 2.5, so the stun window is still
+  // where the fight is won fastest.
   const BOMB_LIVE_COUNT = 3;
   const BOSS_MAX_HEALTH = 25;
   const BOMB_DAMAGE_STUNNED = 5;
-  const BOMB_DAMAGE_NORMAL = 1;
+  const BOMB_DAMAGE_NORMAL = 2.5;
 
   const RADAR_DURATION_MS = 10000;
   // An energy bar grants infinite stamina (no sprint drain, instant
