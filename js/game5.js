@@ -266,7 +266,7 @@
     // drops toward the last couple of bombs. See js/bossmusic.js.
     if (window.BossMusic) {
       window.BossMusic.start({
-        audioCtx, dest: musicMasterGain, theme: { root: 82.4, bpm: 150 },
+        audioCtx, dest: musicMasterGain, theme: 'ashen',
         isActive: () => !boss.defeated,
         intensity: () => 1 - bossHealthFrac(),
       });

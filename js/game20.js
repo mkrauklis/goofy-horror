@@ -249,7 +249,7 @@
     bossMusicStarted = true;
     if (!bossMusic && window.BossMusic) {
       bossMusic = window.BossMusic.start({
-        audioCtx, dest: musicMasterGain, theme: { root: 77.8, bpm: 160 },
+        audioCtx, dest: musicMasterGain, theme: 'cistern',
         isActive: () => bossMusicStarted,
         intensity: () => (bossMusicPhase2 ? 0.9 : 0.3),
       });

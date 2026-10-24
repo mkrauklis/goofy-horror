@@ -236,7 +236,7 @@
     // frantic as the boss's health drops
     if (window.BossMusic) {
       window.BossMusic.start({
-        audioCtx, dest: musicMasterGain, theme: { root: 92.5, bpm: 160 },
+        audioCtx, dest: musicMasterGain, theme: 'cultivator',
         isActive: () => gameState === 'playing' && !boss.defeated,
         intensity: () => 1 - bossHealthFrac(),
       });

@@ -293,7 +293,7 @@
     // boss's health drops.
     if (window.BossMusic) {
       window.BossMusic.start({
-        audioCtx, dest: musicMasterGain, theme: { root: 87.3, bpm: 140 },
+        audioCtx, dest: musicMasterGain, theme: 'mutation',
         isActive: () => !boss.defeated,
         intensity: () => 1 - bossHealthFrac(),
       });
