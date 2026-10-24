@@ -985,7 +985,7 @@
         gameState = 'complete';
         playWinJingle();
         if (window.GoofyStory) window.GoofyStory.completeHalloween(1);
-        setTimeout(() => { window.location.href = 'index.html'; }, 2500);
+        setTimeout(() => { window.location.href = 'halloween2.html'; }, 2500);
       }
     });
   }
@@ -2205,7 +2205,7 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'HAPPY HALLOWEEN &mdash; you got the candy out&hellip;';
+      messageEl.innerHTML = 'HAPPY HALLOWEEN &mdash; you got the candy out&hellip; on to the hospital';
     } else {
       messageEl.style.display = 'none';
     }

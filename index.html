@@ -47,6 +47,14 @@
         see you.</p>
       <p class="lock-note"></p>
     </a>
+    <a class="menu-item panel" href="halloween2.html" data-halloween="2">
+      <h2>Halloween 2 &mdash; The Quiet Ward <span class="best-time" data-level="halloween2"></span></h2>
+      <p>A hospital with candy strewn across every floor. Crawl the
+        ventilation ducts and switch off all 4 fans to open the exit
+        &mdash; while a tentacled ghost that's 95% invisible drifts the
+        wards.</p>
+      <p class="lock-note"></p>
+    </a>
   </div>
   </section>
   <section class="chapter chapter-1">
@@ -396,9 +404,12 @@
 
     document.querySelectorAll('.menu-item[data-halloween]').forEach((card) => {
       const n = parseInt(card.dataset.halloween, 10);
-      card.classList.toggle('story-done', story.isHalloweenCompleted(n));
+      const unlocked = story.isHalloweenUnlocked(n);
+      const completed = story.isHalloweenCompleted(n);
+      card.classList.toggle('locked', !unlocked);
+      card.classList.toggle('story-done', completed);
       const note = card.querySelector('.lock-note');
-      if (note) note.textContent = story.isHalloweenCompleted(n) ? 'Completed' : '';
+      if (note) note.textContent = !unlocked ? `Locked — finish Halloween ${n - 1} first` : completed ? 'Completed' : '';
     });
 
     const continueBtn = document.getElementById('story-continue');

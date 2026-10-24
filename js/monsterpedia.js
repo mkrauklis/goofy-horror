@@ -38,6 +38,7 @@
   const garguantuagoyleCtx = ctxFor('monster-canvas-garguantuagoyle');
   const multipodCtx = ctxFor('monster-canvas-multipod');
   const hollowJackCtx = ctxFor('monster-canvas-hollowjack');
+  const hushCtx = ctxFor('monster-canvas-hush');
   const PORTRAIT = 160;
 
   // While a portrait is being drawn as a member of the Multipod's swarm
@@ -3085,6 +3086,49 @@
     g.restore();
   }
 
+  // The Halloween 2 ghost, drawn the way it looks while hunting (about 90%
+  // opaque) -- on its roam it's only 5% visible, which would make for a
+  // very empty portrait.
+  function drawHush(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2 - 10, h / 2);
+    const r = 28, ang = 0, seed = 3;
+    g.globalAlpha = 0.9;
+    for (let i = 0; i < 8; i++) {
+      const spread = (i - 3.5) * 0.38;
+      const a = ang + Math.PI + spread + Math.sin(t * 0.0035 + i * 1.3 + seed) * 0.3;
+      const len = r * (2.4 + 0.5 * Math.sin(t * 0.005 + i + seed));
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
+      const bow = Math.sin(t * 0.006 + i * 2.2 + seed) * r * 0.6;
+      drawTaperedTentacle(g, tx, ty, tx / 2 - Math.sin(a) * bow, ty / 2 + Math.cos(a) * bow, r * 0.42, i % 2 ? '#dfeef6' : '#bcd3e0');
+    }
+    g.beginPath();
+    for (let i = 0; i <= 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const rr = r * 1.12 + Math.sin(t * 0.005 + i * 1.9 + seed) * r * 0.1;
+      const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
+      if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+    }
+    g.closePath();
+    const body = g.createRadialGradient(-r * 0.25, -r * 0.3, 2, 0, 0, r * 1.2);
+    body.addColorStop(0, '#ffffff');
+    body.addColorStop(0.7, '#e1eef5');
+    body.addColorStop(1, '#a9c4d4');
+    g.fillStyle = body;
+    g.fill();
+    g.strokeStyle = 'rgba(140,175,195,0.8)';
+    g.lineWidth = 1.2;
+    g.stroke();
+    g.fillStyle = '#050508';
+    [-1, 1].forEach((side) => {
+      g.beginPath();
+      g.ellipse(r * 0.42, side * r * 0.38, r * 0.3, r * 0.2, Math.PI / 2, 0, Math.PI * 2);
+      g.fill();
+    });
+    g.restore();
+  }
+
   // The real portrait drawing for every monster, in Monsterpedia order, so
   // the Level 31 Multipod can be built out of the actual models.
   const MODEL_FNS = [drawCrawler, drawDrifter, drawCaterpillar, drawMimic, drawLurker, drawBoss, drawKnight,
@@ -3210,6 +3254,7 @@
       drawPortraitOrLock(garguantuagoyleCtx, drawGarguantuagoyle, t, phase2Shown.has(garguantuagoyleCtx));
       drawPortraitOrLock(multipodCtx, drawMultipod, t);
       drawPortraitOrLock(hollowJackCtx, drawHollowJack, t);
+      drawPortraitOrLock(hushCtx, drawHush, t);
     }
     requestAnimationFrame(loop);
   }

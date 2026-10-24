@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; Halloween 2</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Halloween 2 &mdash; The Quiet Ward</h1>
+  <p class="objective">Turn off all <strong>4 ventilation fans</strong> to open the exit &mdash; and watch for the ghost you can barely see.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-buttons">Fans off: 0 / 4</span>
+      <span id="hud-door">Door: locked</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    A hospital, after dark, and somebody's emptied a whole Halloween's worth
+    of candy across every floor in the building. Long corridors, a ward of
+    patient rooms off each one, flickering fluorescent lights. The air
+    handling is still running: four loud ventilation fans are
+    wired in behind the walls, and the exit won't unlock until every one
+    of them is switched off.
+  </p>
+  <p class="level-description">
+    The fans sit at the heart of the <strong>ventilation ducts</strong>
+    running around the outside of the building &mdash; grated openings at
+    the ends of the corridors lead in. Crawl through a duct and the fan
+    inside shuts off the moment you reach it. The ducts are the one place
+    the thing in here can't follow you, but it can wait for you at the
+    grate.
+  </p>
+  <p class="level-description">
+    That thing is <strong>the Hush</strong>: a ghost with tentacles and two
+    black eyes, and while it roams the ward at exactly your speed it's
+    <strong>95% transparent</strong> &mdash; you'll barely see it at all. The
+    instant it spots you it solidifies to almost fully visible and comes
+    at you at <strong>1.9x</strong> your speed. A pulsing red edge on the
+    screen means it's close. Item crates are scattered through the ward
+    with the usual radar, scanner, meat, CO2 and the rest.
+  </p>
+  <p class="level-description">
+    Each of you is carrying a tranquilizer gun, empty. Find a shell in a crate
+    (you can carry up to 3 at a time) and each one loads automatically
+    &mdash; let something get close while it's hunting you and it goes
+    off on its own, stunning it for 5 seconds.
+  </p>
+</div>
+
+<script src="js/hardmode.js"></script>
+<script src="js/story.js"></script>
+<script src="levels/halloween2/level.js"></script>
+<script src="js/halloween2.js"></script>
+</body>
+</html>

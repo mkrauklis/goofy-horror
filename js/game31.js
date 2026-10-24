@@ -35,6 +35,7 @@
 
   // The cars: 3x player speed, direct request. Two players get a car each.
   const CAR_MAX = PLAYER_SPEED * 3;
+  const CONE_SLOW_MS = 3000; // hitting a traffic cone caps your speed at half for this long
   const CAR_ACCEL = 420;
   const CAR_BRAKE = 760;
   const CAR_REV_MAX = 110;
@@ -456,7 +457,7 @@
 
   // One car per player, parked side by side facing down the road.
   const carStarts = LEVEL.cars.slice(0, players.length).map((c) => ({ ...tileCenter(c.x, c.y), heading: c.heading }));
-  const cars = carStarts.map(() => ({ x: 0, y: 0, heading: 0, v: 0, nextFireAt: 0, braking: false, alive: true }));
+  const cars = carStarts.map(() => ({ x: 0, y: 0, heading: 0, v: 0, nextFireAt: 0, braking: false, alive: true, slowUntil: 0 }));
   const doorPos = { x: LEVEL.door.x * TILE + TILE / 2, y: (LEVEL.door.y + 0.5) * TILE };
 
   const members = makeSwarmMembers(BOSS_SPREAD, 3131);
@@ -499,7 +500,7 @@
     });
     cars.forEach((c, i) => {
       c.x = carStarts[i].x; c.y = carStarts[i].y; c.heading = carStarts[i].heading;
-      c.v = 0; c.nextFireAt = 0; c.braking = false; c.alive = true;
+      c.v = 0; c.nextFireAt = 0; c.braking = false; c.alive = true; c.slowUntil = 0;
     });
     boss.hp = BOSS_MAX_HEALTH; boss.emerge = 0; boss.flashUntil = 0; boss.speedMult = 3; boss.knockLeft = 0;
     boss.x = doorPos.x; boss.y = doorPos.y; boss.heading = 0;
@@ -576,7 +577,8 @@
     const throttle = (up ? 1 : 0) - (down ? 1 : 0);
     const ch = tileChar(Math.floor(car.x / TILE), Math.floor(car.y / TILE));
     const onGrass = ch === '.';
-    const cap = CAR_MAX * (onGrass ? 0.5 : 1);
+    const coneSlowed = performance.now() < car.slowUntil;
+    const cap = CAR_MAX * (onGrass || coneSlowed ? 0.5 : 1);
     car.braking = throttle < 0 && car.v > 0;
     if (throttle > 0) car.v += (car.v < 0 ? CAR_BRAKE : CAR_ACCEL) * dt;
     else if (throttle < 0) car.v -= (car.v > 0 ? CAR_BRAKE : CAR_ACCEL * 0.6) * dt;
@@ -599,6 +601,8 @@
         spawnFloatingText(c.x, c.y - 10, 'BONK');
       });
       car.v *= 0.78;
+      car.slowUntil = performance.now() + CONE_SLOW_MS;
+      spawnFloatingText(car.x, car.y - 28, 'SLOWED');
       playBonk();
     }
     if (hit.hard) {
