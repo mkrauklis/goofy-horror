@@ -1224,7 +1224,7 @@
     }
     playWinJingle();
     if (window.GoofyStory) window.GoofyStory.completeLevel(30);
-    setTimeout(() => { window.location.href = 'index.html'; }, 800);
+    setTimeout(() => { window.location.href = 'level31.html'; }, 800);
   }
 
   function resetExploration() {

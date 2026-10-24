@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; Level 31</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 31 &mdash; The Way Out</h1>
+  <p class="objective">Broad daylight, out front of the facility, a car parked in the lot. Everyone gets in &mdash; and the moment you do, the doors burst open and <strong>the Multipod</strong> comes out after you: every monster you've met, fused into one screaming swarm, running you down at <strong>3x</strong> your walking speed. The car matches it. Drive the ring road around the grounds and keep firing missiles over your shoulder &mdash; it has <strong>500 HP</strong> and every missile takes off <strong>25</strong>. Let it catch you and that's the end of the road.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-boss">Multipod: asleep</span>
+      <span id="hud-gap">Gap: --</span>
+      <span id="hud-speed">Speed: 0 mph</span>
+      <span id="hud-phase">On foot</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">On foot &mdash; Player 1 (orange): W A S D &nbsp;&middot;&nbsp; Player 2 (green): Arrow keys. In the car &mdash; <strong>drive</strong> with W A S D (W gas, S brake/reverse), <strong>fire</strong> a missile with Space (Player 2: Up Arrow or Space). Solo, the arrow keys drive too.<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    No darkness this time. The sun's out, the lawn's mowed, and the
+    facility you spent thirty levels getting through is just a big grey
+    building behind a parking lot. A red car sits in the lot with the
+    keys in it. Walk everyone up to it &mdash; it won't go until all of
+    you are standing there.
+  </p>
+  <p class="level-description">
+    The car does <strong>3x</strong> your walking speed. Stay on the
+    asphalt: the grass drags you down to half speed, trees and the
+    building stop you dead, and traffic cones along the ring road just
+    get knocked flat (at a cost to your speed). One of you drives; the
+    other fires. Playing alone, you do both.
+  </p>
+  <p class="level-description">
+    The Multipod is every creature in this game at once &mdash; drifters,
+    gargoyles, wardens, grotesques, reachers, caterpillars, robots,
+    mushrooms and the rest &mdash; one swarm, <strong>500 HP</strong>,
+    chasing at <strong>3x</strong>. It follows your exact tire tracks, so
+    it never cuts a corner, but any time you slow down it closes the gap
+    for good. Missiles home in on it at <strong>5x</strong> walking
+    speed for <strong>25</strong> damage each &mdash; twenty hits ends it,
+    and every hit knocks it back down your trail.
+  </p>
+</div>
+
+<script src="js/story.js"></script>
+<script src="levels/level31/level.js"></script>
+<script src="js/game31.js"></script>
+</body>
+</html>
