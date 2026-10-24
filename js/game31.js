@@ -1361,13 +1361,12 @@
     ctx.restore();
   }
 
+  // The nearer the Multipod gets, the more the screen smears out (instead of
+  // flashing red).
   function drawDangerVignette(now) {
     const gap = gapNow();
     if (gap > 320) return;
-    const a = (1 - gap / 320) * (0.25 + 0.15 * Math.sin(now * 0.02));
-    const g = ctx.createRadialGradient(FULL_W / 2, VIEW_H / 2, VIEW_H * 0.35, FULL_W / 2, VIEW_H / 2, FULL_W * 0.55);
-    g.addColorStop(0, 'rgba(200,20,20,0)'); g.addColorStop(1, `rgba(200,20,20,${a})`);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, FULL_W, VIEW_H);
+    window.ScreenFx.blur(ctx, 0, 0, FULL_W, VIEW_H, 1 - gap / 320);
   }
 
   function drawBanner(text, color, alpha) {
@@ -1609,9 +1608,9 @@
     cam.x = camX; cam.y = camY;
     drawViewWorld(0, FULL_W, camX, camY, chaseZoom, now);
     drawForestDarkness(camX, camY, chaseZoom);
+    if (gameState === 'chase') drawDangerVignette(now);
     drawBossHealthTag(camX, camY, chaseZoom);
     if (gameState === 'chase') {
-      drawDangerVignette(now);
       drawBossPointer(camX, camY, chaseZoom, now);
       const since = now - chaseStartedAt;
       if (since < 2200) drawBanner('THE MULTIPOD BREAKS OUT!', '#d88af0', clamp(1 - Math.max(0, since - 1500) / 700, 0, 1));
