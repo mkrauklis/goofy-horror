@@ -1091,12 +1091,11 @@
     g.restore();
   }
 
-  // The chapter 6 boss: the same family build blown up to 2.5x scale,
-  // with a flanking cluster of eight small eyes down each side instead
-  // of the usual one -- matches js/game30.js's own portrait pose. Click
-  // the portrait for phase 2 ("Primal Form"): every color genuinely
-  // inverted, wings 1.5x bigger, and the sixteen eyes collapse into one
-  // giant eye flashing black and white.
+  // The chapter 6 boss: the same family build blown up to 2.5x scale
+  // with one giant eye instead of the family's small one -- matches
+  // js/game30.js's own portrait pose. Click the portrait for phase 2
+  // ("Primal Form"): every color genuinely inverted, wings 1.5x bigger,
+  // and the eye flashes black and white.
   function drawGarguantuagoyle(g, w, h, t, phase2) {
     clear(g, w, h);
     g.save();
@@ -1168,53 +1167,23 @@
       g.fill();
     }
 
+    const er = radius * 0.62, ecy = -radius * 0.02;
     if (phase2) {
-      // one giant eye, flashing black and white
+      // flashing black and white
       const on = Math.floor(t / 140) % 2 === 0;
       const a = on ? '#ffffff' : '#000000';
       const b = on ? '#000000' : '#ffffff';
-      const er = radius * 0.62;
-      g.beginPath();
-      g.arc(0, -radius * 0.02, er * 1.12, 0, Math.PI * 2);
-      g.fillStyle = b;
-      g.fill();
-      g.beginPath();
-      g.arc(0, -radius * 0.02, er, 0, Math.PI * 2);
-      g.fillStyle = a;
-      g.fill();
-      g.beginPath();
-      g.arc(0, -radius * 0.02, er * 0.5, 0, Math.PI * 2);
-      g.fillStyle = b;
-      g.fill();
-      g.beginPath();
-      g.ellipse(0, -radius * 0.02, er * 0.14, er * 0.45, 0, 0, Math.PI * 2);
-      g.fillStyle = a;
-      g.fill();
+      g.beginPath(); g.arc(0, ecy, er * 1.12, 0, Math.PI * 2); g.fillStyle = b; g.fill();
+      g.beginPath(); g.arc(0, ecy, er, 0, Math.PI * 2); g.fillStyle = a; g.fill();
+      g.beginPath(); g.arc(0, ecy, er * 0.5, 0, Math.PI * 2); g.fillStyle = b; g.fill();
+      g.beginPath(); g.ellipse(0, ecy, er * 0.14, er * 0.45, 0, 0, Math.PI * 2); g.fillStyle = a; g.fill();
     } else {
-      [-1, 1].forEach((side) => {
-        for (let i = 0; i < 8; i++) {
-          const et = i / 7;
-          const ang = (et - 0.5) * Math.PI * 0.75;
-          const ex = side * (radius * 0.55 + Math.cos(ang) * radius * 0.3);
-          const ey = Math.sin(ang) * radius * 0.78;
-          const er = radius * 0.07 + (i % 3 === 0 ? radius * 0.015 : 0);
-          g.beginPath();
-          g.arc(ex, ey, er * 1.4, 0, Math.PI * 2);
-          g.fillStyle = '#0c0608';
-          g.fill();
-          g.beginPath();
-          g.arc(ex, ey, er, 0, Math.PI * 2);
-          g.fillStyle = '#c81020';
-          g.shadowColor = '#ff2020';
-          g.shadowBlur = 5;
-          g.fill();
-          g.shadowBlur = 0;
-          g.beginPath();
-          g.arc(ex, ey, er * 0.35, 0, Math.PI * 2);
-          g.fillStyle = '#1a0608';
-          g.fill();
-        }
-      });
+      g.beginPath(); g.arc(0, ecy, er * 1.12, 0, Math.PI * 2); g.fillStyle = '#0c0608'; g.fill();
+      g.beginPath(); g.arc(0, ecy, er, 0, Math.PI * 2);
+      g.fillStyle = '#c81020'; g.shadowColor = '#ff2020'; g.shadowBlur = 14; g.fill(); g.shadowBlur = 0;
+      g.beginPath(); g.arc(0, ecy, er * 0.62, 0, Math.PI * 2); g.fillStyle = '#e83a3a'; g.fill();
+      g.beginPath(); g.ellipse(0, ecy, er * 0.14, er * 0.5, 0, 0, Math.PI * 2); g.fillStyle = '#1a0608'; g.fill();
+      g.beginPath(); g.arc(-er * 0.3, ecy - er * 0.3, er * 0.12, 0, Math.PI * 2); g.fillStyle = 'rgba(255,255,255,0.55)'; g.fill();
     }
 
     g.restore();

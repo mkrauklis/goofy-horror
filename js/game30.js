@@ -34,8 +34,8 @@
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
 
-  // The boss: a gargoyle 2.5x the usual family radius (28 -> 70), sixteen
-  // small eyes instead of one, eight flanking each side of its body.
+  // The boss: a gargoyle 2.5x the usual family radius (28 -> 70) with one
+  // giant eye instead of the family's small one.
   const BOSS_RADIUS = 28 * 2.5;
   const BOSS_CATCH_RADIUS = BOSS_RADIUS * 1.1;
   const BOSS_SPIN_CATCH_RADIUS = BOSS_CATCH_RADIUS * 1.3;
@@ -89,7 +89,9 @@
   const DIVEBOMB_RISE_MS = 800;
   const DIVEBOMB_SHADOW_MS = 1200;
   const DIVEBOMB_SPEED = PLAYER_SPEED * 3;
-  const DIVEBOMB_IMPACT_RADIUS = TILE * 10;
+  // 10 tiles trimmed 15% (direct request): 8.5 tiles.
+  const DIVEBOMB_IMPACT_RADIUS = TILE * 10 * 0.85;
+  const DIVEBLAST_EXPAND_MS = 420;
 
   // Phase 2, gained in addition to the four above once it's in Primal
   // Form.
@@ -639,6 +641,7 @@
   let nextMissileSpawnAt = 0;
   let feathers = []; // { x, y, vx, vy }
   let antimatterBolts = []; // { x, y, vx, vy }
+  let diveBlast = null; // { x, y, t0, hit: Set } -- the expanding dive-bomb shockwave
   let explosions = [];
   let particles = [];
   let bloodSplatters = [];
@@ -647,13 +650,6 @@
   function spawnExplosion(x, y) {
     explosions.push({ x, y, startedAt: performance.now() });
     playExplosion();
-  }
-
-  function blastHit(x, y, radius, now) {
-    players.forEach((p) => {
-      if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
-      if (Math.hypot(p.x - x, p.y - y) < radius) triggerCaught(p, now);
-    });
   }
 
   function nearestPlayer(x, y) {
@@ -849,7 +845,7 @@
 
     missilePickups = []; missileProjectiles = [];
     nextMissileSpawnAt = performance.now() + MISSILE_SPAWN_INTERVAL_MS;
-    feathers = []; antimatterBolts = []; explosions = [];
+    feathers = []; antimatterBolts = []; explosions = []; diveBlast = null;
     bossHealth = BOSS_MAX_HEALTH;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
@@ -932,7 +928,7 @@
     gameState = 'dying';
     deathStartedAt = now;
     deathTarget = nearestPlayer(boss.x, boss.y);
-    feathers = []; antimatterBolts = []; missileProjectiles = []; missilePickups = [];
+    feathers = []; antimatterBolts = []; missileProjectiles = []; missilePickups = []; diveBlast = null;
   }
 
   // ======================= THE ATTACK CYCLE =======================
@@ -1085,7 +1081,7 @@
     const step = DIVEBOMB_SPEED * speedMult(now) * dt;
     if (d < step || d < 4) {
       boss.x = boss.diveShadowX; boss.y = boss.diveShadowY;
-      blastHit(boss.x, boss.y, DIVEBOMB_IMPACT_RADIUS, now);
+      diveBlast = { x: boss.x, y: boss.y, t0: now, hit: new Set() };
       spawnExplosion(boss.x, boss.y);
       playExplosion();
       finishAttack(now);
@@ -1124,6 +1120,20 @@
       if (d <= radius) { boss.shockwaveHit.add(p); triggerCaught(p, now); }
     });
     if (t >= 1) finishAttack(now);
+  }
+
+  // The dive bomb's blast sweeps outward to its full radius instead of
+  // catching everyone in range on the same frame; anyone the ring reaches
+  // is caught, and it outlives the attack that made it.
+  function updateDiveBlast(now) {
+    if (!diveBlast) return;
+    const t = clamp((now - diveBlast.t0) / DIVEBLAST_EXPAND_MS, 0, 1);
+    const radius = t * DIVEBOMB_IMPACT_RADIUS;
+    players.forEach((p) => {
+      if (p.caught || diveBlast.hit.has(p) || now < p.invulnerableUntil || isHidden(p, now)) return;
+      if (Math.hypot(p.x - diveBlast.x, p.y - diveBlast.y) <= radius) { diveBlast.hit.add(p); triggerCaught(p, now); }
+    });
+    if (now - diveBlast.t0 > DIVEBLAST_EXPAND_MS + 350) diveBlast = null;
   }
 
   function updateBoss(now, dt) {
@@ -1540,47 +1550,28 @@
     g.restore();
   }
 
-  // Sixteen small eyes, eight flanking each side of the body in a loose
-  // vertical arc -- every color below is piped through bossColor() so
-  // Primal Form's "colors invert" is genuine channel inversion, not a
-  // hand-picked second palette.
-  function drawEyeCluster(g, side, radius, seed) {
-    for (let i = 0; i < 8; i++) {
-      const t = i / 7;
-      const a = (t - 0.5) * Math.PI * 0.75;
-      const ex = side * (radius * 0.55 + Math.cos(a) * radius * 0.3);
-      const ey = Math.sin(a) * radius * 0.78;
-      const er = radius * 0.07 + (i % 3 === 0 ? radius * 0.015 : 0);
-      g.beginPath();
-      g.arc(ex, ey, er * 1.4, 0, Math.PI * 2);
-      g.fillStyle = bossColor('#0c0608');
-      g.fill();
-      g.beginPath();
-      g.arc(ex, ey, er, 0, Math.PI * 2);
-      g.fillStyle = bossColor('#c81020');
-      g.shadowColor = bossColor('#ff2020');
-      g.shadowBlur = 5;
-      g.fill();
-      g.shadowBlur = 0;
-      g.beginPath();
-      g.arc(ex, ey, er * 0.35, 0, Math.PI * 2);
-      g.fillStyle = bossColor('#1a0608');
-      g.fill();
-    }
-  }
-
-  // Primal Form swaps the sixteen small eyes for one giant eye flashing
-  // black and white (deliberately NOT run through bossColor -- it's
-  // already an alternation between the two extremes).
+  // One giant eye. Phase 1: a glowing red slit-pupil eye (run through
+  // bossColor like everything else on the body). Primal Form: the same eye
+  // flashing black and white (deliberately NOT run through bossColor --
+  // it's already an alternation between the two extremes).
   function drawGiantEye(g, radius, t) {
+    const er = radius * 0.62, cy = -radius * 0.02;
+    if (!boss.phase2) {
+      g.beginPath(); g.arc(0, cy, er * 1.12, 0, Math.PI * 2); g.fillStyle = '#0c0608'; g.fill();
+      g.beginPath(); g.arc(0, cy, er, 0, Math.PI * 2);
+      g.fillStyle = '#c81020'; g.shadowColor = '#ff2020'; g.shadowBlur = 14; g.fill(); g.shadowBlur = 0;
+      g.beginPath(); g.arc(0, cy, er * 0.62, 0, Math.PI * 2); g.fillStyle = '#e83a3a'; g.fill();
+      g.beginPath(); g.ellipse(0, cy, er * 0.14, er * 0.5, 0, 0, Math.PI * 2); g.fillStyle = '#1a0608'; g.fill();
+      g.beginPath(); g.arc(-er * 0.3, cy - er * 0.3, er * 0.12, 0, Math.PI * 2); g.fillStyle = 'rgba(255,255,255,0.55)'; g.fill();
+      return;
+    }
     const on = Math.floor(t / 140) % 2 === 0;
     const a = on ? '#ffffff' : '#000000';
     const b = on ? '#000000' : '#ffffff';
-    const er = radius * 0.62;
-    g.beginPath(); g.arc(0, -radius * 0.02, er * 1.12, 0, Math.PI * 2); g.fillStyle = b; g.fill();
-    g.beginPath(); g.arc(0, -radius * 0.02, er, 0, Math.PI * 2); g.fillStyle = a; g.fill();
-    g.beginPath(); g.arc(0, -radius * 0.02, er * 0.5, 0, Math.PI * 2); g.fillStyle = b; g.fill();
-    g.beginPath(); g.ellipse(0, -radius * 0.02, er * 0.14, er * 0.45, 0, 0, Math.PI * 2); g.fillStyle = a; g.fill();
+    g.beginPath(); g.arc(0, cy, er * 1.12, 0, Math.PI * 2); g.fillStyle = b; g.fill();
+    g.beginPath(); g.arc(0, cy, er, 0, Math.PI * 2); g.fillStyle = a; g.fill();
+    g.beginPath(); g.arc(0, cy, er * 0.5, 0, Math.PI * 2); g.fillStyle = b; g.fill();
+    g.beginPath(); g.ellipse(0, cy, er * 0.14, er * 0.45, 0, 0, Math.PI * 2); g.fillStyle = a; g.fill();
   }
 
   function drawBoss(g, t) {
@@ -1679,11 +1670,7 @@
       g.fill();
     }
 
-    if (boss.phase2) drawGiantEye(g, radius, t);
-    else {
-      drawEyeCluster(g, -1, radius, seed);
-      drawEyeCluster(g, 1, radius, seed);
-    }
+    drawGiantEye(g, radius, t);
     g.restore();
 
     if (telegraphing) {
@@ -1727,8 +1714,8 @@
     g.strokeStyle = `rgba(255,80,40,${0.3 + t * 0.5})`;
     g.lineWidth = 2;
     g.stroke();
-    // the real blast radius (10 tiles), drawn as a growing ring so a 10-tile
-    // impact doesn't catch you with no real warning the way a body-sized
+    // the real blast radius (8.5 tiles), drawn as a growing ring so a blast this
+    // big doesn't catch you with no real warning the way a body-sized
     // shadow alone would.
     g.beginPath();
     g.arc(boss.diveShadowX, boss.diveShadowY, DIVEBOMB_IMPACT_RADIUS * t, 0, Math.PI * 2);
@@ -1737,6 +1724,22 @@
     g.setLineDash([10, 8]);
     g.stroke();
     g.setLineDash([]);
+    g.restore();
+  }
+
+  function drawDiveBlast(g, now) {
+    if (!diveBlast) return;
+    const t = clamp((now - diveBlast.t0) / DIVEBLAST_EXPAND_MS, 0, 1);
+    const fade = clamp(1 - (now - diveBlast.t0 - DIVEBLAST_EXPAND_MS) / 350, 0, 1);
+    const r = t * DIVEBOMB_IMPACT_RADIUS;
+    g.save();
+    const grad = g.createRadialGradient(diveBlast.x, diveBlast.y, r * 0.2, diveBlast.x, diveBlast.y, Math.max(1, r));
+    grad.addColorStop(0, 'rgba(255,200,90,0)');
+    grad.addColorStop(1, `rgba(255,110,40,${0.45 * fade})`);
+    g.beginPath(); g.arc(diveBlast.x, diveBlast.y, r, 0, Math.PI * 2); g.fillStyle = grad; g.fill();
+    g.beginPath(); g.arc(diveBlast.x, diveBlast.y, r, 0, Math.PI * 2);
+    g.strokeStyle = `rgba(255,230,170,${0.9 * fade})`; g.lineWidth = 16; g.stroke();
+    g.strokeStyle = `rgba(255,90,40,${0.9 * fade})`; g.lineWidth = 6; g.stroke();
     g.restore();
   }
 
@@ -2086,6 +2089,7 @@
     drawAntimatterBolts(ctx);
     drawBoss(ctx, now);
     drawShockwaveRing(ctx, now);
+    drawDiveBlast(ctx, now);
     drawExplosions(ctx, now);
     drawPlayers(ctx);
     drawParticles(ctx);
@@ -2160,6 +2164,7 @@
         updateSmokeBombs(now);
         updateMissiles(now, dt);
         updateBoss(now, dt);
+        updateDiveBlast(now);
         updateFeathers(now, dt);
         updateAntimatterBolts(now, dt);
         updateShotgunDefense(now);
