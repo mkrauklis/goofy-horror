@@ -36,6 +36,19 @@
     <button id="hard-toggle" class="hard-toggle-btn" type="button">&#9760; Hard Mode: Off</button>
     <p id="hard-note" class="hard-note"></p>
   </div>
+  <section class="chapter chapter-halloween">
+  <h2 class="chapter-divider">&#127875; Halloween Chapter</h2>
+  <div class="menu-list">
+    <a class="menu-item panel" href="halloween1.html" data-halloween="1">
+      <h2>Halloween 1 &mdash; The Candy Maze <span class="best-time" data-level="halloween1"></span></h2>
+      <p>A Halloween-lit facility turned into a maze: orange floors,
+        jack-o-lanterns, glowing windows. Collect 3 buckets of candy to open
+        the exit &mdash; and don't let the pumpkin-headed tentacle thing
+        see you.</p>
+      <p class="lock-note"></p>
+    </a>
+  </div>
+  </section>
   <section class="chapter chapter-1">
   <h2 class="chapter-divider">Chapter 1</h2>
   <div class="menu-list">
@@ -379,6 +392,13 @@
       if (note) {
         note.textContent = !unlocked ? `Locked — finish Level ${n - 1} first` : completed ? 'Completed' : '';
       }
+    });
+
+    document.querySelectorAll('.menu-item[data-halloween]').forEach((card) => {
+      const n = parseInt(card.dataset.halloween, 10);
+      card.classList.toggle('story-done', story.isHalloweenCompleted(n));
+      const note = card.querySelector('.lock-note');
+      if (note) note.textContent = story.isHalloweenCompleted(n) ? 'Completed' : '';
     });
 
     const continueBtn = document.getElementById('story-continue');

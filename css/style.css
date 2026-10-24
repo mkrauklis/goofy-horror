@@ -89,6 +89,15 @@ a {
   margin-top: 1.5rem;
 }
 
+.chapter-halloween {
+  --chapter-color: rgba(255, 140, 30, 0.55);
+  --chapter-wash: rgba(255, 140, 30, 0.08);
+}
+
+.chapter-halloween .chapter-divider {
+  color: #ff9a3c;
+}
+
 .chapter-1 {
   --chapter-color: rgba(224, 84, 107, 0.4);
   --chapter-wash: rgba(224, 84, 107, 0.05);

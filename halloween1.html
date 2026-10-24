@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; Halloween 1</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Halloween 1 &mdash; The Candy Maze</h1>
+  <p class="objective">Collect all <strong>3 buckets of candy</strong> and the exit opens &mdash; but the thing wearing the pumpkin can see you from across the maze.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-buttons">Candy: 0 / 3</span>
+      <span id="hud-door">Door: locked</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    It's Halloween in the facility. The floors have gone orange, there are
+    jack-o-lanterns tucked into every corner, and the windows are lit up
+    like candles &mdash; which is the only light you'll get besides your
+    flashlight. The whole place has been turned into a maze: long, narrow
+    corridors with walls between them, and the three buckets of candy are
+    sitting at the far ends of it. Grab all three and the exit door
+    opens.
+  </p>
+  <p class="level-description">
+    The <strong>Hollow Jack</strong> lives in here: a mass of tentacles
+    wearing a pumpkin with eyeholes carved out of it. It wanders the maze at
+    0.8x your speed, but its eyesight is <em>excellent</em> &mdash; if you're
+    in a straight line of sight anywhere in a corridor it sees you, no matter
+    where your flashlight is pointing, and then it hunts you down at
+    <strong>1.6x</strong> your speed. Break line of sight, hide in a
+    ventilation duct (it can't follow you in), or run for your safe room.
+    Item crates are scattered around the maze with the usual radar, scanner,
+    meat, CO2 and the rest.
+  </p>
+  <p class="level-description">
+    Each of you is carrying a tranquilizer gun, empty. Find a shell in a crate
+    (you can carry up to 3 at a time) and each one loads automatically
+    &mdash; let something get close while it's hunting you and it goes
+    off on its own, stunning it for 5 seconds.
+  </p>
+</div>
+
+<script src="js/hardmode.js"></script>
+<script src="js/story.js"></script>
+<script src="levels/halloween1/level.js"></script>
+<script src="js/halloween1.js"></script>
+</body>
+</html>

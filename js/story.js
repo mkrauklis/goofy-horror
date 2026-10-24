@@ -57,6 +57,29 @@
     }
   }
 
+  // The Halloween chapter: five bonus levels that sit outside the main story.
+  // Always available (no need to have beaten anything); each level opens once
+  // the one before it is done. Its own tiny save, shared by normal and hard
+  // mode, so it never touches story progress.
+  const HALLOWEEN_KEY = 'goofy-horror-halloween';
+  const HALLOWEEN_LEVELS = 5;
+  function loadHalloween() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(HALLOWEEN_KEY));
+      if (parsed && Array.isArray(parsed.completed)) return parsed;
+    } catch (e) {
+      // corrupt or blocked storage -- starts fresh
+    }
+    return { completed: [] };
+  }
+  let halloween = loadHalloween();
+  function isHalloweenCompleted(n) { return halloween.completed.indexOf(n) !== -1; }
+  function isHalloweenUnlocked(n) { return n === 1 || isHalloweenCompleted(n - 1); }
+  function completeHalloween(n) {
+    if (!isHalloweenCompleted(n)) halloween.completed.push(n);
+    try { localStorage.setItem(HALLOWEEN_KEY, JSON.stringify(halloween)); } catch (e) { /* ignore */ }
+  }
+
   // True once the game has been beaten (in a normal run -- a save from before
   // hard mode existed that already has the finale counts too).
   function isHardUnlocked() {
@@ -267,6 +290,10 @@
     nextLevel,
     isStoryComplete,
     isHardUnlocked,
+    HALLOWEEN_LEVELS,
+    isHalloweenCompleted,
+    isHalloweenUnlocked,
+    completeHalloween,
     resetProgress,
     getPlayerMode,
     setPlayerMode,
@@ -287,14 +314,15 @@
 
   function injectChapterLabel() {
     const match = window.location.pathname.match(/\/level(\d+)\.html$/);
-    if (!match) return;
-    const n = parseInt(match[1], 10);
+    const hallo = window.location.pathname.match(/\/halloween(\d+)\.html$/);
+    if (!match && !hallo) return;
+    const n = match ? parseInt(match[1], 10) : 0;
     const nav = document.querySelector('nav.level-nav');
     const menuLink = nav && nav.querySelector('a[href="index.html"]');
     if (!nav || !menuLink) return;
     const label = document.createElement('span');
     label.className = 'nav-chapter-label';
-    label.textContent = `Chapter ${chapterForLevel(n)}`;
+    label.textContent = hallo ? 'Halloween' : `Chapter ${chapterForLevel(n)}`;
     const sep = document.createElement('span');
     sep.textContent = '·';
     menuLink.after(sep, label);
