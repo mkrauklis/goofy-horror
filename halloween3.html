@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; Halloween 3</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Halloween 3 &mdash; The Ductwork</h1>
+  <p class="objective">Find the giant vent room and <strong>both hold a lever for 5 seconds</strong> at the same time to stop the giant fan &mdash; then the door opens.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-buttons">Fan: 0.0 / 5s</span>
+      <span id="hud-door">Door: locked</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    You're inside the building's ventilation system now: a maze of narrow
+    steel ducts, riveted and grated, lit by the odd caged bulb. Somebody's
+    dropped a piece of Halloween candy here and there on the floor &mdash;
+    just now and then. Find your way through the maze to the giant vent room
+    on the far side.
+  </p>
+  <p class="level-description">
+    In the middle of that room is an enormous <strong>fan</strong>, and
+    there's a <strong>lever</strong> on either side of it. To shut it off, you
+    each stand at a lever and <strong>hold it for 5 seconds at the same
+    time</strong> &mdash; let go of either one and the progress drains away fast.
+    (Playing solo, just the first lever is enough.) You'll see the fan slow
+    as you hold. Once it stops, the door on the far side of the room opens.
+  </p>
+  <p class="level-description">
+    You aren't alone in the ducts: <strong>the Hush</strong>, the
+    95%-transparent tentacle ghost from the hospital, drifts through the maze
+    at exactly your speed &mdash; and once it sees you it solidifies and
+    comes at <strong>1.9x</strong>. Holding a lever means standing still in
+    the open. Item crates are scattered through the ducts with the usual
+    radar, scanner, meat, CO2 and the rest.
+  </p>
+  <p class="level-description">
+    Each of you is carrying a tranquilizer gun, empty. Find a shell in a crate
+    (you can carry up to 3 at a time) and each one loads automatically
+    &mdash; let something get close while it's hunting you and it goes
+    off on its own, stunning it for 5 seconds.
+  </p>
+</div>
+
+<script src="js/hardmode.js"></script>
+<script src="js/screenfx.js"></script>
+<script src="js/footsteps.js"></script>
+<script src="js/story.js"></script>
+<script src="levels/halloween3/level.js"></script>
+<script src="js/halloween3.js"></script>
+</body>
+</html>
