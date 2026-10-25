@@ -57,10 +57,10 @@
   const PHASE2_SUBTITLE = 'FLOURISHED';
 
   // Every 5th attack ends with the boss stunned for 7.5 seconds. That's the
-  // only time you can hurt it: walk up and hit it (5 damage).
+  // only time you can hurt it: walk up and hit it (2.5 damage).
   const ATTACKS_PER_STUN = 5;
   const STUN_DURATION_MS = 7500;
-  const HIT_DAMAGE = 5;
+  const HIT_DAMAGE = 2.5;
   const HIT_RADIUS = BOSS_RADIUS + PLAYER_RADIUS + 8;
   const HIT_COOLDOWN_MS = 1100; // per player, between hits
 
