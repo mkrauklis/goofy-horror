@@ -659,6 +659,30 @@
     });
   }
 
+  // ---- the boat crossing past the exit ----
+  // Beyond the exit room is a channel of deep water: you can't wade it, you need
+  // a boat. The water gets darker the further you go, and at the far end the
+  // boats tip you out onto a shore, where the real exit is.
+  const BOAT_BOARD_RADIUS = 64;
+  let boats = [];
+  function makeBoats() {
+    return (LEVEL.boats || []).map((b) => {
+      const c = tileCenter(b.x, b.y);
+      return { x: c.x, y: c.y, angle: 0, rider: null, sunk: false, sunkAt: 0, rowUntil: 0 };
+    });
+  }
+  // 0 at the dock .. 1 at the darkest part of the channel
+  function waterDepth(tx) {
+    const w = LEVEL.water;
+    return w ? clamp((tx - w.x0) / (w.darkX - w.x0), 0, 1) : 0;
+  }
+  function boatLight(p) { return p.boat ? 1 - 0.45 * waterDepth(worldToTile(p.x, p.y).x) : 1; }
+  function waterShade(x) {
+    const t = Math.pow(waterDepth(x), 1.15);
+    const r = Math.round(24 + (1 - 24) * t), g2 = Math.round(92 + (5 - 92) * t), b = Math.round(134 + (9 - 134) * t);
+    return `rgb(${r},${g2},${b})`;
+  }
+
   function respawnPlayer(p) {
     const c = tileCenter(p.spawn.x, p.spawn.y);
     p.x = c.x; p.y = c.y; p.facing = { x: 0, y: 1 };
@@ -682,7 +706,9 @@
       p.shotgunAmmo = 0;
       p.watergunAmmo = 0;
       p.nextRippleAt = 0;
+      p.boat = null;
     });
+    boats = makeBoats();
     waterGunAtEnd = !(window.GoofyStory && window.GoofyStory.isGunUnlocked('watergun'));
 
     const m = tileCenter(LEVEL.monsterSpawn.x, LEVEL.monsterSpawn.y);
@@ -719,14 +745,16 @@
   resetLevel();
 
   // ---- player movement & collision ----
-  function isWallForPlayer(tx, ty) {
+  function isWallForPlayer(tx, ty, boat) {
     const ch = tileChar(tx, ty);
+    if (boat) return ch !== '~';          // a boat only goes on deep water
+    if (ch === '~') return true;          // and you can't wade it without one
     if (ch === '#') return true;
     if (ch === 'D' || ch === 'W') return !doorUnlocked;
     return false;
   }
 
-  function canStandAt(x, y) {
+  function canStandAt(x, y, boat) {
     const r = PLAYER_RADIUS;
     const corners = [
       [x - r, y - r], [x + r, y - r],
@@ -734,13 +762,23 @@
     ];
     return corners.every(([cx, cy]) => {
       const t = worldToTile(cx, cy);
-      return !isWallForPlayer(t.x, t.y);
+      return !isWallForPlayer(t.x, t.y, boat);
     });
   }
 
   function movePlayer(p, dx, dy) {
-    if (dx !== 0 && canStandAt(p.x + dx, p.y)) p.x += dx;
-    if (dy !== 0 && canStandAt(p.x, p.y + dy)) p.y += dy;
+    const boat = !!p.boat;
+    if (dx !== 0 && canStandAt(p.x + dx, p.y, boat)) p.x += dx;
+    if (dy !== 0 && canStandAt(p.x, p.y + dy, boat)) p.y += dy;
+    if (p.boat) {                           // the boat goes where you paddle it, nose first
+      const b = p.boat;
+      b.x = p.x; b.y = p.y;
+      let d = Math.atan2(p.facing.y, p.facing.x) - b.angle;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      b.angle += d * 0.18;
+      b.rowUntil = performance.now() + 220;
+    }
   }
 
   function updateStamina(p, now, dt, isMoving) {
@@ -797,7 +835,7 @@
     updateStamina(p, now, dt, isMoving);
     applyMovement(p, ix, iy, dt);
     if (isMoving) {
-      window.Footsteps.advance(p, dt * WALK_CYCLE_SPEED * speedMultiplierFor(p), audioCtx, FOOT_SURFACE, speedMultiplierFor(p));
+      if (!p.boat) window.Footsteps.advance(p, dt * WALK_CYCLE_SPEED * speedMultiplierFor(p), audioCtx, FOOT_SURFACE, speedMultiplierFor(p));
       if (now >= p.nextRippleAt) {
         spawnRipple(p.x, p.y + PLAYER_RADIUS * 0.8);
         p.nextRippleAt = now + RIPPLE_INTERVAL_MS;
@@ -834,6 +872,7 @@
     if (ch === 'D') return '#d9ac4a';
     if (ch === 'S') return '#3ddc84';
     if (ch === 'Q') return '#ffb347';
+    if (ch === '~') return '#082640';
     return '#163a56';
   }
 
@@ -1065,6 +1104,34 @@
     }
   }
 
+  function updateBoats(now) {
+    const W = LEVEL.water;
+    if (!W) return;
+    players.forEach((p) => {
+      if (p.caught) return;
+      if (!p.boat) {
+        for (const b of boats) {
+          if (b.sunk || b.rider) continue;
+          if (Math.hypot(p.x - b.x, p.y - b.y) < BOAT_BOARD_RADIUS) {
+            b.rider = p; p.boat = b; p.x = b.x; p.y = b.y;
+            spawnFloatingText(b.x, b.y - 18, 'ABOARD');
+            playItemChime(520);
+            break;
+          }
+        }
+      } else if (worldToTile(p.x, p.y).x >= W.kickX) {
+        const b = p.boat;
+        b.rider = null; b.sunk = true; b.sunkAt = now; p.boat = null;
+        for (let i = 0; i < 10; i++) spawnRipple(p.x + (Math.random() - 0.5) * 60, p.y + (Math.random() - 0.5) * 60);
+        spawnFloatingText(p.x, p.y - 26, 'THE BOAT TIPS YOU OUT!');
+        playTone(160, 0.35, 'sawtooth', 0.14);
+        playTone(90, 0.5, 'sine', 0.2, 0.05);
+        const c = tileCenter(W.landX, clamp(worldToTile(p.x, p.y).y, W.landY0, W.landY1));
+        p.x = c.x; p.y = c.y;
+      }
+    });
+  }
+
   function updateTriggers() {
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
@@ -1089,7 +1156,7 @@
 
   // ---- monster AI ----
   function monsterCanOccupy(ch) {
-    if (ch === '#' || ch === 'S') return false;
+    if (ch === '#' || ch === 'S' || ch === '~') return false;
     if (ch === 'D' || ch === 'W') return doorUnlocked;
     return true;
   }
@@ -1550,6 +1617,7 @@
           case '#': color = '#1a2226'; break;
           case 'S': color = floorShade(x, y); break;
           case 'E': color = '#15283c'; break;
+          case '~': color = waterShade(x); break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#1e3a50'; break;
           case 'W': color = doorUnlocked ? floorShade(x, y) : '#1e3a50'; break;
           default: color = floorShade(x, y);
@@ -1577,6 +1645,16 @@
           if (band > 0.65) {
             g.fillStyle = `rgba(205,230,255,${(band - 0.65) * 0.25})`;
             g.fillRect(px, py, TILE, TILE);
+          }
+        }
+
+        if (ch === '~') {                       // slow wave lines, fading as the water darkens
+          const clear = 1 - waterDepth(x);
+          if (clear > 0.05) {
+            g.strokeStyle = `rgba(190,225,255,${0.14 * clear})`; g.lineWidth = 1.5;
+            const ph = now * 0.002 + x * 0.9 + y * 0.6;
+            g.beginPath(); g.moveTo(px + 3, py + 10 + Math.sin(ph) * 3); g.quadraticCurveTo(px + 16, py + 6 + Math.sin(ph + 1) * 3, px + 29, py + 10 + Math.sin(ph + 2) * 3); g.stroke();
+            g.beginPath(); g.moveTo(px + 3, py + 24 + Math.sin(ph + 3) * 3); g.quadraticCurveTo(px + 16, py + 20 + Math.sin(ph + 4) * 3, px + 29, py + 24 + Math.sin(ph + 5) * 3); g.stroke();
           }
         }
 
@@ -2108,6 +2186,41 @@
     g.restore();
   }
 
+  function drawBoats(g, now) {
+    boats.forEach((b) => {
+      let alpha = 1, sink = 0;
+      if (b.sunk) {
+        const t = (now - b.sunkAt) / 1600;
+        if (t >= 1) return;
+        alpha = 1 - t; sink = t * 12;
+      }
+      g.save();
+      g.translate(b.x, b.y + sink);
+      g.rotate(b.angle);
+      g.globalAlpha = alpha;
+      g.fillStyle = 'rgba(0,0,0,0.28)';
+      g.beginPath(); g.ellipse(3, 5, 28, 14, 0, 0, Math.PI * 2); g.fill();
+      // oars first, so they sit under the hull's rim
+      if (b.rider) {
+        const swing = now < b.rowUntil ? Math.sin(now * 0.014) * 0.55 : 0.1;
+        g.strokeStyle = '#d9c9a0'; g.lineWidth = 3; g.lineCap = 'round';
+        [-1, 1].forEach((side) => {
+          g.beginPath(); g.moveTo(-2, side * 11); g.lineTo(-8 - swing * 8 * side, side * 30); g.stroke();
+          g.fillStyle = '#d9c9a0'; g.beginPath(); g.ellipse(-8 - swing * 8 * side, side * 31, 4, 2.4, 0, 0, Math.PI * 2); g.fill();
+        });
+      }
+      // hull: pointed bow in front
+      g.fillStyle = '#8a5a2e'; g.strokeStyle = '#3a2410'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(30, 0); g.quadraticCurveTo(18, -15, -18, -13); g.lineTo(-25, -8); g.lineTo(-25, 8); g.lineTo(-18, 13); g.quadraticCurveTo(18, 15, 30, 0); g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = '#5e3a1a';
+      g.beginPath(); g.moveTo(24, 0); g.quadraticCurveTo(14, -9, -16, -8); g.lineTo(-20, -5); g.lineTo(-20, 5); g.lineTo(-16, 8); g.quadraticCurveTo(14, 9, 24, 0); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(30,16,6,0.55)'; g.lineWidth = 1.2;
+      for (let x = -12; x <= 14; x += 9) { g.beginPath(); g.moveTo(x, -8); g.lineTo(x, 8); g.stroke(); }
+      g.fillStyle = '#c9a15a'; g.fillRect(-3, -3, 6, 6);        // a seat plank
+      g.restore();
+    });
+  }
+
   function drawPlayers(g) {
     const R = PLAYER_RADIUS;
     players.forEach((p) => {
@@ -2314,8 +2427,8 @@
 
     players.forEach((pl) => {
       const s = worldToScreen(pl.x, pl.y);
-      punchLight(maskCtx, s.x, s.y, 90 * nvgMult * HM.flicker(pl), 1);
-      punchLight(maskCtx, s.x, s.y, 230 * nvgMult * HM.flicker(pl), 0.85);
+      punchLight(maskCtx, s.x, s.y, 90 * nvgMult * HM.flicker(pl) * boatLight(pl), 1);
+      punchLight(maskCtx, s.x, s.y, 230 * nvgMult * HM.flicker(pl) * boatLight(pl), 0.85);
     });
   }
 
@@ -2338,6 +2451,7 @@
     drawFish(ctx);
     drawSmokeBombs(ctx, now);
     HM.monster(ctx, monster, (c) => drawEel(c, now));
+    drawBoats(ctx, now);
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
@@ -2589,6 +2703,7 @@
       elapsedMs = now - runStartTime;
       updateInputMovement(now, dt);
       updateTriggers();
+      updateBoats(now);
       updateCrates(now);
       updateWheel(now, dt);
       updateSmokeBombs(now);
