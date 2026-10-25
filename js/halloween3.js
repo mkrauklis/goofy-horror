@@ -33,10 +33,10 @@
   // took longer than usual (e.g. a big tile grid redraw).
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
-  // The Hush: it drifts around at exactly your speed, but the moment it
-  // spots you it comes at 1.9x.
-  const MONSTER_SPEED = HM.speed(PLAYER_SPEED * 1.9);
-  const PATROL_SPEED = HM.speed(PLAYER_SPEED * 1);
+  // The Seepers: two of them. They ooze along at 0.6x your speed, and the moment
+  // one sees you it screams and comes at 1.2x.
+  const MONSTER_SPEED = HM.speed(PLAYER_SPEED * 1.2);
+  const PATROL_SPEED = HM.speed(PLAYER_SPEED * 0.6);
   const LURE_SPEED = HM.speed(PLAYER_SPEED * 0.6);
   const CATCH_RADIUS = 20;
   const REPATH_MS = 500;
@@ -532,6 +532,7 @@
   let leverTickAt = 0;
   let fanSpin = 0;
   let fanSpeed = 1;
+  let goo = []; // the Seepers' trail of purple goo
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
   let catchFlash = 0;
@@ -573,8 +574,7 @@
     return {
       x: 0,
       y: 0,
-      radius: 17,
-      vis: 0.05, // 0.05 = 95% transparent, 0.9 = almost solid
+      radius: 16,
       seed: Math.random() * 100,
       path: [],
       pathIndex: 0,
@@ -592,7 +592,7 @@
     };
   }
 
-  const monsters = [makeMonster(0)];
+  const monsters = LEVEL.monsterSpawns.map((_, i) => makeMonster((i * 9) % LEVEL.patrolPoints.length));
 
   let crates = [];
   let radarUntil = 0;
@@ -621,15 +621,16 @@
       p.shotgunAmmo = 0;
     });
 
-    const spawns = [LEVEL.monsterSpawn];
+    const spawns = LEVEL.monsterSpawns;
     monsters.forEach((mon, i) => {
       const m = tileCenter(spawns[i].x, spawns[i].y);
       mon.x = m.x; mon.y = m.y;
-      mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = 0;
+      mon.path = []; mon.pathIndex = 0; mon.nextRepathAt = performance.now() + i * 97; mon.screamUntil = 0; mon.gooX = undefined;
       mon.state = 'patrol'; mon.alertUntil = 0; mon.alertTargetTile = null;
       mon.frozenUntil = 0; mon.luredState = 'none'; mon.lureTarget = null; mon.eatingUntil = 0;
     });
 
+    goo = [];
     leverProgress = 0;
     leversHeld = LEVEL.levers.map(() => false);
     fanSpin = 0;
@@ -1023,6 +1024,13 @@
     return true;
   }
 
+  let graphCache = null;
+  let graphCacheDoor = null;
+  function getMonsterGraph() {
+    if (!graphCache || graphCacheDoor !== doorUnlocked) { graphCache = buildMonsterGraph(); graphCacheDoor = doorUnlocked; }
+    return graphCache;
+  }
+
   function buildMonsterGraph() {
     const graph = new Map();
     for (let y = 0; y < ROWS; y++) {
@@ -1048,9 +1056,10 @@
     const visited = new Set([startKey]);
     const prev = new Map();
     const queue = [start];
+    let head = 0;
     let found = false;
-    while (queue.length) {
-      const cur = queue.shift();
+    while (head < queue.length) {
+      const cur = queue[head++];
       if (key(cur) === goalKey) { found = true; break; }
       const neighbors = graph.get(key(cur)) || [];
       for (const n of neighbors) {
@@ -1091,6 +1100,7 @@
       if (p.caught || isHidden(p) || isInSmoke(p, now)) continue;
       const d = Math.hypot(p.x - m.x, p.y - m.y);
       if (d <= MONSTER_SIGHT && hasLineOfSight(m.x, m.y, p.x, p.y)) {
+        if (m.state !== 'alert') screamAt(m, now);   // it sees you: a low scream
         m.state = 'alert';
         m.alertUntil = now + ALERT_GRACE_MS;
         m.alertTargetTile = worldToTile(p.x, p.y);
@@ -1134,8 +1144,6 @@
   }
 
   function updateMonster(m, now, dt) {
-    // fade between nearly invisible (roaming) and nearly solid (hunting)
-    m.vis += ((m.state === 'alert' ? 0.9 : 0.05) - m.vis) * Math.min(1, dt * 7);
     if (now < m.frozenUntil) return; // frozen solid: no movement, no perception
 
     if (m.luredState === 'eating') {
@@ -1152,7 +1160,7 @@
         m.nextRepathAt = now + REPATH_MS;
         const startTile = worldToTile(m.x, m.y);
         const goalTile = worldToTile(m.lureTarget.x, m.lureTarget.y);
-        const graph = buildMonsterGraph();
+        const graph = getMonsterGraph();
         const path = bfsPath(graph, startTile, goalTile);
         m.path = path && path.length > 1 ? path.slice(1) : [];
         m.pathIndex = 0;
@@ -1184,7 +1192,7 @@
       m.nextRepathAt = now + REPATH_MS;
       const startTile = worldToTile(m.x, m.y);
       const goalTile = m.state === 'alert' ? m.alertTargetTile : LEVEL.patrolPoints[m.patrolIndex];
-      const graph = buildMonsterGraph();
+      const graph = getMonsterGraph();
       const path = bfsPath(graph, startTile, goalTile);
       if (path && path.length > 1) {
         m.path = path.slice(1);
@@ -1394,6 +1402,7 @@
 
     const nowT = performance.now();
     drawCandies(g, minTX, maxTX, minTY, maxTY);
+    drawGoo(g, nowT);
     drawGiantFan(g, LEVEL.fan, fanSpin, fanSpeed, nowT);
     LEVEL.levers.forEach((lv, i) => drawLever(g, lv, leversHeld[i], PLAYER_MODE === 2 || i === 0, nowT));
 
@@ -1681,84 +1690,146 @@
     });
   }
 
-  // The Hush: a ghost with tentacles and two black eyes. 95% transparent while
-  // it roams (m.vis ~ 0.05, see updateMonster); the moment it spots you it
-  // turns almost solid (0.9) and comes at you fast.
+  // The Seeper: a slimy purple mutation. A lumpy, glistening mass with too many
+  // mismatched eyes and a wide wet mouth, dragging itself through the ducts on
+  // blobby pseudopods and leaving a trail of purple goo behind it. When it spots
+  // you it lets out a low scream (the mouth gapes and it swells for a moment).
+  function playLowScream() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const o = audioCtx.createOscillator(), o2 = audioCtx.createOscillator();
+    const filt = audioCtx.createBiquadFilter(), g = audioCtx.createGain(), lfo = audioCtx.createOscillator(), lfoG = audioCtx.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(96, t); o.frequency.exponentialRampToValueAtTime(48, t + 1.2);
+    o2.type = 'square'; o2.frequency.setValueAtTime(48, t); o2.frequency.exponentialRampToValueAtTime(26, t + 1.2);
+    filt.type = 'lowpass'; filt.frequency.value = 420;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.34, t + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.35);
+    lfo.frequency.value = 26; lfoG.gain.value = 0.12;                // a rattling growl
+    lfo.connect(lfoG); lfoG.connect(g.gain);
+    o.connect(filt); o2.connect(filt); filt.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o2.start(t); lfo.start(t);
+    o.stop(t + 1.4); o2.stop(t + 1.4); lfo.stop(t + 1.4);
+  }
+  let lastScreamAt = 0;
+  function screamAt(m, now) {
+    m.screamUntil = now + 1000;
+    if (now - lastScreamAt > 600) { lastScreamAt = now; playLowScream(); }
+  }
+
+  // ---- the goo trail ----
+  const GOO_LIFE_MS = 30000;
+  const GOO_STEP = 22;
+  function updateGoo(now) {
+    monsters.forEach((m) => {
+      if (m.gooX === undefined) { m.gooX = m.x; m.gooY = m.y; }
+      if (Math.hypot(m.x - m.gooX, m.y - m.gooY) >= GOO_STEP) {
+        m.gooX = m.x; m.gooY = m.y;
+        goo.push({ x: m.x + (Math.random() - 0.5) * 10, y: m.y + (Math.random() - 0.5) * 10, r: 9 + Math.random() * 7, born: now, seed: Math.random() * 100 });
+        if (goo.length > 500) goo.shift();
+      }
+    });
+    while (goo.length && now - goo[0].born > GOO_LIFE_MS) goo.shift();
+  }
+  function drawGoo(g, now) {
+    goo.forEach((b) => {
+      const age = (now - b.born) / GOO_LIFE_MS;
+      const a = age < 0.1 ? 0.75 : 0.75 * (1 - (age - 0.1) / 0.9);
+      g.save();
+      g.globalAlpha = Math.max(0, a);
+      g.translate(b.x, b.y);
+      g.fillStyle = '#5a2480';
+      g.beginPath(); g.ellipse(0, 0, b.r * 1.15, b.r * 0.85, b.seed, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#7a3ca8';
+      g.beginPath(); g.ellipse(-b.r * 0.15, -b.r * 0.1, b.r * 0.7, b.r * 0.5, b.seed, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(235,200,255,0.55)';
+      g.beginPath(); g.ellipse(-b.r * 0.3, -b.r * 0.3, b.r * 0.22, b.r * 0.12, b.seed, 0, Math.PI * 2); g.fill();
+      g.restore();
+    });
+  }
+
   function drawMonster(g, t, m) {
     const r = m.radius;
     const look = m.lookDir || { x: 1, y: 0 };
     const ang = Math.atan2(look.y, look.x);
-    const alpha = m.vis;
+    const scream = clamp(((m.screamUntil || 0) - t) / 1000, 0, 1);       // 1 just as it screams, fading out
+    const swell = 1 + 0.18 * Math.sin(scream * Math.PI);
     g.save();
     g.translate(m.x, m.y);
-    g.globalAlpha = alpha;
 
-    // tentacles it's reaching along the nearby walls with
+    // pseudopods gripping the duct walls
     m.tentacleTargets.forEach((tt, i) => {
       const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * r * 0.35;
       const tx = tt.x - m.x, ty = tt.y - m.y;
       const dist = Math.hypot(tx, ty) || 1;
       const perpX = -ty / dist, perpY = tx / dist;
-      drawTaperedTentacle(g, tx, ty, tx / 2 + perpX * wobble, ty / 2 + perpY * wobble, r * 0.2, '#cfe3ee');
+      drawTaperedTentacle(g, tx, ty, tx / 2 + perpX * wobble, ty / 2 + perpY * wobble, r * 0.3, '#5a2480');
     });
-
-    // the long, drifting tail of tentacles
-    for (let i = 0; i < 8; i++) {
-      const spread = (i - 3.5) * 0.38;
-      const a = ang + Math.PI + spread + Math.sin(t * 0.0035 + i * 1.3 + m.seed) * 0.3;
-      const len = r * (2.4 + 0.5 * Math.sin(t * 0.005 + i + m.seed));
+    // slimy trailing pseudopods
+    for (let i = 0; i < 6; i++) {
+      const a = ang + Math.PI * 0.62 + (i / 5) * Math.PI * 0.76 + Math.sin(t * 0.004 + i * 1.7 + m.seed) * 0.3;
+      const len = r * (1.4 + 0.4 * Math.sin(t * 0.006 + i * 1.3 + m.seed));
       const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
-      const bow = Math.sin(t * 0.006 + i * 2.2 + m.seed) * r * 0.6;
-      drawTaperedTentacle(g, tx, ty, tx / 2 - Math.sin(a) * bow, ty / 2 + Math.cos(a) * bow, r * 0.42, i % 2 ? '#dfeef6' : '#bcd3e0');
+      const bow = Math.sin(t * 0.007 + i * 2.2 + m.seed) * r * 0.5;
+      drawTaperedTentacle(g, tx, ty, tx / 2 - Math.sin(a) * bow, ty / 2 + Math.cos(a) * bow, r * 0.4, i % 2 ? '#6e30a0' : '#52217a');
     }
 
-    // the sheet-like body: a soft, wavering white blob
-    const points = 16;
+    // the lumpy body
+    g.scale(swell, swell);
+    g.fillStyle = '#3a1058';
     g.beginPath();
-    for (let i = 0; i <= points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const rr = r * 1.12 + Math.sin(t * 0.005 + i * 1.9 + m.seed) * r * 0.1;
-      const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
-      if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+    for (let i = 0; i <= 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      const rr = r * 1.12 + Math.sin(t * 0.005 + i * 2.3 + m.seed) * r * 0.1 + Math.sin(a * 3 + m.seed) * r * 0.1;
+      if (i === 0) g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); else g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
     }
-    g.closePath();
-    const body = g.createRadialGradient(-r * 0.25, -r * 0.3, 2, 0, 0, r * 1.2);
-    body.addColorStop(0, '#ffffff');
-    body.addColorStop(0.7, '#e1eef5');
-    body.addColorStop(1, '#a9c4d4');
+    g.closePath(); g.fill();
+    const body = g.createRadialGradient(-r * 0.3, -r * 0.35, 2, 0, 0, r * 1.15);
+    body.addColorStop(0, '#c18be8'); body.addColorStop(0.45, '#8a46b8'); body.addColorStop(1, '#4a1a6e');
     g.fillStyle = body;
-    g.fill();
-    g.strokeStyle = 'rgba(140,175,195,0.8)';
-    g.lineWidth = 1.2;
-    g.stroke();
+    g.beginPath(); g.arc(0, 0, r * 1.02, 0, Math.PI * 2); g.fill();
+    // slime sheen and a couple of bubbles
+    g.fillStyle = 'rgba(245,225,255,0.6)';
+    g.beginPath(); g.ellipse(-r * 0.4, -r * 0.5, r * 0.3, r * 0.14, -0.6, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(230,200,255,0.5)'; g.lineWidth = 1.2;
+    g.beginPath(); g.arc(r * 0.1, -r * 0.7, r * 0.12, 0, Math.PI * 2); g.arc(-r * 0.6, r * 0.2, r * 0.09, 0, Math.PI * 2); g.stroke();
 
-    // two black eyes (red in hard mode), set toward where it's looking
-    const fx = Math.cos(ang), fy = Math.sin(ang);
-    const nx = -fy, ny = fx;
-    g.fillStyle = HM.on ? '#ff1a14' : '#050508';
-    [-1, 1].forEach((side) => {
-      g.beginPath();
-      g.ellipse(fx * r * 0.42 + nx * side * r * 0.38, fy * r * 0.42 + ny * side * r * 0.38, r * 0.3, r * 0.2, ang + Math.PI / 2, 0, Math.PI * 2);
-      g.fill();
+    g.save();
+    g.rotate(ang);
+    // drips hanging off it
+    g.fillStyle = '#7a3ca8';
+    [-0.5, 0.1, 0.55].forEach((k, i) => {
+      const dl = r * (0.25 + 0.18 * Math.sin(t * 0.004 + i * 2 + m.seed));
+      g.beginPath(); g.ellipse(-r * 0.2, k * r, r * 0.12, dl, 0, 0, Math.PI * 2); g.fill();
     });
+    // mismatched eyes
+    const eyes = [[0.52, -0.36, 0.2], [0.5, 0.32, 0.16], [0.18, -0.02, 0.1], [0.02, -0.5, 0.08]];
+    eyes.forEach(([ex, ey, er]) => {
+      g.fillStyle = '#e8ff6a';
+      g.beginPath(); g.arc(ex * r, ey * r, er * r, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#2a0a3a';
+      g.beginPath(); g.arc(ex * r + er * r * 0.3, ey * r, er * r * 0.5, 0, Math.PI * 2); g.fill();
+    });
+    // the mouth, gaping wide mid-scream
+    const open = 0.22 + 0.7 * scream;
+    g.fillStyle = '#1a0526';
+    g.beginPath(); g.ellipse(r * 0.78, 0, r * (0.12 + 0.2 * open), r * (0.12 + 0.34 * open), 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#d8c8e8';
+    for (let i = 0; i < 4; i++) {
+      const aa = (i / 3 - 0.5) * 1.8;
+      g.beginPath(); g.moveTo(r * 0.78 + Math.cos(aa) * r * 0.2 * open, Math.sin(aa) * r * 0.34 * open); g.lineTo(r * 0.78 + Math.cos(aa) * r * 0.08, Math.sin(aa) * r * 0.12); g.lineTo(r * 0.78 + Math.cos(aa + 0.3) * r * 0.2 * open, Math.sin(aa + 0.3) * r * 0.34 * open); g.closePath(); g.fill();
+    }
+    g.restore();
 
     if (t < m.frozenUntil) {
-      g.globalAlpha = Math.max(alpha, 0.5);
       g.beginPath();
       for (let i = 0; i <= 12; i++) {
         const a = (i / 12) * Math.PI * 2;
-        const rr = r * 1.25 + 3;
-        const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
-        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+        const rr = r * 1.3 + 3;
+        if (i === 0) g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); else g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
       }
       g.closePath();
-      g.fillStyle = 'rgba(140,220,255,0.45)';
-      g.fill();
-      g.strokeStyle = 'rgba(220,250,255,0.8)';
-      g.lineWidth = 1.5;
-      g.stroke();
+      g.fillStyle = 'rgba(140,220,255,0.45)'; g.fill();
+      g.strokeStyle = 'rgba(220,250,255,0.8)'; g.lineWidth = 1.5; g.stroke();
     }
-
     g.restore();
   }
 
@@ -2073,7 +2144,7 @@
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY);
     drawSmokeBombs(ctx, now);
-    monsters.forEach((m) => HM.monster(ctx, m, (c) => drawMonster(c, now, m), { eyes: false }));
+    monsters.forEach((m) => HM.monster(ctx, m, (c) => drawMonster(c, now, m)));
     drawPlayers(ctx);
     drawParticles(ctx);
     ctx.restore();
@@ -2301,6 +2372,7 @@
       updateInputMovement(now, dt);
       updateTriggers();
       updateLevers(now, dt);
+      updateGoo(now);
       updateCrates(now);
       updateSmokeBombs(now);
       monsters.forEach((m) => updateMonster(m, now, dt));
