@@ -3373,13 +3373,14 @@
   }
 
   // The Halloween 5 boss, the Pumpkin King, in the same drawing as the game
-  // (js/halloween5.js). Click the portrait to see it ablaze.
+  // (js/halloween5.js). Click the portrait to see it flourished.
   // a flame teardrop standing on (x, y): used for eruptions and the mouth
-  function drawFlameTongue(g, x, y, w, h, t, seed) {
+  function drawFlameTongue(g, x, y, w, h, t, seed, blue) {
     const sway = Math.sin(t * 0.012 + seed) * w * 0.35;
     const flick = 0.9 + 0.1 * Math.sin(t * 0.03 + seed * 2);
     h *= flick;
-    const layers = [['#ff3a10', 1], ['#ff8a1e', 0.72], ['#ffd25a', 0.46], ['#fff6c8', 0.22]];
+    const layers = blue ? [['#1a3aff', 1], ['#3a8aff', 0.72], ['#8ad0ff', 0.46], ['#eefaff', 0.22]]
+      : [['#ff3a10', 1], ['#ff8a1e', 0.72], ['#ffd25a', 0.46], ['#fff6c8', 0.22]];
     layers.forEach(([col, k]) => {
       g.fillStyle = col;
       g.beginPath();
@@ -3392,25 +3393,34 @@
 
   // Everything the boss is made of, drawn on a scratch canvas centered on the
   // origin: thick green vine-tentacles writhing out from under a huge ribbed
-  // orange pumpkin, a carved face, and a fire burning in its mouth. Ablaze, its
-  // skin chars and cracks, the stem catches, and flames pour from eyes and mouth.
-  function drawPumpkinParts(s, now, ablaze, stunned, screaming, boss) {
+  // orange pumpkin, a carved face, and a fire burning in its mouth. Flourished,
+  // it turns green, grows a much bigger nest of leafy vines, and the fire in it
+  // burns blue.
+  function drawPumpkinParts(s, now, flourished, stunned, screaming, boss) {
     const r = boss.radius;
     const look = boss.lookDir || { x: 0, y: 1 };
-    const ang = Math.atan2(look.y, look.x);
 
     // tentacles
-    const tentCount = 9;
+    const curl = boss.curl || 0;                                // 0..1: how tightly the vines have curled up against it
+    const tentCount = flourished ? 16 : 9;
     for (let i = 0; i < tentCount; i++) {
       const a = (i / tentCount) * Math.PI * 2 + Math.sin(now * 0.0017 + i) * 0.2;
-      let len = r * (1.5 + 0.28 * Math.sin(now * 0.004 + i * 1.7 + boss.seed));
+      let len = r * ((flourished ? 1.95 : 1.5) + 0.28 * Math.sin(now * 0.004 + i * 1.7 + boss.seed));
       if (stunned) len *= 0.8;
+      len *= 1 - 0.68 * curl;
       const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
-      const bow = (stunned ? 0.2 : 1) * Math.sin(now * 0.005 + i * 2.3 + boss.seed) * r * 0.45;
+      const bow = (stunned ? 0.2 : 1 - 0.6 * curl) * Math.sin(now * 0.005 + i * 2.3 + boss.seed) * r * 0.45 + curl * r * 0.35;
       const mx = tx / 2 - Math.sin(a) * bow, my = ty / 2 + Math.cos(a) * bow;
-      const col = ablaze ? (i % 2 ? '#3a4a1a' : '#2a3414') : (i % 2 ? '#5c9a30' : '#417022');
+      const col = flourished ? (i % 2 ? '#4fb82a' : '#2f8a1c') : (i % 2 ? '#5c9a30' : '#417022');
       drawTaperedTentacle(s, tx, ty, mx, my, r * 0.3, col);
-      s.strokeStyle = ablaze ? '#d9701e' : '#6fbf3a'; s.lineWidth = 1.8;
+      if (flourished) {                                          // leaves along each vine
+        [0.4, 0.7].forEach((u, j) => {
+          const px = 2 * (1 - u) * u * mx + u * u * tx, py = 2 * (1 - u) * u * my + u * u * ty;
+          s.fillStyle = '#7be040';
+          s.beginPath(); s.ellipse(px + Math.cos(a + 1.4) * 5, py + Math.sin(a + 1.4) * 5, r * 0.13, r * 0.055, a + 0.9 * (j ? -1 : 1), 0, Math.PI * 2); s.fill();
+        });
+      }
+      s.strokeStyle = flourished ? '#b8ff7a' : '#6fbf3a'; s.lineWidth = 1.8;
       s.beginPath(); s.arc(tx + Math.cos(a + 1.2) * 3, ty + Math.sin(a + 1.2) * 3, 3.4, a - 2, a + 3.4); s.stroke();
     }
 
@@ -3418,44 +3428,57 @@
     if (stunned) s.scale(1.06, 0.93);
     const rx = r, ry = r * 0.9;
     // shadowed underside, then the ribbed body
-    s.fillStyle = ablaze ? '#1e0a04' : '#4a1a06';
+    s.fillStyle = flourished ? '#10300a' : '#4a1a06';
     s.beginPath(); s.ellipse(0, ry * 0.1, rx * 1.02, ry * 1.03, 0, 0, Math.PI * 2); s.fill();
     const body = s.createRadialGradient(-rx * 0.3, -ry * 0.4, 3, 0, 0, rx * 1.15);
-    if (ablaze) { body.addColorStop(0, '#b4501a'); body.addColorStop(0.55, '#6a2408'); body.addColorStop(1, '#1e0a04'); }
+    if (flourished) { body.addColorStop(0, '#c4f27a'); body.addColorStop(0.55, '#5cb030'); body.addColorStop(1, '#1f5212'); }
     else { body.addColorStop(0, '#ffb24a'); body.addColorStop(0.55, '#ee6a0e'); body.addColorStop(1, '#8f3208'); }
     s.fillStyle = body;
     s.beginPath(); s.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); s.fill();
-    s.strokeStyle = ablaze ? 'rgba(20,6,2,0.8)' : 'rgba(100,32,4,0.6)'; s.lineWidth = 2.4;
+    s.strokeStyle = flourished ? 'rgba(8,50,8,0.6)' : 'rgba(100,32,4,0.6)'; s.lineWidth = 2.4;
     [-0.66, -0.34, 0, 0.34, 0.66].forEach((k) => {
       s.beginPath();
       s.ellipse(0, 0, rx * Math.abs(1 - Math.abs(k) * 0.75), ry, 0, Math.PI * 0.5, Math.PI * 1.5, k < 0);
       s.stroke();
     });
-    if (ablaze) {                                           // glowing cracks in the charred skin
-      s.strokeStyle = `rgba(255,140,40,${0.75 + 0.25 * Math.sin(now * 0.015)})`; s.lineWidth = 2;
-      [[-0.7, -0.2, -0.45, -0.55], [0.72, -0.1, 0.5, -0.5], [-0.62, 0.45, -0.3, 0.7], [0.6, 0.5, 0.34, 0.74], [0.05, -0.85, -0.12, -0.6]].forEach(([x0, y0, x1, y1]) => {
-        s.beginPath(); s.moveTo(rx * x0, ry * y0); s.lineTo(rx * (x0 + x1) / 2 + 4, ry * (y0 + y1) / 2 - 3); s.lineTo(rx * x1, ry * y1); s.stroke();
+    s.fillStyle = 'rgba(255,255,255,0.28)';
+    s.beginPath(); s.ellipse(-rx * 0.38, -ry * 0.5, rx * 0.26, ry * 0.12, -0.5, 0, Math.PI * 2); s.fill();
+    if (flourished) {                                           // vines wrapped round the body, with leaves
+      s.lineCap = 'round';
+      [[-0.95, -0.2, -0.3, 0.35, 0.5, -0.75], [0.95, 0.15, 0.3, -0.3, -0.6, -0.65], [-0.7, 0.7, 0.0, 0.2, 0.8, 0.55]].forEach(([x0, y0, cx0, cy0, x1, y1], i) => {
+        s.strokeStyle = '#1f6a14'; s.lineWidth = r * 0.07;
+        s.beginPath(); s.moveTo(rx * x0, ry * y0); s.quadraticCurveTo(rx * cx0, ry * cy0, rx * x1, ry * y1); s.stroke();
+        s.strokeStyle = '#4fb82a'; s.lineWidth = r * 0.04; s.stroke();
+        [0.3, 0.6, 0.85].forEach((u, j) => {
+          const px = 2 * (1 - u) * u * rx * cx0 + (1 - u) * (1 - u) * rx * x0 + u * u * rx * x1;
+          const py = 2 * (1 - u) * u * ry * cy0 + (1 - u) * (1 - u) * ry * y0 + u * u * ry * y1;
+          s.fillStyle = '#7be040';
+          s.beginPath(); s.ellipse(px, py - 4, r * 0.1, r * 0.045, (i + j) % 2 ? -0.6 : 0.6, 0, Math.PI * 2); s.fill();
+        });
       });
-    } else {
-      s.fillStyle = 'rgba(255,255,255,0.28)';
-      s.beginPath(); s.ellipse(-rx * 0.38, -ry * 0.5, rx * 0.26, ry * 0.12, -0.5, 0, Math.PI * 2); s.fill();
     }
     // stem, and a curling vine
-    s.fillStyle = ablaze ? '#2a2a14' : '#4a5a1c';
+    s.fillStyle = flourished ? '#3a8a1a' : '#4a5a1c';
     s.beginPath(); s.moveTo(-r * 0.14, -ry * 0.92); s.lineTo(r * 0.16, -ry * 0.92); s.lineTo(r * 0.24, -ry * 1.3); s.lineTo(-r * 0.2, -ry * 1.26); s.closePath(); s.fill();
-    s.strokeStyle = ablaze ? '#3a4a1a' : '#4fae3a'; s.lineWidth = 3;
+    s.strokeStyle = flourished ? '#7be040' : '#4fae3a'; s.lineWidth = 3;
     s.beginPath(); s.moveTo(r * 0.2, -ry * 1.05); s.quadraticCurveTo(r * 0.8, -ry * 1.2, r * 0.7, -ry * 0.7); s.quadraticCurveTo(r * 0.6, -ry * 0.5, r * 0.45, -ry * 0.62); s.stroke();
-    if (ablaze) {                                            // the stem's alight
-      drawFlameTongue(s, r * 0.03, -ry * 1.2, r * 0.45, r * 0.7, now, 3 + boss.seed);
-      drawFlameTongue(s, -r * 0.1, -ry * 1.2, r * 0.3, r * 0.45, now, 8 + boss.seed);
+    if (flourished) {                                           // big leaves round the stem, and the stem's alight with blue fire
+      [[-0.42, -0.98, -0.5], [0.46, -1.0, 0.5], [-0.6, -0.78, -0.9], [0.62, -0.8, 0.9]].forEach(([lx, ly, rot]) => {
+        s.fillStyle = '#58b830';
+        s.beginPath(); s.ellipse(r * lx, ry * ly, r * 0.26, r * 0.1, rot, 0, Math.PI * 2); s.fill();
+        s.strokeStyle = '#2f8a1c'; s.lineWidth = 1.5;
+        s.beginPath(); s.moveTo(r * lx - Math.cos(rot) * r * 0.24, ry * ly - Math.sin(rot) * r * 0.24); s.lineTo(r * lx + Math.cos(rot) * r * 0.24, ry * ly + Math.sin(rot) * r * 0.24); s.stroke();
+      });
+      drawFlameTongue(s, r * 0.03, -ry * 1.2, r * 0.45, r * 0.7, now, 3 + boss.seed, true);
+      drawFlameTongue(s, -r * 0.1, -ry * 1.2, r * 0.3, r * 0.45, now, 8 + boss.seed, true);
     }
 
     // the carved face: glowing eyes, and a mouth with a fire burning in it
     const fx = look.x * r * 0.06, fy = look.y * r * 0.04;
     s.save(); s.translate(fx, fy);
     const flick = 0.85 + 0.15 * Math.sin(now * 0.03 + boss.seed);
-    const eyeCol = stunned ? '#8a5a2a' : screaming ? '#ffffff' : ablaze ? '#ff8a3a' : '#ffe27a';
-    s.shadowColor = '#ff6a10'; s.shadowBlur = stunned ? 2 : 14;
+    const eyeCol = stunned ? (flourished ? '#4a6a8a' : '#8a5a2a') : screaming ? '#ffffff' : flourished ? '#aee4ff' : '#ffe27a';
+    s.shadowColor = flourished ? '#2a8aff' : '#ff6a10'; s.shadowBlur = stunned ? 2 : 14;
     s.fillStyle = eyeCol; s.globalAlpha = stunned ? 0.8 : Math.min(1, 0.9 * flick + (screaming ? 0.2 : 0));
     [-1, 1].forEach((side) => {
       s.beginPath();
@@ -3463,7 +3486,7 @@
     });
     s.shadowBlur = 0; s.globalAlpha = 1;
     if (stunned) {                                           // dizzy swirls where the pupils would be
-      s.strokeStyle = '#2a0e04'; s.lineWidth = 2;
+      s.strokeStyle = flourished ? '#0a1a2a' : '#2a0e04'; s.lineWidth = 2;
       [-1, 1].forEach((side) => {
         const ex = side * r * 0.42, ey = -ry * 0.16;
         s.beginPath();
@@ -3471,8 +3494,8 @@
         s.stroke();
       });
     }
-    if (ablaze && !stunned) {                                // flames licking up from the eyes
-      [-1, 1].forEach((side, i) => drawFlameTongue(s, side * r * 0.42, -ry * 0.22, r * 0.26, r * 0.4, now, 20 + i * 3 + boss.seed));
+    if (flourished && !stunned) {                            // blue flames licking up from the eyes
+      [-1, 1].forEach((side, i) => drawFlameTongue(s, side * r * 0.42, -ry * 0.22, r * 0.26, r * 0.4, now, 20 + i * 3 + boss.seed, true));
     }
 
     // the mouth: a wide jagged hollow with the fire inside it
@@ -3493,25 +3516,26 @@
     s.save();
     s.clip();
     const fire = s.createLinearGradient(0, my0 - mh * 0.5, 0, my0 + mh);
-    if (stunned) { fire.addColorStop(0, '#3a1608'); fire.addColorStop(1, '#6a2a0c'); }
+    if (stunned) { fire.addColorStop(0, flourished ? '#0a1a3a' : '#3a1608'); fire.addColorStop(1, flourished ? '#183a7a' : '#6a2a0c'); }
+    else if (flourished) { fire.addColorStop(0, '#f0fcff'); fire.addColorStop(0.5, '#4aa8ff'); fire.addColorStop(1, '#1a3acc'); }
     else { fire.addColorStop(0, '#ffe9a0'); fire.addColorStop(0.5, '#ff9a2e'); fire.addColorStop(1, '#c8300a'); }
     s.fillStyle = fire; s.fillRect(-mw, my0 - mh, mw * 2, mh * 2.4);
     if (!stunned) {                                          // flames roiling inside
-      for (let i = 0; i < 6; i++) drawFlameTongue(s, -mw * 0.72 + i * mw * 0.288, my0 + mh * 0.95, r * 0.2, mh * (1.2 + 0.4 * Math.sin(now * 0.02 + i)), now, i * 2.3 + boss.seed);
+      for (let i = 0; i < 6; i++) drawFlameTongue(s, -mw * 0.72 + i * mw * 0.288, my0 + mh * 0.95, r * 0.2, mh * (1.2 + 0.4 * Math.sin(now * 0.02 + i)), now, i * 2.3 + boss.seed, flourished);
     }
     s.restore();
-    s.strokeStyle = ablaze ? '#1a0804' : '#5a1c04'; s.lineWidth = 2;
+    s.strokeStyle = flourished ? '#0a2a08' : '#5a1c04'; s.lineWidth = 2;
     s.stroke();
     // fire pouring out over the lip: big when it roars, small tongues otherwise, nearly dead when stunned
     if (!stunned) {
       const n = screaming ? 9 : 5;
       for (let i = 0; i < n; i++) {
         const x = -mw * 0.8 + (1.6 * mw * i) / (n - 1);
-        const hgt = (screaming ? 0.62 : ablaze ? 0.45 : 0.34) * ry * (0.75 + 0.25 * Math.sin(now * 0.025 + i * 1.7 + boss.seed));
-        drawFlameTongue(s, x, my0 - mh * 0.2, r * (screaming ? 0.3 : 0.2), hgt, now, i * 1.3 + boss.seed);
+        const hgt = (screaming ? 0.62 : flourished ? 0.45 : 0.34) * ry * (0.75 + 0.25 * Math.sin(now * 0.025 + i * 1.7 + boss.seed));
+        drawFlameTongue(s, x, my0 - mh * 0.2, r * (screaming ? 0.3 : 0.2), hgt, now, i * 1.3 + boss.seed, flourished);
       }
     } else {
-      for (let i = 0; i < 3; i++) drawFlameTongue(s, -mw * 0.4 + i * mw * 0.4, my0 - mh * 0.2, r * 0.12, ry * 0.18, now, i + boss.seed);
+      for (let i = 0; i < 3; i++) drawFlameTongue(s, -mw * 0.4 + i * mw * 0.4, my0 - mh * 0.2, r * 0.12, ry * 0.18, now, i + boss.seed, flourished);
     }
     s.restore();
     s.restore();
@@ -3519,7 +3543,7 @@
 
   function drawPumpkinKing(g, w, h, t, phase2) {
     clear(g, w, h);
-    const boss = { radius: 34, lookDir: { x: Math.cos(t * 0.0006) * 0.4, y: 0.9 }, seed: 3 };
+    const boss = { radius: 32, lookDir: { x: Math.cos(t * 0.0006) * 0.4, y: 0.9 }, seed: 3 };
     g.save();
     g.translate(w / 2, h / 2 + 4);
     g.scale(0.72, 0.72);

@@ -36,9 +36,9 @@
   const PLAYER_RADIUS = 10;
   const PLAYER_SPEED = 112.5;
 
-  // The boss: the Pumpkin King -- a huge orange pumpkin, 3x3 tiles across, with
-  // a fire burning in its mouth.
-  const BOSS_RADIUS = 48;
+  // The boss: the Pumpkin King -- a huge orange pumpkin, 4.5x4.5 tiles across
+  // (50% bigger than it started), with a fire burning in its mouth.
+  const BOSS_RADIUS = 72;
   const BOSS_CATCH_RADIUS = BOSS_RADIUS * 1.1;
   const BOSS_NAME = 'THE PUMPKIN KING';
 
@@ -53,16 +53,16 @@
   const BOSS_MAX_HEALTH = HM.bossHp(50);
   const PHASE2_HEALTH_THRESHOLD = HM.bossHp(30);
   const PHASE2_CUTSCENE_MS = 3000;
-  const PHASE2_NAME_COLOR = '#ff6a2a';
-  const PHASE2_SUBTITLE = 'ABLAZE';
+  const PHASE2_NAME_COLOR = '#7be04a';
+  const PHASE2_SUBTITLE = 'FLOURISHED';
 
   // Every 5th attack ends with the boss stunned for 7.5 seconds. That's the
-  // only time you can hurt it: run up and take a bite out of it (10 damage).
+  // only time you can hurt it: walk up and hit it (5 damage).
   const ATTACKS_PER_STUN = 5;
   const STUN_DURATION_MS = 7500;
-  const BITE_DAMAGE = 10;
-  const BITE_RADIUS = BOSS_RADIUS + PLAYER_RADIUS + 8;
-  const BITE_COOLDOWN_MS = 1100; // per player, between bites
+  const HIT_DAMAGE = 5;
+  const HIT_RADIUS = BOSS_RADIUS + PLAYER_RADIUS + 8;
+  const HIT_COOLDOWN_MS = 1100; // per player, between hits
 
   // The round arena: the floor is a circle inside a ring of brick wall.
   const ARENA_CX = WORLD_W / 2, ARENA_CY = WORLD_H / 2;
@@ -78,10 +78,23 @@
   const FIREBALL_RADIUS = FIREBALL_NORMAL_RADIUS * 2;
   const FIREBALL_HIT_RADIUS = FIREBALL_RADIUS + PLAYER_RADIUS * 0.5;
 
-  // Attack 2 -- it screams, then runs you down at 1.3x speed for 10 seconds.
+  // Attack 2 -- it screams, then runs you down at 1.2x speed for 10 seconds.
   const SCREAM_MS = 900;
   const CHASE_MS = 10000;
-  const CHASE_SPEED = PLAYER_SPEED * 1.3;
+  const CHASE_SPEED = PLAYER_SPEED * 1.2;
+
+  // Attack 4 -- the vine whirl: it ricochets off the arena wall at 2x your speed
+  // for 10 seconds, swinging 5-tile vines round itself (7 of them once it has
+  // flourished, 4 before).
+  const WHIP_MS = 10000;
+  const WHIP_SPEED = PLAYER_SPEED * 2;
+  const WHIP_SPIN = 1.7;            // radians per second
+  const WHIP_GROW_MS = 700;         // the vines unfurl over this long
+  const WHIP_VINES = 4;
+  const WHIP_VINES_FLOURISHED = 7;
+  const VINE_LEN = TILE * 5;
+  const VINE_SEGS = 12;
+  const VINE_HALF_WIDTH = 8;
 
   // Attack 3 -- ten eruption patches (2x2 tiles, round): a red circle flashes
   // for a second, then a pillar of fire shoots up out of the floor.
@@ -90,16 +103,24 @@
   const ERUPT_ACTIVE_MS = 700;
   const ERUPT_RADIUS = TILE;
 
-  // Attack 4 (ablaze phase only) -- three 5x5 clouds of choking ash. Stay in
+  // Attack 5 (flourished phase only) -- the thorn burst: it curls up all its
+  // vines, then a shockwave of thorn vines bursts out 6 tiles in every direction.
+  const THORN_CURL_MS = 1700;       // the warning: vines curl in, a red circle shows the reach
+  const THORN_BURST_MS = 450;       // the shockwave races out to full reach
+  const THORN_HOLD_MS = 650;        // ...and stays out
+  const THORN_RETRACT_MS = 350;
+  const THORN_REACH = TILE * 6;     // from the edge of its body
+
+  // Attack 6 (flourished phase only) -- three 5x5 clouds of poisonous spores. Stay in
   // one for 2.5 seconds and you're done; get out sooner and you're only
   // slowed by 30% for 5 seconds.
-  const ASH_COUNT = 3;
-  const ASH_WARN_MS = 1000;
-  const ASH_LIFE_MS = 8000;
-  const ASH_RADIUS = TILE * 2.5;
-  const ASH_KILL_MS = 2500;
-  const ASH_SLOW_MS = 5000;
-  const ASH_SLOW_MULT = 0.7;
+  const SPORE_COUNT = 3;
+  const SPORE_WARN_MS = 1000;
+  const SPORE_LIFE_MS = 8000;
+  const SPORE_RADIUS = TILE * 2.5;
+  const SPORE_KILL_MS = 2500;
+  const SPORE_SLOW_MS = 5000;
+  const SPORE_SLOW_MULT = 0.7;
 
   // The embers the boss leaves behind as it moves, fading away slowly.
   const TRAIL_LIFE_MS = 7000;
@@ -218,7 +239,7 @@
     // frantic as the boss's health drops
     if (window.BossMusic) {
       window.BossMusic.start({
-        audioCtx, dest: musicMasterGain, theme: 'ashen',
+        audioCtx, dest: musicMasterGain, theme: 'pumpkin',
         isActive: () => gameState === 'playing' && !boss.defeated,
         intensity: () => 1 - bossHealthFrac(),
       });
@@ -461,7 +482,7 @@
     }
   }
   function speedMultiplierFor(p) {
-    const slow = performance.now() < p.slowUntil ? ASH_SLOW_MULT : 1; // ash slows you by 30%
+    const slow = performance.now() < p.slowUntil ? SPORE_SLOW_MULT : 1; // spores slow you by 30%
     if (p.moveState === 'exhausted') return EXHAUSTED_SPEED_MULT * slow;
     if (p.moveState === 'sprinting') return SPRINT_SPEED_MULT * slow;
     return slow;
@@ -544,13 +565,13 @@
       lookDir: { x: 0, y: 1 }, defeated: false, frozenUntil: 0, phase2: false,
       intangible: false,
 
-      phase: 'idle', // 'idle' | 'spiral' | 'scream' | 'eruption' | 'ash' | 'stunned'
+      phase: 'idle', // 'idle' | 'spiral' | 'scream' | 'eruption' | 'whip' | 'thorn' | 'spore' | 'stunned'
       phaseStartedAt: 0,
       nextIdleUntil: 0,
       lastAttack: null,
       attacksSinceStun: 0,
       stunUntil: 0,
-      chunks: [], // bites taken out of it: [{ ang, size }]
+      chunks: [], // chunks smashed out of it: [{ ang, size }]
 
       // spiral
       spin: 0,
@@ -559,13 +580,17 @@
       // scream & chase
       chasing: false,
       trailDist: 0,
+      // vine whirl
+      vx: 0, vy: 0, whipAngle: 0,
+      // thorn burst
+      curl: 0, thornE: 0, thornBurst: false,
     };
   }
   const boss = makeBoss();
 
   let fireballs = []; // the spiral's shots: { x, y, vx, vy, seed }
   let eruptions = []; // { x, y, fireAt, endAt }
-  let ashClouds = []; // { x, y, startAt, endAt }
+  let sporeClouds = []; // { x, y, startAt, endAt }
   let trail = []; // the embers the boss leaves behind: { x, y, size, born }
   let explosions = [];
   let particles = [];
@@ -758,7 +783,7 @@
       p.caught = false; p.caughtAt = 0; p.invulnerableUntil = 0;
       p.stamina = STAMINA_MAX; p.moveState = 'normal'; p.exhaustedUntil = 0;
       p.sprintActive = false; p.shotgunAmmo = 0;
-      p.biteReadyAt = 0; p.ashSince = 0; p.slowUntil = 0;
+      p.hitReadyAt = 0; p.sporeSince = 0; p.slowUntil = 0;
     });
 
     const spawn = LEVEL.monsterSpawns[0];
@@ -770,7 +795,7 @@
     boss.lastAttack = null;
     boss.attacksSinceStun = 0; boss.stunUntil = 0; boss.chunks = []; boss.chasing = false; boss.trailDist = 0;
 
-    fireballs = []; eruptions = []; ashClouds = []; trail = []; explosions = [];
+    fireballs = []; eruptions = []; sporeClouds = []; trail = []; explosions = [];
     bossHealth = BOSS_MAX_HEALTH;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
@@ -790,10 +815,10 @@
   }
   resetLevel();
 
-  // ======================= biting (the only way to hurt it) =======================
+  // ======================= hitting it (only while it's stunned) =======================
   function playScream() { [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3].forEach((d) => playTone(480 + Math.random() * 520, 0.4, 'sawtooth', 0.12, d)); }
   function playStunSound() { [330, 277, 220, 175].forEach((f, i) => playTone(f, 0.24, 'triangle', 0.2, i * 0.12)); }
-  function playBiteSound() { playTone(300, 0.08, 'sawtooth', 0.14); playTone(150, 0.14, 'square', 0.12, 0.03); playTone(1100, 0.05, 'square', 0.08, 0.05); }
+  function playHitSound() { playTone(300, 0.08, 'sawtooth', 0.14); playTone(150, 0.14, 'square', 0.12, 0.03); playTone(1100, 0.05, 'square', 0.08, 0.05); }
 
   function spawnEmberBurst(x, y, n, speed) {
     for (let i = 0; i < n; i++) {
@@ -801,22 +826,22 @@
       particles.push({
         x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
         life: 0, maxLife: 0.45 + Math.random() * 0.6, size: 2.5 + Math.random() * 3.5,
-        color: FIRE_COLORS[Math.floor(Math.random() * FIRE_COLORS.length)],
+        color: (boss.phase2 ? BLUE_FIRE_COLORS : FIRE_COLORS)[Math.floor(Math.random() * FIRE_COLORS.length)],
       });
     }
   }
 
-  function updateBites(now) {
+  function updateHits(now) {
     if (boss.phase !== 'stunned' || boss.defeated) return;
     players.forEach((p) => {
-      if (p.caught || now < p.biteReadyAt) return;
-      if (Math.hypot(p.x - boss.x, p.y - boss.y) < BITE_RADIUS) {
-        p.biteReadyAt = now + BITE_COOLDOWN_MS;
+      if (p.caught || now < p.hitReadyAt) return;
+      if (Math.hypot(p.x - boss.x, p.y - boss.y) < HIT_RADIUS) {
+        p.hitReadyAt = now + HIT_COOLDOWN_MS;
         const ang = Math.atan2(p.y - boss.y, p.x - boss.x);
         boss.chunks.push({ ang, size: 0.85 + Math.random() * 0.35 });
         spawnEmberBurst(boss.x + Math.cos(ang) * boss.radius, boss.y + Math.sin(ang) * boss.radius, 14, 220);
-        playBiteSound();
-        applyBossDamage(BITE_DAMAGE, now);
+        playHitSound();
+        applyBossDamage(HIT_DAMAGE, now);
       }
     });
   }
@@ -824,7 +849,7 @@
   function applyBossDamage(dmg, now) {
     if (boss.defeated) return;
     bossHealth = Math.max(0, bossHealth - dmg);
-    spawnFloatingText(boss.x, boss.y - boss.radius - 12, `BITE! -${dmg}`);
+    spawnFloatingText(boss.x, boss.y - boss.radius - 12, `HIT! -${dmg}`);
     if (!boss.phase2 && bossHealth > 0 && bossHealth <= PHASE2_HEALTH_THRESHOLD) enterPhase2(now);
     if (bossHealth <= 0 && !boss.defeated) triggerDeath(now);
   }
@@ -833,23 +858,23 @@
     boss.phase2 = true;
     gameState = 'phase2intro';
     phase2IntroStartedAt = now;
-    if (boss.phase === 'stunned') boss.stunUntil += PHASE2_CUTSCENE_MS + 800; // the cutscene shouldn't eat your bite window
+    if (boss.phase === 'stunned') boss.stunUntil += PHASE2_CUTSCENE_MS + 800; // the cutscene shouldn't eat your hit window
     fireballs = []; eruptions = [];
-    spawnFloatingText(boss.x, boss.y - boss.radius - 12, 'ABLAZE');
+    spawnFloatingText(boss.x, boss.y - boss.radius - 12, 'FLOURISHED');
   }
 
   function triggerDeath(now) {
     boss.defeated = true;
     gameState = 'dying';
     deathStartedAt = now;
-    fireballs = []; eruptions = []; ashClouds = [];
+    fireballs = []; eruptions = []; sporeClouds = [];
     spawnEmberBurst(boss.x, boss.y, 40, 300);
     spawnExplosion(boss.x, boss.y);
   }
 
   // ======================= THE ATTACK CYCLE =======================
-  const PHASE1_ATTACKS = ['spiral', 'scream', 'eruption'];
-  const PHASE2_ONLY_ATTACKS = ['ash'];
+  const PHASE1_ATTACKS = ['spiral', 'scream', 'eruption', 'whip'];
+  const PHASE2_ONLY_ATTACKS = ['spore', 'thorn'];
 
   function attackPool() {
     return boss.phase2 ? PHASE1_ATTACKS.concat(PHASE2_ONLY_ATTACKS) : PHASE1_ATTACKS;
@@ -908,8 +933,19 @@
       playScream();
     } else if (kind === 'eruption') {
       eruptions = patchSpots(ERUPT_COUNT, ERUPT_RADIUS, 4).map((s) => ({ x: s.x, y: s.y, fireAt: now + ERUPT_WARN_MS, endAt: now + ERUPT_WARN_MS + ERUPT_ACTIVE_MS }));
-    } else if (kind === 'ash') {
-      patchSpots(ASH_COUNT, ASH_RADIUS, 2).forEach((s) => ashClouds.push({ x: s.x, y: s.y, startAt: now + ASH_WARN_MS, endAt: now + ASH_WARN_MS + ASH_LIFE_MS }));
+    } else if (kind === 'whip') {
+      const t = nearestPlayer(boss.x, boss.y);
+      const a = Math.atan2(t.y - boss.y, t.x - boss.x) + (Math.random() - 0.5) * 0.9;
+      boss.vx = Math.cos(a) * WHIP_SPEED; boss.vy = Math.sin(a) * WHIP_SPEED;
+      boss.whipAngle = Math.random() * Math.PI * 2;
+      spawnFloatingText(boss.x, boss.y - boss.radius - 14, 'VINE WHIRL!');
+      playScream();
+    } else if (kind === 'thorn') {
+      boss.curl = 0; boss.thornE = 0; boss.thornBurst = false;
+      spawnFloatingText(boss.x, boss.y - boss.radius - 14, 'CURLING UP...');
+      playStunSound();
+    } else if (kind === 'spore') {
+      patchSpots(SPORE_COUNT, SPORE_RADIUS, 2).forEach((s) => sporeClouds.push({ x: s.x, y: s.y, startAt: now + SPORE_WARN_MS, endAt: now + SPORE_WARN_MS + SPORE_LIFE_MS }));
     }
   }
 
@@ -919,7 +955,7 @@
     boss.stunUntil = now + STUN_DURATION_MS;
     boss.attacksSinceStun = 0;
     boss.chasing = false;
-    spawnFloatingText(boss.x, boss.y - boss.radius - 14, 'STUNNED -- BITE IT!');
+    spawnFloatingText(boss.x, boss.y - boss.radius - 14, 'STUNNED -- HIT IT!');
     playStunSound();
   }
 
@@ -1009,11 +1045,108 @@
     if (elapsed >= SCREAM_MS + CHASE_MS) { boss.chasing = false; finishAttack(now); }
   }
 
+  // Attack 4: it bounces round the arena at 2x speed, ricocheting off the wall
+  // (with a little random english so the path never repeats), vines swinging.
+  function updateWhipAttack(now, dt) {
+    const elapsed = now - boss.phaseStartedAt;
+    boss.whipAngle += dt * WHIP_SPIN;
+    const nx = boss.x + boss.vx * dt, ny = boss.y + boss.vy * dt;
+    const limit = ARENA_R - boss.radius * 0.7;
+    const dx = nx - ARENA_CX, dy = ny - ARENA_CY, d = Math.hypot(dx, dy);
+    if (d > limit) {
+      const ux = dx / d, uy = dy / d;
+      const dot = boss.vx * ux + boss.vy * uy;
+      if (dot > 0) {                                            // heading into the wall: reflect
+        boss.vx -= 2 * dot * ux; boss.vy -= 2 * dot * uy;
+        const j = (Math.random() - 0.5) * 0.35, cj = Math.cos(j), sj = Math.sin(j);
+        const rx = boss.vx * cj - boss.vy * sj, ry = boss.vx * sj + boss.vy * cj;
+        boss.vx = rx; boss.vy = ry;
+        spawnEmberBurst(boss.x + ux * boss.radius * 0.8, boss.y + uy * boss.radius * 0.8, 10, 200);
+        playChompThud(0);
+      }
+    }
+    const vl = Math.hypot(boss.vx, boss.vy) || 1;
+    boss.lookDir = { x: boss.vx / vl, y: boss.vy / vl };
+    moveBoss(nx, ny);
+    if (elapsed >= WHIP_MS) finishAttack(now);
+  }
+
+  // The points along swinging vine i, from the boss's edge out to 5 tiles. It
+  // trails behind the way it's swinging, with a little ripple, and unfurls
+  // over the first WHIP_GROW_MS.
+  function whipVineCount() { return boss.phase2 ? WHIP_VINES_FLOURISHED : WHIP_VINES; }
+  function vinePoints(i, now) {
+    const n = whipVineCount();
+    const grow = clamp((now - boss.phaseStartedAt) / WHIP_GROW_MS, 0, 1);
+    const base = boss.whipAngle + (i / n) * Math.PI * 2;
+    const pts = [];
+    for (let k = 0; k <= VINE_SEGS; k++) {
+      const f = k / VINE_SEGS;
+      const a = base - f * 0.75 + Math.sin(now * 0.008 + f * 5 + i * 1.3) * 0.07 * f;
+      const dist = boss.radius * 0.8 + f * VINE_LEN * grow;
+      pts.push({ x: boss.x + Math.cos(a) * dist, y: boss.y + Math.sin(a) * dist });
+    }
+    return pts;
+  }
+  function distToSegment(px, py, a, b) {
+    const sx = b.x - a.x, sy = b.y - a.y;
+    const len2 = sx * sx + sy * sy || 1;
+    const t = clamp(((px - a.x) * sx + (py - a.y) * sy) / len2, 0, 1);
+    return Math.hypot(px - (a.x + sx * t), py - (a.y + sy * t));
+  }
+  function updateWhipHits(now) {
+    if (boss.phase !== 'whip' || boss.defeated || now < boss.frozenUntil) return;
+    const n = whipVineCount();
+    const reach = VINE_HALF_WIDTH + PLAYER_RADIUS * 0.7;
+    const vines = [];
+    for (let i = 0; i < n; i++) vines.push(vinePoints(i, now));
+    players.forEach((p) => {
+      if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
+      for (const pts of vines) {
+        for (let k = 1; k < pts.length; k++) {
+          if (distToSegment(p.x, p.y, pts[k - 1], pts[k]) < reach) { triggerCaught(p, now); return; }
+        }
+      }
+    });
+  }
+
   function updateEruptionAttack(now) {
     if (now - boss.phaseStartedAt >= ERUPT_WARN_MS + ERUPT_ACTIVE_MS + 500) finishAttack(now);
   }
-  function updateAshAttack(now) {
-    if (now - boss.phaseStartedAt >= ASH_WARN_MS + 700) finishAttack(now);
+  // Attack 5: every vine curls up tight against the body (a red circle on the
+  // floor shows how far the burst will reach), then a shockwave of thorn
+  // vines bursts out 6 tiles in every direction, holds, and snaps back.
+  function updateThornAttack(now) {
+    const el = now - boss.phaseStartedAt;
+    if (el < THORN_CURL_MS) {
+      boss.curl = el / THORN_CURL_MS; boss.thornE = 0;
+      return;
+    }
+    const b = el - THORN_CURL_MS;
+    if (!boss.thornBurst) { boss.thornBurst = true; playExplosion(); spawnEmberBurst(boss.x, boss.y, 24, 260); }
+    if (b < THORN_BURST_MS) {
+      const u = b / THORN_BURST_MS;
+      boss.thornE = 1 - (1 - u) * (1 - u); boss.curl = 1 - u;
+    } else if (b < THORN_BURST_MS + THORN_HOLD_MS) {
+      boss.thornE = 1; boss.curl = 0;
+    } else {
+      const u = (b - THORN_BURST_MS - THORN_HOLD_MS) / THORN_RETRACT_MS;
+      boss.thornE = Math.max(0, 1 - u); boss.curl = 0;
+      if (u >= 1) { boss.thornE = 0; finishAttack(now); }
+    }
+  }
+  function thornRadius() { return boss.radius + THORN_REACH * boss.thornE; }
+  function updateThornHits(now) {
+    if (boss.phase !== 'thorn' || boss.defeated || now < boss.frozenUntil || boss.thornE <= 0.02) return;
+    const R = thornRadius();
+    players.forEach((p) => {
+      if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
+      if (Math.hypot(p.x - boss.x, p.y - boss.y) < R) triggerCaught(p, now);
+    });
+  }
+
+  function updateSporeAttack(now) {
+    if (now - boss.phaseStartedAt >= SPORE_WARN_MS + 700) finishAttack(now);
   }
   function updateStunned(now) {
     if (now < boss.stunUntil) return;
@@ -1025,13 +1158,16 @@
   function updateBoss(now, dt) {
     if (boss.defeated) return;
     updateTrail(now);
+    if (boss.phase !== 'thorn') { boss.curl = 0; boss.thornE = 0; }
     if (now < boss.frozenUntil) return;
     switch (boss.phase) {
       case 'idle': updateBossIdle(now, dt); break;
       case 'spiral': updateSpiralAttack(now, dt); break;
       case 'scream': updateScreamAttack(now, dt); break;
       case 'eruption': updateEruptionAttack(now); break;
-      case 'ash': updateAshAttack(now); break;
+      case 'whip': updateWhipAttack(now, dt); break;
+      case 'thorn': updateThornAttack(now); break;
+      case 'spore': updateSporeAttack(now); break;
       case 'stunned': updateStunned(now); break;
       default: boss.phase = 'idle';
     }
@@ -1070,22 +1206,22 @@
     }
   }
 
-  function updateAsh(now) {
-    for (let i = ashClouds.length - 1; i >= 0; i--) if (now > ashClouds[i].endAt) ashClouds.splice(i, 1);
+  function updateSpore(now) {
+    for (let i = sporeClouds.length - 1; i >= 0; i--) if (now > sporeClouds[i].endAt) sporeClouds.splice(i, 1);
     players.forEach((p) => {
       let inside = false;
       if (!p.caught) {
-        for (const g of ashClouds) {
-          if (now >= g.startAt && Math.hypot(p.x - g.x, p.y - g.y) < ASH_RADIUS) { inside = true; break; }
+        for (const g of sporeClouds) {
+          if (now >= g.startAt && Math.hypot(p.x - g.x, p.y - g.y) < SPORE_RADIUS) { inside = true; break; }
         }
       }
       if (inside) {
-        if (!p.ashSince) p.ashSince = now;
-        else if (now - p.ashSince >= ASH_KILL_MS && now >= p.invulnerableUntil) { p.ashSince = 0; triggerCaught(p, now); }
-      } else if (p.ashSince) {
-        p.ashSince = 0;
+        if (!p.sporeSince) p.sporeSince = now;
+        else if (now - p.sporeSince >= SPORE_KILL_MS && now >= p.invulnerableUntil) { p.sporeSince = 0; triggerCaught(p, now); }
+      } else if (p.sporeSince) {
+        p.sporeSince = 0;
         if (!p.caught) {
-          p.slowUntil = now + ASH_SLOW_MS;
+          p.slowUntil = now + SPORE_SLOW_MS;
           spawnFloatingText(p.x, p.y - 8, 'SLOWED');
         }
       }
@@ -1093,7 +1229,7 @@
   }
 
   // Touching the boss is deadly -- except while it's stunned, when touching it
-  // is how you bite it.
+  // is how you hit it.
   function updateCatch(now) {
     if (boss.defeated || boss.phase === 'stunned') return;
     players.forEach((p) => {
@@ -1226,13 +1362,15 @@
   }
 
   const FIRE_COLORS = ['#ffe27a', '#ffb02e', '#ff8a1e', '#ff5a1a', '#ff3a10', '#fff2b0'];
+  const BLUE_FIRE_COLORS = ['#e8faff', '#9ad8ff', '#4aa8ff', '#2a78ff', '#1a4aff', '#ffffff'];
 
   // a flame teardrop standing on (x, y): used for eruptions and the mouth
-  function drawFlameTongue(g, x, y, w, h, t, seed) {
+  function drawFlameTongue(g, x, y, w, h, t, seed, blue) {
     const sway = Math.sin(t * 0.012 + seed) * w * 0.35;
     const flick = 0.9 + 0.1 * Math.sin(t * 0.03 + seed * 2);
     h *= flick;
-    const layers = [['#ff3a10', 1], ['#ff8a1e', 0.72], ['#ffd25a', 0.46], ['#fff6c8', 0.22]];
+    const layers = blue ? [['#1a3aff', 1], ['#3a8aff', 0.72], ['#8ad0ff', 0.46], ['#eefaff', 0.22]]
+      : [['#ff3a10', 1], ['#ff8a1e', 0.72], ['#ffd25a', 0.46], ['#fff6c8', 0.22]];
     layers.forEach(([col, k]) => {
       g.fillStyle = col;
       g.beginPath();
@@ -1411,9 +1549,10 @@
       const age = clamp((now - t.born) / TRAIL_LIFE_MS, 0, 1);
       const a = (1 - age) * (1 - age);
       const flick = 0.7 + 0.3 * Math.sin(now * 0.02 + t.x);
-      g.fillStyle = `rgba(255,120,30,${0.28 * a})`;
+      const bl = boss.phase2;
+      g.fillStyle = bl ? `rgba(60,140,255,${0.28 * a})` : `rgba(255,120,30,${0.28 * a})`;
       g.beginPath(); g.arc(t.x, t.y, t.size * 2.4, 0, Math.PI * 2); g.fill();
-      g.fillStyle = `rgba(255,${190 - 80 * age | 0},60,${0.95 * a * flick})`;
+      g.fillStyle = bl ? `rgba(${120 + 60 * age | 0},${200 - 40 * age | 0},255,${0.95 * a * flick})` : `rgba(255,${190 - 80 * age | 0},60,${0.95 * a * flick})`;
       g.beginPath(); g.arc(t.x, t.y, t.size * (1 - age * 0.5), 0, Math.PI * 2); g.fill();
     });
   }
@@ -1427,14 +1566,15 @@
       g.rotate(ang);
       const R = FIREBALL_RADIUS;
       const halo = g.createRadialGradient(0, 0, 2, 0, 0, R * 2.4);
-      halo.addColorStop(0, 'rgba(255,170,50,0.55)'); halo.addColorStop(1, 'rgba(255,100,20,0)');
+      const bl = boss.phase2;
+      halo.addColorStop(0, bl ? 'rgba(80,170,255,0.55)' : 'rgba(255,170,50,0.55)'); halo.addColorStop(1, bl ? 'rgba(30,90,255,0)' : 'rgba(255,100,20,0)');
       g.fillStyle = halo; g.beginPath(); g.arc(0, 0, R * 2.4, 0, Math.PI * 2); g.fill();
       const flick = 1 + 0.12 * Math.sin(now * 0.04 + s.seed);
-      g.fillStyle = '#ff5a1a';                                  // tail
+      g.fillStyle = bl ? '#1a5aff' : '#ff5a1a';                 // tail
       g.beginPath(); g.moveTo(0, -R * 0.9); g.quadraticCurveTo(-R * 2.2, -R * 0.4, -R * 3.4 * flick, 0); g.quadraticCurveTo(-R * 2.2, R * 0.4, 0, R * 0.9); g.closePath(); g.fill();
-      g.fillStyle = '#ff9a2e';
+      g.fillStyle = bl ? '#4aa8ff' : '#ff9a2e';
       g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#ffe27a';
+      g.fillStyle = bl ? '#bfeaff' : '#ffe27a';
       g.beginPath(); g.arc(R * 0.1, 0, R * 0.6, 0, Math.PI * 2); g.fill();
       g.fillStyle = '#fff6d0';
       g.beginPath(); g.arc(R * 0.2, 0, R * 0.28, 0, Math.PI * 2); g.fill();
@@ -1456,7 +1596,7 @@
       const t = clamp((now - c.fireAt) / ERUPT_ACTIVE_MS, 0, 1);
       const rise = t < 0.2 ? t / 0.2 : t > 0.8 ? (1 - t) / 0.2 : 1;
       const glow = g.createRadialGradient(c.x, c.y, 2, c.x, c.y, ERUPT_RADIUS);
-      glow.addColorStop(0, `rgba(255,170,50,${0.55 * rise})`); glow.addColorStop(1, 'rgba(255,60,20,0.16)');
+      glow.addColorStop(0, boss.phase2 ? `rgba(90,180,255,${0.55 * rise})` : `rgba(255,170,50,${0.55 * rise})`); glow.addColorStop(1, boss.phase2 ? 'rgba(30,70,255,0.16)' : 'rgba(255,60,20,0.16)');
       g.fillStyle = glow; g.beginPath(); g.arc(c.x, c.y, ERUPT_RADIUS, 0, Math.PI * 2); g.fill();
       const tongues = [];
       for (let i = 0; i < 9; i++) {
@@ -1464,52 +1604,52 @@
         tongues.push({ x: c.x + Math.cos(a) * rad, y: c.y + Math.sin(a) * rad, h: (i === 8 ? 62 : 44 + (i % 3) * 6) * rise, i });
       }
       tongues.sort((a, b) => a.y - b.y);
-      tongues.forEach((tg) => drawFlameTongue(g, tg.x, tg.y + 6, 22, tg.h, now, tg.i * 1.9 + c.x));
+      tongues.forEach((tg) => drawFlameTongue(g, tg.x, tg.y + 6, 22, tg.h, now, tg.i * 1.9 + c.x, boss.phase2));
     });
   }
 
-  // Ash clouds: a flashing circle first, then a swirling cloud of grey ash and glowing embers.
-  function drawAshClouds(g, now) {
-    ashClouds.forEach((gp) => {
+  // Spore clouds: a flashing circle first, then a swirling cloud of poisonous green spores.
+  function drawSporeClouds(g, now) {
+    sporeClouds.forEach((gp) => {
       if (now < gp.startAt) {
-        const on = Math.floor((now - (gp.startAt - ASH_WARN_MS)) / 125) % 2 === 0;
-        g.beginPath(); g.arc(gp.x, gp.y, ASH_RADIUS, 0, Math.PI * 2);
-        g.fillStyle = on ? 'rgba(255,120,40,0.3)' : 'rgba(255,120,40,0.08)'; g.fill();
-        g.strokeStyle = on ? '#ff7a2a' : 'rgba(255,140,70,0.4)'; g.lineWidth = 3; g.stroke();
+        const on = Math.floor((now - (gp.startAt - SPORE_WARN_MS)) / 125) % 2 === 0;
+        g.beginPath(); g.arc(gp.x, gp.y, SPORE_RADIUS, 0, Math.PI * 2);
+        g.fillStyle = on ? 'rgba(150,230,60,0.3)' : 'rgba(150,230,60,0.08)'; g.fill();
+        g.strokeStyle = on ? '#8adf3a' : 'rgba(150,230,80,0.4)'; g.lineWidth = 3; g.stroke();
         return;
       }
       const life = clamp((gp.endAt - now) / 1000, 0, 1);
       const grow = clamp((now - gp.startAt) / 500, 0, 1);
-      const cols = ['40,36,40', '70,64,66', '30,26,30', '95,86,84'];
+      const cols = ['100,160,36', '140,200,56', '70,120,28', '180,226,96'];
       g.save();
-      g.beginPath(); g.arc(gp.x, gp.y, ASH_RADIUS * grow, 0, Math.PI * 2);
-      g.fillStyle = `rgba(30,24,28,${0.4 * life})`; g.fill();   // a dark base so it stands out on the pale floor
+      g.beginPath(); g.arc(gp.x, gp.y, SPORE_RADIUS * grow, 0, Math.PI * 2);
+      g.fillStyle = `rgba(50,92,22,${0.42 * life})`; g.fill();   // a dark green base so it stands out on the pale floor
       for (let i = 0; i < 20; i++) {
         const a = i * 2.4 + now * 0.0004 * (i % 2 ? 1 : -1);
-        const rad = ASH_RADIUS * 0.66 * Math.sqrt((i + 1) / 20) * grow;
+        const rad = SPORE_RADIUS * 0.66 * Math.sqrt((i + 1) / 20) * grow;
         const px = gp.x + Math.cos(a) * rad, py = gp.y + Math.sin(a) * rad;
-        const size = ASH_RADIUS * 0.36;
+        const size = SPORE_RADIUS * 0.36;
         const col = cols[i % cols.length];
         const gr = g.createRadialGradient(px, py, 1, px, py, size);
         gr.addColorStop(0, `rgba(${col},${0.9 * life})`); gr.addColorStop(1, `rgba(${col},0)`);
         g.fillStyle = gr; g.beginPath(); g.arc(px, py, size, 0, Math.PI * 2); g.fill();
       }
-      for (let i = 0; i < 14; i++) {                              // embers drifting in the ash
-        const a = i * 1.9 + now * 0.0007, rad = ASH_RADIUS * 0.9 * ((i * 37 % 10) / 10 + 0.05) * grow;
-        g.fillStyle = `rgba(255,${130 + (i % 3) * 40},40,${0.8 * life * (0.5 + 0.5 * Math.sin(now * 0.01 + i))})`;
-        g.beginPath(); g.arc(gp.x + Math.cos(a) * rad, gp.y + Math.sin(a) * rad, 2.2, 0, Math.PI * 2); g.fill();
+      for (let i = 0; i < 14; i++) {                              // glowing spores drifting in it
+        const a = i * 1.9 + now * 0.0007, rad = SPORE_RADIUS * 0.9 * ((i * 37 % 10) / 10 + 0.05) * grow;
+        g.fillStyle = `rgba(${200 + (i % 3) * 18},255,${110 + (i % 3) * 30},${0.85 * life * (0.5 + 0.5 * Math.sin(now * 0.01 + i))})`;
+        g.beginPath(); g.arc(gp.x + Math.cos(a) * rad, gp.y + Math.sin(a) * rad, 2.4, 0, Math.PI * 2); g.fill();
       }
-      g.strokeStyle = `rgba(255,110,40,${0.85 * life})`; g.lineWidth = 3; g.setLineDash([8, 8]);
-      g.beginPath(); g.arc(gp.x, gp.y, ASH_RADIUS, 0, Math.PI * 2); g.stroke();
+      g.strokeStyle = `rgba(150,235,70,${0.85 * life})`; g.lineWidth = 3; g.setLineDash([8, 8]);
+      g.beginPath(); g.arc(gp.x, gp.y, SPORE_RADIUS, 0, Math.PI * 2); g.stroke();
       g.restore();
     });
   }
 
-  // a ring filling up round a player who's standing in the ash
-  function drawAshDanger(g, now) {
+  // a ring filling up round a player who's standing in the spores
+  function drawSporeDanger(g, now) {
     players.forEach((p) => {
-      if (p.caught || !p.ashSince) return;
-      const f = clamp((now - p.ashSince) / ASH_KILL_MS, 0, 1);
+      if (p.caught || !p.sporeSince) return;
+      const f = clamp((now - p.sporeSince) / SPORE_KILL_MS, 0, 1);
       g.strokeStyle = `rgba(255,${Math.round(220 - 200 * f)},${Math.round(150 - 130 * f)},0.95)`;
       g.lineWidth = 4; g.lineCap = 'round';
       g.beginPath(); g.arc(p.x, p.y, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * f); g.stroke();
@@ -1596,32 +1736,130 @@
     }
   }
 
+  // The vines it swings during the vine whirl: thick green whips, tapering to the
+  // tip, with leaves along them (bigger, brighter and more of them once it has
+  // flourished). Drawn under the boss so they unfurl from beneath its body.
+  function drawWhipVines(g, now) {
+    if (boss.phase !== 'whip' || boss.defeated) return;
+    const n = whipVineCount();
+    const fl = boss.phase2;
+    g.save();
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (let i = 0; i < n; i++) {
+      const pts = vinePoints(i, now);
+      for (let pass = 0; pass < 2; pass++) {
+        for (let k = 1; k < pts.length; k++) {
+          const f = k / VINE_SEGS;
+          const w = (VINE_HALF_WIDTH * 2 + 4) * (1 - f * 0.65);
+          g.strokeStyle = pass === 0 ? (fl ? '#0e3a0c' : '#1a3410') : (fl ? (k % 2 ? '#5ed02e' : '#46b020') : (k % 2 ? '#4f8f2a' : '#3f7a20'));
+          g.lineWidth = pass === 0 ? w + 3 : w;
+          g.beginPath(); g.moveTo(pts[k - 1].x, pts[k - 1].y); g.lineTo(pts[k].x, pts[k].y); g.stroke();
+        }
+      }
+      for (let k = 2; k < pts.length; k += 2) {                      // leaves
+        const p = pts[k], q = pts[k - 1];
+        const a = Math.atan2(p.y - q.y, p.x - q.x);
+        const side = (k / 2) % 2 ? 1 : -1;
+        g.fillStyle = fl ? '#8be84a' : '#5fa83a';
+        g.beginPath();
+        g.ellipse(p.x + Math.cos(a + side * 1.3) * 9, p.y + Math.sin(a + side * 1.3) * 9, 10, 4.2, a + side * 0.9, 0, Math.PI * 2);
+        g.fill();
+      }
+      const tip = pts[pts.length - 1];                                // a curl at the tip
+      g.strokeStyle = fl ? '#b8ff7a' : '#7bc04a'; g.lineWidth = 2.4;
+      g.beginPath(); g.arc(tip.x, tip.y, 6, 0, Math.PI * 1.7); g.stroke();
+    }
+    g.restore();
+  }
+
+  // The thorn burst: a flashing red circle on the floor while the vines curl up,
+  // then a shockwave of thorn vines racing out 6 tiles in every direction.
+  function drawThornShockwave(g, now) {
+    if (boss.phase !== 'thorn' || boss.defeated) return;
+    const reachR = boss.radius + THORN_REACH;
+    if (!boss.thornBurst) {
+      const el = now - boss.phaseStartedAt;
+      const blink = Math.floor(el / (el > THORN_CURL_MS * 0.7 ? 80 : 160)) % 2 === 0;
+      g.beginPath(); g.arc(boss.x, boss.y, reachR, 0, Math.PI * 2);
+      g.fillStyle = blink ? 'rgba(255,40,40,0.28)' : 'rgba(255,40,40,0.08)'; g.fill();
+      g.strokeStyle = blink ? '#ff3030' : 'rgba(255,70,70,0.45)'; g.lineWidth = 3; g.stroke();
+      return;
+    }
+    const R = thornRadius();
+    if (boss.thornE <= 0.01) return;
+    g.save();
+    g.beginPath(); g.arc(boss.x, boss.y, R, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(30,90,16,0.38)'; g.fill();
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    const N = 44;
+    for (let j = 0; j < N; j++) {
+      const a0 = (j / N) * Math.PI * 2 + 0.07 * Math.sin(j * 2.3);
+      const pts = [];
+      for (let k = 0; k <= 8; k++) {
+        const f = k / 8;
+        const a = a0 + Math.sin(now * 0.006 + j * 1.7 + f * 4) * 0.05 * f;
+        const d = boss.radius * 0.8 + f * (R - boss.radius * 0.8);
+        pts.push({ x: boss.x + Math.cos(a) * d, y: boss.y + Math.sin(a) * d, a });
+      }
+      for (let pass = 0; pass < 2; pass++) {
+        g.strokeStyle = pass === 0 ? '#0e300c' : (j % 2 ? '#3f9a22' : '#2f7a1a');
+        for (let k = 1; k < pts.length; k++) {
+          g.lineWidth = (pass === 0 ? 11 : 7) * (1 - (k / 8) * 0.6);
+          g.beginPath(); g.moveTo(pts[k - 1].x, pts[k - 1].y); g.lineTo(pts[k].x, pts[k].y); g.stroke();
+        }
+      }
+      g.fillStyle = '#e8f0c8';                                    // the thorns
+      for (let k = 1; k < pts.length; k++) {
+        const p = pts[k], side = k % 2 ? 1 : -1;
+        const tx = Math.cos(p.a + side * Math.PI / 2), ty = Math.sin(p.a + side * Math.PI / 2);
+        const fx = Math.cos(p.a), fy = Math.sin(p.a);
+        g.beginPath();
+        g.moveTo(p.x - fx * 5 + tx * 3, p.y - fy * 5 + ty * 3);
+        g.lineTo(p.x + tx * 13 + fx * 3, p.y + ty * 13 + fy * 3);
+        g.lineTo(p.x + fx * 5 + tx * 3, p.y + fy * 5 + ty * 3);
+        g.closePath(); g.fill();
+      }
+    }
+    g.strokeStyle = `rgba(200,255,130,${0.85 * Math.min(1, boss.thornE * 1.5)})`; g.lineWidth = 5;   // the shockwave's front
+    g.beginPath(); g.arc(boss.x, boss.y, R, 0, Math.PI * 2); g.stroke();
+    g.restore();
+  }
+
   // ---- the Pumpkin King ----
   const bossScratch = document.createElement('canvas');
-  bossScratch.width = 320; bossScratch.height = 320;
+  bossScratch.width = 420; bossScratch.height = 420;
   const bossG = bossScratch.getContext('2d');
 
   // Everything the boss is made of, drawn on a scratch canvas centered on the
   // origin: thick green vine-tentacles writhing out from under a huge ribbed
-  // orange pumpkin, a carved face, and a fire burning in its mouth. Ablaze, its
-  // skin chars and cracks, the stem catches, and flames pour from eyes and mouth.
-  function drawPumpkinParts(s, now, ablaze, stunned, screaming, boss) {
+  // orange pumpkin, a carved face, and a fire burning in its mouth. Flourished,
+  // it turns green, grows a much bigger nest of leafy vines, and the fire in it
+  // burns blue.
+  function drawPumpkinParts(s, now, flourished, stunned, screaming, boss) {
     const r = boss.radius;
     const look = boss.lookDir || { x: 0, y: 1 };
-    const ang = Math.atan2(look.y, look.x);
 
     // tentacles
-    const tentCount = 9;
+    const curl = boss.curl || 0;                                // 0..1: how tightly the vines have curled up against it
+    const tentCount = flourished ? 16 : 9;
     for (let i = 0; i < tentCount; i++) {
       const a = (i / tentCount) * Math.PI * 2 + Math.sin(now * 0.0017 + i) * 0.2;
-      let len = r * (1.5 + 0.28 * Math.sin(now * 0.004 + i * 1.7 + boss.seed));
+      let len = r * ((flourished ? 1.95 : 1.5) + 0.28 * Math.sin(now * 0.004 + i * 1.7 + boss.seed));
       if (stunned) len *= 0.8;
+      len *= 1 - 0.68 * curl;
       const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
-      const bow = (stunned ? 0.2 : 1) * Math.sin(now * 0.005 + i * 2.3 + boss.seed) * r * 0.45;
+      const bow = (stunned ? 0.2 : 1 - 0.6 * curl) * Math.sin(now * 0.005 + i * 2.3 + boss.seed) * r * 0.45 + curl * r * 0.35;
       const mx = tx / 2 - Math.sin(a) * bow, my = ty / 2 + Math.cos(a) * bow;
-      const col = ablaze ? (i % 2 ? '#3a4a1a' : '#2a3414') : (i % 2 ? '#5c9a30' : '#417022');
+      const col = flourished ? (i % 2 ? '#4fb82a' : '#2f8a1c') : (i % 2 ? '#5c9a30' : '#417022');
       drawTaperedTentacle(s, tx, ty, mx, my, r * 0.3, col);
-      s.strokeStyle = ablaze ? '#d9701e' : '#6fbf3a'; s.lineWidth = 1.8;
+      if (flourished) {                                          // leaves along each vine
+        [0.4, 0.7].forEach((u, j) => {
+          const px = 2 * (1 - u) * u * mx + u * u * tx, py = 2 * (1 - u) * u * my + u * u * ty;
+          s.fillStyle = '#7be040';
+          s.beginPath(); s.ellipse(px + Math.cos(a + 1.4) * 5, py + Math.sin(a + 1.4) * 5, r * 0.13, r * 0.055, a + 0.9 * (j ? -1 : 1), 0, Math.PI * 2); s.fill();
+        });
+      }
+      s.strokeStyle = flourished ? '#b8ff7a' : '#6fbf3a'; s.lineWidth = 1.8;
       s.beginPath(); s.arc(tx + Math.cos(a + 1.2) * 3, ty + Math.sin(a + 1.2) * 3, 3.4, a - 2, a + 3.4); s.stroke();
     }
 
@@ -1629,44 +1867,57 @@
     if (stunned) s.scale(1.06, 0.93);
     const rx = r, ry = r * 0.9;
     // shadowed underside, then the ribbed body
-    s.fillStyle = ablaze ? '#1e0a04' : '#4a1a06';
+    s.fillStyle = flourished ? '#10300a' : '#4a1a06';
     s.beginPath(); s.ellipse(0, ry * 0.1, rx * 1.02, ry * 1.03, 0, 0, Math.PI * 2); s.fill();
     const body = s.createRadialGradient(-rx * 0.3, -ry * 0.4, 3, 0, 0, rx * 1.15);
-    if (ablaze) { body.addColorStop(0, '#b4501a'); body.addColorStop(0.55, '#6a2408'); body.addColorStop(1, '#1e0a04'); }
+    if (flourished) { body.addColorStop(0, '#c4f27a'); body.addColorStop(0.55, '#5cb030'); body.addColorStop(1, '#1f5212'); }
     else { body.addColorStop(0, '#ffb24a'); body.addColorStop(0.55, '#ee6a0e'); body.addColorStop(1, '#8f3208'); }
     s.fillStyle = body;
     s.beginPath(); s.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); s.fill();
-    s.strokeStyle = ablaze ? 'rgba(20,6,2,0.8)' : 'rgba(100,32,4,0.6)'; s.lineWidth = 2.4;
+    s.strokeStyle = flourished ? 'rgba(8,50,8,0.6)' : 'rgba(100,32,4,0.6)'; s.lineWidth = 2.4;
     [-0.66, -0.34, 0, 0.34, 0.66].forEach((k) => {
       s.beginPath();
       s.ellipse(0, 0, rx * Math.abs(1 - Math.abs(k) * 0.75), ry, 0, Math.PI * 0.5, Math.PI * 1.5, k < 0);
       s.stroke();
     });
-    if (ablaze) {                                           // glowing cracks in the charred skin
-      s.strokeStyle = `rgba(255,140,40,${0.75 + 0.25 * Math.sin(now * 0.015)})`; s.lineWidth = 2;
-      [[-0.7, -0.2, -0.45, -0.55], [0.72, -0.1, 0.5, -0.5], [-0.62, 0.45, -0.3, 0.7], [0.6, 0.5, 0.34, 0.74], [0.05, -0.85, -0.12, -0.6]].forEach(([x0, y0, x1, y1]) => {
-        s.beginPath(); s.moveTo(rx * x0, ry * y0); s.lineTo(rx * (x0 + x1) / 2 + 4, ry * (y0 + y1) / 2 - 3); s.lineTo(rx * x1, ry * y1); s.stroke();
+    s.fillStyle = 'rgba(255,255,255,0.28)';
+    s.beginPath(); s.ellipse(-rx * 0.38, -ry * 0.5, rx * 0.26, ry * 0.12, -0.5, 0, Math.PI * 2); s.fill();
+    if (flourished) {                                           // vines wrapped round the body, with leaves
+      s.lineCap = 'round';
+      [[-0.95, -0.2, -0.3, 0.35, 0.5, -0.75], [0.95, 0.15, 0.3, -0.3, -0.6, -0.65], [-0.7, 0.7, 0.0, 0.2, 0.8, 0.55]].forEach(([x0, y0, cx0, cy0, x1, y1], i) => {
+        s.strokeStyle = '#1f6a14'; s.lineWidth = r * 0.07;
+        s.beginPath(); s.moveTo(rx * x0, ry * y0); s.quadraticCurveTo(rx * cx0, ry * cy0, rx * x1, ry * y1); s.stroke();
+        s.strokeStyle = '#4fb82a'; s.lineWidth = r * 0.04; s.stroke();
+        [0.3, 0.6, 0.85].forEach((u, j) => {
+          const px = 2 * (1 - u) * u * rx * cx0 + (1 - u) * (1 - u) * rx * x0 + u * u * rx * x1;
+          const py = 2 * (1 - u) * u * ry * cy0 + (1 - u) * (1 - u) * ry * y0 + u * u * ry * y1;
+          s.fillStyle = '#7be040';
+          s.beginPath(); s.ellipse(px, py - 4, r * 0.1, r * 0.045, (i + j) % 2 ? -0.6 : 0.6, 0, Math.PI * 2); s.fill();
+        });
       });
-    } else {
-      s.fillStyle = 'rgba(255,255,255,0.28)';
-      s.beginPath(); s.ellipse(-rx * 0.38, -ry * 0.5, rx * 0.26, ry * 0.12, -0.5, 0, Math.PI * 2); s.fill();
     }
     // stem, and a curling vine
-    s.fillStyle = ablaze ? '#2a2a14' : '#4a5a1c';
+    s.fillStyle = flourished ? '#3a8a1a' : '#4a5a1c';
     s.beginPath(); s.moveTo(-r * 0.14, -ry * 0.92); s.lineTo(r * 0.16, -ry * 0.92); s.lineTo(r * 0.24, -ry * 1.3); s.lineTo(-r * 0.2, -ry * 1.26); s.closePath(); s.fill();
-    s.strokeStyle = ablaze ? '#3a4a1a' : '#4fae3a'; s.lineWidth = 3;
+    s.strokeStyle = flourished ? '#7be040' : '#4fae3a'; s.lineWidth = 3;
     s.beginPath(); s.moveTo(r * 0.2, -ry * 1.05); s.quadraticCurveTo(r * 0.8, -ry * 1.2, r * 0.7, -ry * 0.7); s.quadraticCurveTo(r * 0.6, -ry * 0.5, r * 0.45, -ry * 0.62); s.stroke();
-    if (ablaze) {                                            // the stem's alight
-      drawFlameTongue(s, r * 0.03, -ry * 1.2, r * 0.45, r * 0.7, now, 3 + boss.seed);
-      drawFlameTongue(s, -r * 0.1, -ry * 1.2, r * 0.3, r * 0.45, now, 8 + boss.seed);
+    if (flourished) {                                           // big leaves round the stem, and the stem's alight with blue fire
+      [[-0.42, -0.98, -0.5], [0.46, -1.0, 0.5], [-0.6, -0.78, -0.9], [0.62, -0.8, 0.9]].forEach(([lx, ly, rot]) => {
+        s.fillStyle = '#58b830';
+        s.beginPath(); s.ellipse(r * lx, ry * ly, r * 0.26, r * 0.1, rot, 0, Math.PI * 2); s.fill();
+        s.strokeStyle = '#2f8a1c'; s.lineWidth = 1.5;
+        s.beginPath(); s.moveTo(r * lx - Math.cos(rot) * r * 0.24, ry * ly - Math.sin(rot) * r * 0.24); s.lineTo(r * lx + Math.cos(rot) * r * 0.24, ry * ly + Math.sin(rot) * r * 0.24); s.stroke();
+      });
+      drawFlameTongue(s, r * 0.03, -ry * 1.2, r * 0.45, r * 0.7, now, 3 + boss.seed, true);
+      drawFlameTongue(s, -r * 0.1, -ry * 1.2, r * 0.3, r * 0.45, now, 8 + boss.seed, true);
     }
 
     // the carved face: glowing eyes, and a mouth with a fire burning in it
     const fx = look.x * r * 0.06, fy = look.y * r * 0.04;
     s.save(); s.translate(fx, fy);
     const flick = 0.85 + 0.15 * Math.sin(now * 0.03 + boss.seed);
-    const eyeCol = stunned ? '#8a5a2a' : screaming ? '#ffffff' : ablaze ? '#ff8a3a' : '#ffe27a';
-    s.shadowColor = '#ff6a10'; s.shadowBlur = stunned ? 2 : 14;
+    const eyeCol = stunned ? (flourished ? '#4a6a8a' : '#8a5a2a') : screaming ? '#ffffff' : flourished ? '#aee4ff' : '#ffe27a';
+    s.shadowColor = flourished ? '#2a8aff' : '#ff6a10'; s.shadowBlur = stunned ? 2 : 14;
     s.fillStyle = eyeCol; s.globalAlpha = stunned ? 0.8 : Math.min(1, 0.9 * flick + (screaming ? 0.2 : 0));
     [-1, 1].forEach((side) => {
       s.beginPath();
@@ -1674,7 +1925,7 @@
     });
     s.shadowBlur = 0; s.globalAlpha = 1;
     if (stunned) {                                           // dizzy swirls where the pupils would be
-      s.strokeStyle = '#2a0e04'; s.lineWidth = 2;
+      s.strokeStyle = flourished ? '#0a1a2a' : '#2a0e04'; s.lineWidth = 2;
       [-1, 1].forEach((side) => {
         const ex = side * r * 0.42, ey = -ry * 0.16;
         s.beginPath();
@@ -1682,8 +1933,8 @@
         s.stroke();
       });
     }
-    if (ablaze && !stunned) {                                // flames licking up from the eyes
-      [-1, 1].forEach((side, i) => drawFlameTongue(s, side * r * 0.42, -ry * 0.22, r * 0.26, r * 0.4, now, 20 + i * 3 + boss.seed));
+    if (flourished && !stunned) {                            // blue flames licking up from the eyes
+      [-1, 1].forEach((side, i) => drawFlameTongue(s, side * r * 0.42, -ry * 0.22, r * 0.26, r * 0.4, now, 20 + i * 3 + boss.seed, true));
     }
 
     // the mouth: a wide jagged hollow with the fire inside it
@@ -1704,25 +1955,26 @@
     s.save();
     s.clip();
     const fire = s.createLinearGradient(0, my0 - mh * 0.5, 0, my0 + mh);
-    if (stunned) { fire.addColorStop(0, '#3a1608'); fire.addColorStop(1, '#6a2a0c'); }
+    if (stunned) { fire.addColorStop(0, flourished ? '#0a1a3a' : '#3a1608'); fire.addColorStop(1, flourished ? '#183a7a' : '#6a2a0c'); }
+    else if (flourished) { fire.addColorStop(0, '#f0fcff'); fire.addColorStop(0.5, '#4aa8ff'); fire.addColorStop(1, '#1a3acc'); }
     else { fire.addColorStop(0, '#ffe9a0'); fire.addColorStop(0.5, '#ff9a2e'); fire.addColorStop(1, '#c8300a'); }
     s.fillStyle = fire; s.fillRect(-mw, my0 - mh, mw * 2, mh * 2.4);
     if (!stunned) {                                          // flames roiling inside
-      for (let i = 0; i < 6; i++) drawFlameTongue(s, -mw * 0.72 + i * mw * 0.288, my0 + mh * 0.95, r * 0.2, mh * (1.2 + 0.4 * Math.sin(now * 0.02 + i)), now, i * 2.3 + boss.seed);
+      for (let i = 0; i < 6; i++) drawFlameTongue(s, -mw * 0.72 + i * mw * 0.288, my0 + mh * 0.95, r * 0.2, mh * (1.2 + 0.4 * Math.sin(now * 0.02 + i)), now, i * 2.3 + boss.seed, flourished);
     }
     s.restore();
-    s.strokeStyle = ablaze ? '#1a0804' : '#5a1c04'; s.lineWidth = 2;
+    s.strokeStyle = flourished ? '#0a2a08' : '#5a1c04'; s.lineWidth = 2;
     s.stroke();
     // fire pouring out over the lip: big when it roars, small tongues otherwise, nearly dead when stunned
     if (!stunned) {
       const n = screaming ? 9 : 5;
       for (let i = 0; i < n; i++) {
         const x = -mw * 0.8 + (1.6 * mw * i) / (n - 1);
-        const hgt = (screaming ? 0.62 : ablaze ? 0.45 : 0.34) * ry * (0.75 + 0.25 * Math.sin(now * 0.025 + i * 1.7 + boss.seed));
-        drawFlameTongue(s, x, my0 - mh * 0.2, r * (screaming ? 0.3 : 0.2), hgt, now, i * 1.3 + boss.seed);
+        const hgt = (screaming ? 0.62 : flourished ? 0.45 : 0.34) * ry * (0.75 + 0.25 * Math.sin(now * 0.025 + i * 1.7 + boss.seed));
+        drawFlameTongue(s, x, my0 - mh * 0.2, r * (screaming ? 0.3 : 0.2), hgt, now, i * 1.3 + boss.seed, flourished);
       }
     } else {
-      for (let i = 0; i < 3; i++) drawFlameTongue(s, -mw * 0.4 + i * mw * 0.4, my0 - mh * 0.2, r * 0.12, ry * 0.18, now, i + boss.seed);
+      for (let i = 0; i < 3; i++) drawFlameTongue(s, -mw * 0.4 + i * mw * 0.4, my0 - mh * 0.2, r * 0.12, ry * 0.18, now, i + boss.seed, flourished);
     }
     s.restore();
     s.restore();
@@ -1737,10 +1989,10 @@
     s.setTransform(1, 0, 0, 1, 0, 0);
     s.globalCompositeOperation = 'source-over';
     s.globalAlpha = 1;
-    s.clearRect(0, 0, 320, 320);
-    s.translate(160, 160);
+    s.clearRect(0, 0, 420, 420);
+    s.translate(210, 210);
     drawPumpkinParts(s, now, boss.phase2, stunned, screaming, boss);
-    // the bites that have been taken out of it
+    // the chunks that have been smashed out of it
     s.globalCompositeOperation = 'destination-out';
     boss.chunks.forEach((c) => {
       s.beginPath();
@@ -1752,11 +2004,12 @@
     g.save();
     g.translate(boss.x, boss.y);
     if (screaming) g.translate((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+    else if (boss.curl > 0.3 && boss.phase === 'thorn') g.translate((Math.random() - 0.5) * 4 * boss.curl, (Math.random() - 0.5) * 4 * boss.curl);
     if (dying) { g.globalAlpha = 1 - dp; g.scale(1 - dp * 0.5, 1 - dp * 0.5); g.rotate(dp * 0.8); }
     else if (now < boss.frozenUntil) g.globalAlpha = 0.85;
     g.fillStyle = 'rgba(0,0,0,0.22)';
     g.beginPath(); g.ellipse(4, 8, boss.radius * 1.05, boss.radius * 0.8, 0, 0, Math.PI * 2); g.fill();
-    g.drawImage(bossScratch, -160, -160);
+    g.drawImage(bossScratch, -210, -210);
     if (now < boss.frozenUntil) {
       g.fillStyle = 'rgba(140,220,255,0.35)'; g.beginPath(); g.arc(0, 0, boss.radius * 1.2, 0, Math.PI * 2); g.fill();
     }
@@ -1764,13 +2017,13 @@
       const fl = 0.6 + 0.4 * Math.sin(now * 0.05);
       const mx = boss.lookDir.x * boss.radius * 0.85, my = boss.lookDir.y * boss.radius * 0.85;
       const gl = g.createRadialGradient(mx, my, 1, mx, my, boss.radius * 0.7);
-      gl.addColorStop(0, `rgba(255,220,120,${0.8 * fl})`); gl.addColorStop(1, 'rgba(255,100,20,0)');
+      gl.addColorStop(0, boss.phase2 ? `rgba(180,230,255,${0.8 * fl})` : `rgba(255,220,120,${0.8 * fl})`); gl.addColorStop(1, boss.phase2 ? 'rgba(40,110,255,0)' : 'rgba(255,100,20,0)');
       g.fillStyle = gl; g.beginPath(); g.arc(mx, my, boss.radius * 0.7, 0, Math.PI * 2); g.fill();
     }
     g.restore();
 
     if (stunned) {
-      // dizzy stars, and a bar counting down the bite window
+      // dizzy stars, and a bar counting down the hit window
       for (let i = 0; i < 4; i++) {
         const a = now * 0.005 + (i / 4) * Math.PI * 2;
         const sx = boss.x + Math.cos(a) * boss.radius * 0.9, sy = boss.y - boss.radius * 1.15 + Math.sin(a) * 6;
@@ -1783,7 +2036,7 @@
       g.fillStyle = 'rgba(10,6,10,0.7)'; g.fillRect(bx - 2, by - 2, bw + 4, 9);
       g.fillStyle = '#ffe14a'; g.fillRect(bx, by, bw * frac, 5);
       g.font = 'bold 12px monospace'; g.textAlign = 'center'; g.fillStyle = '#fff';
-      g.fillText('BITE IT!', boss.x, by + 22);
+      g.fillText('HIT IT!', boss.x, by + 22);
     }
   }
 
@@ -1991,7 +2244,7 @@
     ctx.fillStyle = '#1a1a1c';
     ctx.fillRect(bx, by, barW, barH);
     const grad = ctx.createLinearGradient(bx, 0, bx + barW, 0);
-    if (boss.phase2) { grad.addColorStop(0, '#ff9a6a'); grad.addColorStop(0.5, '#ff4a1a'); grad.addColorStop(1, '#7a1404'); }
+    if (boss.phase2) { grad.addColorStop(0, '#b8ff7a'); grad.addColorStop(0.5, '#5cc02e'); grad.addColorStop(1, '#1f5a12'); }
     else { grad.addColorStop(0, '#ffd27a'); grad.addColorStop(0.5, '#ff9a2e'); grad.addColorStop(1, '#b84a08'); }
     ctx.fillStyle = boss.defeated ? '#4a4640' : grad;
     ctx.fillRect(bx, by, barW * frac, barH);
@@ -2083,9 +2336,11 @@
     drawTrail(ctx, now);
     drawSmokeBombs(ctx, now);
     drawCrates(ctx);
-    drawAshClouds(ctx, now);
+    drawSporeClouds(ctx, now);
     drawEruptions(ctx, now);
     drawFireballs(ctx);
+    drawWhipVines(ctx, now);
+    drawThornShockwave(ctx, now);
     drawBoss(ctx, now);
     drawScreamRings(ctx, now);
     drawExplosions(ctx, now);
@@ -2096,7 +2351,7 @@
       ctx.beginPath(); ctx.arc(pl.x, pl.y, 17, 0, Math.PI * 2); ctx.stroke();
     });
     drawPlayers(ctx);
-    drawAshDanger(ctx, now);
+    drawSporeDanger(ctx, now);
     drawParticles(ctx);
     drawBloodSplatters(ctx);
     drawFloatingTexts(ctx);
@@ -2106,9 +2361,9 @@
       ctx.fillStyle = 'rgba(40,255,120,0.16)';
       ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
     }
-    if (now < p.slowUntil) {                    // grey haze round the edges while the ash is slowing you
+    if (now < p.slowUntil) {                    // green haze round the edges while the spores are slowing you
       const vg = ctx.createRadialGradient(vx + VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.35, vx + VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.55);
-      vg.addColorStop(0, 'rgba(120,110,110,0)'); vg.addColorStop(1, 'rgba(120,110,110,0.38)');
+      vg.addColorStop(0, 'rgba(130,200,70,0)'); vg.addColorStop(1, 'rgba(130,200,70,0.34)');
       ctx.fillStyle = vg; ctx.fillRect(vx, 0, VIEW_W, VIEW_H);
     }
 
@@ -2132,7 +2387,7 @@
       messageEl.innerHTML = 'BOTH OF YOU ARE DOWN &mdash; press Enter to try again, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
     } else if (gameState === 'dying') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'THE PUMPKIN KING BURNS OUT&hellip;<br>HAPPY HALLOWEEN!';
+      messageEl.innerHTML = 'THE PUMPKIN KING WILTS&hellip;<br>HAPPY HALLOWEEN!';
     } else {
       messageEl.style.display = 'none';
     }
@@ -2143,13 +2398,13 @@
       hudBossEl.classList.toggle('done', boss.defeated);
     }
     if (hudPhaseEl) {
-      hudPhaseEl.textContent = boss.phase2 ? 'Phase: 2 — ABLAZE' : 'Phase: 1';
+      hudPhaseEl.textContent = boss.phase2 ? 'Phase: 2 — FLOURISHED' : 'Phase: 1';
       hudPhaseEl.classList.toggle('done', boss.phase2);
     }
     if (hudMissilesEl) {
       const now = performance.now();
       hudMissilesEl.textContent = boss.defeated ? 'Stun: --'
-        : boss.phase === 'stunned' ? `STUNNED — BITE IT! ${Math.max(0, (boss.stunUntil - now) / 1000).toFixed(1)}s`
+        : boss.phase === 'stunned' ? `STUNNED — HIT IT! ${Math.max(0, (boss.stunUntil - now) / 1000).toFixed(1)}s`
           : `Stun in: ${ATTACKS_PER_STUN - boss.attacksSinceStun} attacks`;
       hudMissilesEl.classList.toggle('done', boss.phase === 'stunned');
     }
@@ -2173,10 +2428,12 @@
         updateCrates(now);
         updateSmokeBombs(now);
         updateBoss(now, dt);
-        updateBites(now);
+        updateHits(now);
         updateFireballs(now, dt);
+        updateWhipHits(now);
+        updateThornHits(now);
         updateEruptions(now);
-        updateAsh(now);
+        updateSpore(now);
         updateShotgunDefense(now);
         updateCatch(now);
         updateCutscenes(now);

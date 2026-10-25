@@ -14,6 +14,9 @@
 //                                              metal clanks, a stuttering plucked arp
 //   gargoyle (Level 30, the Garguantuagoyle)-- gothic blast-beat metal: tremolo
 //                                              picking under a choir/organ pad
+//   pumpkin  (Halloween 5, the Pumpkin King)-- spooky doom: slow half-time, a creeping
+//                                              chromatic riff, a music-box bell lead in
+//                                              harmonic minor, a dissonant organ pad
 //
 // A level starts its track with BossMusic.start({ audioCtx, dest, theme:
 // 'name', isActive, intensity }). `isActive()` says whether the fight is on
@@ -134,6 +137,26 @@
       guitar: { k: 7, accentLP: 3400, chugLP: 3200, wave: 'sawtooth', accentLen: 0.9, chugLen: 0.9 },
       drums: 'blast',
       pad: { chords: [[24, 27, 31], [29, 32, 36], [31, 34, 38], [27, 30, 34]], wave: 'sawtooth', gain: 0.05, lp: 900, attack: 0.35 },
+    },
+    pumpkin: {
+      root: 55, bpm: 88,
+      bars: [
+        [0, N, 0, N, N, N, 0, 1, 0, N, N, N, 6, N, 5, N],
+        [0, N, 0, N, N, N, 0, 1, 0, N, N, N, 3, N, 1, N],
+        [-4, N, -4, N, N, N, -4, -3, -4, N, N, N, 1, N, 0, N],
+        [-5, N, -5, N, -4, N, -2, N, 0, N, 1, N, 6, N, 5, N],
+      ],
+      lead: [
+        [31, N, N, N, 32, N, 31, N, 27, N, N, N, 26, N, N, N],
+        [27, N, N, N, 31, N, 27, N, 24, N, N, N, 26, N, 27, N],
+        [32, N, N, N, 35, N, 32, N, 31, N, N, N, 29, N, 27, N],
+        [35, N, 36, N, 35, N, 32, N, 31, N, 29, N, 27, N, 26, 24],
+      ],
+      leadBars: [1, 2, 3], leadInten: 0.3, leadTimbre: 'bell',
+      guitar: { k: 9, accentLP: 1800, chugLP: 700, wave: 'sawtooth', accentLen: 3, chugLen: 1.2 },
+      drums: 'halftime',
+      echo: { time: 0.34, feedback: 0.5, wet: 0.4 },
+      pad: { chords: [[24, 27, 30], [25, 28, 31], [20, 24, 27], [23, 26, 29]], wave: 'sawtooth', gain: 0.045, lp: 700, attack: 0.5 },
     },
   };
 
