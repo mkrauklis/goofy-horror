@@ -9,7 +9,7 @@
 //   * monsters (bosses included) are 1.25x faster -- except in chase scenes,
 //     which keep their own speeds
 //   * item/ability effects last half as long
-//   * monsters are drawn pale with red eyes
+//   * monsters are drawn pale with red pupils
 //   * bosses have 1.5x the health
 //   * enemy projectiles fly 1.25x faster
 //   * your flashlight flickers at random
@@ -26,7 +26,7 @@
   const PROJECTILE_SPEED = 1.25;
   const PALE_SATURATION = 0.55;
 
-  // ---- pale monsters with red eyes ----
+  // ---- pale monsters with red pupils ----
   // A monster is drawn onto a scratch canvas first so the pale wash only
   // touches the monster's own pixels (not the floor around it), then the
   // result is stamped onto the real canvas. ctx.filter would do this in one
@@ -44,15 +44,11 @@
     [-1, 1].forEach((side) => {
       const x = cx + fx * r * 0.32 + nx * side * r * 0.3;
       const y = cy + fy * r * 0.32 + ny * side * r * 0.3;
-      const glow = g.createRadialGradient(x, y, 0, x, y, er * 3.2);
-      glow.addColorStop(0, 'rgba(255,40,30,0.65)');
-      glow.addColorStop(1, 'rgba(255,0,0,0)');
-      g.fillStyle = glow;
-      g.beginPath(); g.arc(x, y, er * 3.2, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#ff1a14';
-      g.beginPath(); g.ellipse(x, y, er, er * 0.72, Math.atan2(fy, fx), 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#2a0000';
-      g.beginPath(); g.ellipse(x + fx * er * 0.15, y + fy * er * 0.15, er * 0.28, er * 0.62, Math.atan2(fy, fx), 0, Math.PI * 2); g.fill();
+      const ang = Math.atan2(fy, fx);
+      g.fillStyle = '#e9e4dc';                                      // pale eyeball ...
+      g.beginPath(); g.ellipse(x, y, er, er * 0.72, ang, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#ff1a14';                                      // ... with a red pupil
+      g.beginPath(); g.ellipse(x + fx * er * 0.15, y + fy * er * 0.15, er * 0.5, er * 0.5, ang, 0, Math.PI * 2); g.fill();
     });
   }
 
