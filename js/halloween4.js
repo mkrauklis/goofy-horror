@@ -1950,14 +1950,32 @@
     g.fillStyle = 'rgba(0,0,0,0.3)';
     g.beginPath(); g.ellipse(2, r * 0.85, r * 1.05, r * 0.4, 0, 0, Math.PI * 2); g.fill();
 
-    // rooty little feet that scuttle under it
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 + 0.3;
-      const sw = Math.sin(t * (hunting ? 0.022 : 0.012) + i * 1.9 + m.seed) * 4;
-      g.strokeStyle = '#3d2a12'; g.lineWidth = 4; g.lineCap = 'round';
-      g.beginPath(); g.moveTo(Math.cos(a) * r * 0.55, r * 0.5 + Math.sin(a) * r * 0.2);
-      g.lineTo(Math.cos(a) * r * 1.05 + sw, r * 0.78 + Math.sin(a) * r * 0.3); g.stroke();
+    // tentacles: some reach out and grip the walls beside it, and a nest of
+    // thick green vine-tentacles writhes out behind and under the body
+    const ang = Math.atan2(look.y, look.x);
+    (m.tentacleTargets || []).forEach((tt, i) => {
+      const wobble = Math.sin(t * 0.005 + i * 2.1 + m.seed) * r * 0.35;
+      const tx = tt.x - m.x, ty = tt.y - m.y;
+      const dist = Math.hypot(tx, ty) || 1;
+      drawTaperedTentacle(g, tx, ty, tx / 2 + (-ty / dist) * wobble, ty / 2 + (tx / dist) * wobble, r * 0.34, '#4a8228');
+    });
+    for (let i = 0; i < 9; i++) {
+      const spread = (i - 4) * 0.42;
+      const a = ang + Math.PI + spread + Math.sin(t * (hunting ? 0.007 : 0.0042) + i * 1.3 + m.seed) * 0.34;
+      const len = r * (1.9 + 0.55 * Math.sin(t * 0.005 + i + m.seed));
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
+      const bow = Math.sin(t * 0.0065 + i * 2.2 + m.seed) * r * 0.7;
+      drawTaperedTentacle(g, tx, ty, tx / 2 - Math.sin(a) * bow, ty / 2 + Math.cos(a) * bow, r * 0.52, i % 2 ? '#5c9a30' : '#417022');
+      g.strokeStyle = '#6fbf3a'; g.lineWidth = 1.6;                      // a little curl at each tip
+      g.beginPath(); g.arc(tx + Math.cos(a + 1.2) * 3, ty + Math.sin(a + 1.2) * 3, 3, a - 2, a + 3.4); g.stroke();
     }
+    // two thick ones reaching out in front, as if feeling the way
+    [-1, 1].forEach((side, i) => {
+      const a = ang + side * 0.75 + Math.sin(t * 0.006 + i * 3 + m.seed) * 0.25;
+      const len = r * 1.55;
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
+      drawTaperedTentacle(g, tx, ty, tx / 2 + Math.sin(a) * r * 0.3 * side, ty / 2 - Math.cos(a) * r * 0.3 * side, r * 0.4, '#4a8228');
+    });
 
     g.translate(0, -hop);
     const heat = hunting ? 1 : 0.55;
