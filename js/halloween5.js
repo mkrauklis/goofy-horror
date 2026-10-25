@@ -21,7 +21,7 @@
 
   const PLAYER_MODE = (window.GoofyStory && window.GoofyStory.getPlayerMode()) || 2;
   const VIEW_W = PLAYER_MODE === 1 ? 920 : 460;
-  const VIEW_H = 340;
+  const VIEW_H = 460;
   const SOLO_DAMAGE_MULT = PLAYER_MODE === 1 ? 1.5 : 1;
 
   // Same trick every boss level uses: ZOOM is picked so the visible half
@@ -29,7 +29,7 @@
   // clamp in renderViewport collapses to a fixed center point instead of
   // following either player -- the whole landing pad reads as one
   // screen. Same proven 35x21 @ 32px footprint as Level 15/25.
-  const ZOOM = 0.42;
+  const ZOOM = 0.3;
   function visibleHalfW() { return (VIEW_W / 2) / ZOOM; }
   function visibleHalfH() { return (VIEW_H / 2) / ZOOM; }
 
@@ -1371,6 +1371,13 @@
         }
       }
     }
+    // dim it down: the candy is deep in the dark, lit mostly by the jack-o-lanterns
+    f.fillStyle = 'rgba(14,6,30,0.56)';
+    f.fillRect(0, 0, WORLD_W, WORLD_H);
+    const fv = f.createRadialGradient(ARENA_CX, ARENA_CY, ARENA_R * 0.55, ARENA_CX, ARENA_CY, ARENA_R);
+    fv.addColorStop(0, 'rgba(0,0,0,0)'); fv.addColorStop(1, 'rgba(0,0,0,0.38)');
+    f.fillStyle = fv;
+    f.fillRect(0, 0, WORLD_W, WORLD_H);
     f.restore();
     // the lip of the wall round the floor
     f.lineWidth = 9; f.strokeStyle = 'rgba(28,10,8,0.9)';
@@ -1383,9 +1390,20 @@
   function drawTiles(g, now) {
     if (!floorCanvas) floorCanvas = buildFloor();
     g.drawImage(floorCanvas, 0, 0);
+    // each jack-o-lantern lights the candy round it
+    g.save();
+    g.globalCompositeOperation = 'lighter';
     LEVEL.lanterns.forEach((l, i) => {
       const c = tileCenter(l.x, l.y);
-      drawJackOLantern(g, c.x, c.y, 11, now, i * 1.7);
+      const f = 0.85 + 0.15 * Math.sin(now * 0.011 + i * 1.7);
+      const gr = g.createRadialGradient(c.x, c.y, 4, c.x, c.y, TILE * 5);
+      gr.addColorStop(0, `rgba(255,150,50,${0.34 * f})`); gr.addColorStop(1, 'rgba(255,120,30,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(c.x, c.y, TILE * 5, 0, Math.PI * 2); g.fill();
+    });
+    g.restore();
+    LEVEL.lanterns.forEach((l, i) => {
+      const c = tileCenter(l.x, l.y);
+      drawJackOLantern(g, c.x, c.y, 15, now, i * 1.7);
     });
   }
 
@@ -2046,6 +2064,12 @@
     drawBoss(ctx, now);
     drawScreamRings(ctx, now);
     drawExplosions(ctx, now);
+    // the arena is so big on screen that people are tiny: a ring under each makes them easy to find
+    players.forEach((pl) => {
+      if (pl.caught) return;
+      ctx.strokeStyle = pl.color; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(pl.x, pl.y, 17, 0, Math.PI * 2); ctx.stroke();
+    });
     drawPlayers(ctx);
     drawGasDanger(ctx, now);
     drawParticles(ctx);
