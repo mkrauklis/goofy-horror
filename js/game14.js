@@ -61,6 +61,11 @@
   const SHOTGUN_STUN_MS = HM.ability(5000);
   const SHOTGUN_AMMO_MAX = 3;
   const SHOTGUN_RANGE = 70;
+  const FLAME_STUN_MS = HM.ability(3000);
+  const FLAME_AMMO_MAX = 6;
+  const FLAME_AMMO_PER_PICKUP = 2;
+  const FLAME_RANGE = 90;
+  const FLAME_FIND_RADIUS = 28;
 
   // ---- sprint / stamina ----
   const DOUBLE_TAP_MS = 300;
@@ -521,6 +526,8 @@
 
   // ---- game state ----
   let heaterOn = false;
+  let flamethrowerAtAlcove = false; // the secret flamethrower, until someone finds it
+  let flameBursts = []; // short-lived jets of flame from a player to a monster they just burned
   let meltedSet = new Set(); // world tile keys ("x,y") of snow the heater has melted
   let doorUnlocked = false;
   let gameState = 'playing'; // 'playing' | 'complete'
@@ -552,6 +559,7 @@
       stamina: STAMINA_MAX, moveState: 'normal', exhaustedUntil: 0, sprintActive: false,
       walkPhase: 0,
       shotgunAmmo: 0,
+      flameAmmo: 0,
     };
   }
 
@@ -640,6 +648,14 @@
     p.x = c.x; p.y = c.y; p.facing = { x: 0, y: 1 };
   }
 
+  // The flamethrower's fuel only turns up in crates once it's equipped.
+  function pickCrateItem() {
+    const pool = (window.GoofyStory && window.GoofyStory.isGunEquipped('flamethrower'))
+      ? CRATE_ITEMS.concat(['flame-fuel'])
+      : CRATE_ITEMS;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
   function resetLevel() {
     players.forEach((p) => {
       respawnPlayer(p);
@@ -651,6 +667,7 @@
       p.exhaustedUntil = 0;
       p.sprintActive = false;
       p.shotgunAmmo = 0;
+      p.flameAmmo = 0;
     });
 
     const spawns = LEVEL.monsterSpawns;
@@ -664,11 +681,13 @@
     });
 
     heaterOn = false;
+    flameBursts = [];
     meltedSet = new Set();
     doorUnlocked = false;
+    flamethrowerAtAlcove = !(window.GoofyStory && window.GoofyStory.isGunUnlocked('flamethrower'));
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
-      x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)], opened: false, openedAt: 0,
+      x: c.x, y: c.y, item: pickCrateItem(), opened: false, openedAt: 0,
     }));
     radarUntil = 0;
     energyUntil = 0;
@@ -689,6 +708,7 @@
     const ch = tileChar(tx, ty);
     if (ch === '#' || ch === 'C') return true;
     if (ch === 'D') return !doorUnlocked;
+    if (ch === 'M') return !heaterOn;   // packed snow, until the heater melts it
     return false;
   }
 
@@ -794,6 +814,7 @@
   function minimapColorFor(ch) {
     if (ch === '#') return '#8f8f9a';
     if (ch === 'D') return '#d9ac4a';
+    if (ch === 'M') return heaterOn ? '#3c3c46' : '#cfe0ea';
     if (ch === 'S') return '#3ddc84';
     if (ch === 'V') return '#4a6a86';
     return '#3c3c46';
@@ -960,6 +981,14 @@
       } else {
         spawnFloatingText(x, y, 'AMMO FULL');
       }
+    } else if (item === 'flame-fuel') {
+      if (p.flameAmmo < FLAME_AMMO_MAX) {
+        p.flameAmmo = Math.min(FLAME_AMMO_MAX, p.flameAmmo + FLAME_AMMO_PER_PICKUP);
+        spawnFloatingText(x, y, `FUEL (${p.flameAmmo}/${FLAME_AMMO_MAX})`);
+        playItemChime(540);
+      } else {
+        spawnFloatingText(x, y, 'FUEL FULL');
+      }
     } else if (item === 'energy') {
       energyUntil = now + ENERGY_DURATION_MS;
       spawnFloatingText(x, y, 'ENERGY');
@@ -996,7 +1025,7 @@
     crates.forEach((c) => {
       if (c.opened && now - c.openedAt >= CRATE_RESPAWN_MS) {
         c.opened = false;
-        c.item = CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)];
+        c.item = pickCrateItem();
       }
     });
   }
@@ -1007,6 +1036,15 @@
       const ch = tileChar(t.x, t.y);
       if (ch === 'H' && !heaterOn) {
         turnOnHeater(performance.now());
+      }
+      if (flamethrowerAtAlcove && heaterOn) {
+        const fc = tileCenter(LEVEL.flamethrower.x, LEVEL.flamethrower.y);
+        if (Math.hypot(p.x - fc.x, p.y - fc.y) < FLAME_FIND_RADIUS) {
+          flamethrowerAtAlcove = false;
+          if (window.GoofyStory) window.GoofyStory.unlockGun('flamethrower');
+          spawnFloatingText(fc.x, fc.y, 'FLAMETHROWER FOUND!');
+          playDoorUnlockChime();
+        }
       }
       if (ch === 'X' && doorUnlocked && gameState === 'playing') {
         gameState = 'complete';
@@ -1019,7 +1057,7 @@
 
   // ---- monster AI ----
   function monsterCanOccupy(ch) {
-    if (ch === '#' || ch === 'S' || ch === 'V' || ch === 'C') return false;
+    if (ch === '#' || ch === 'S' || ch === 'V' || ch === 'C' || ch === 'M') return false;
     if (ch === 'D') return doorUnlocked;
     return true;
   }
@@ -1081,7 +1119,8 @@
     for (let i = 1; i < steps; i++) {
       const t = i / steps;
       const t2 = worldToTile(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
-      if (tileChar(t2.x, t2.y) === '#') return false;
+      const lc = tileChar(t2.x, t2.y);
+      if (lc === '#' || (lc === 'M' && !heaterOn)) return false;
     }
     return true;
   }
@@ -1105,10 +1144,11 @@
 
   function wallOffsetDir(tx, ty) {
     let dx = 0, dy = 0;
-    if (tileChar(tx - 1, ty) === '#') dx += 1;
-    if (tileChar(tx + 1, ty) === '#') dx -= 1;
-    if (tileChar(tx, ty - 1) === '#') dy += 1;
-    if (tileChar(tx, ty + 1) === '#') dy -= 1;
+    const solid = (x, y) => { const c = tileChar(x, y); return c === '#' || (c === 'M' && !heaterOn); };
+    if (solid(tx - 1, ty)) dx += 1;
+    if (solid(tx + 1, ty)) dx -= 1;
+    if (solid(tx, ty - 1)) dy += 1;
+    if (solid(tx, ty + 1)) dy -= 1;
     const len = Math.hypot(dx, dy);
     if (len === 0) return { x: 0, y: 0 };
     return { x: dx / len, y: dy / len };
@@ -1246,6 +1286,27 @@
           m.frozenUntil = now + SHOTGUN_STUN_MS;
           p.shotgunAmmo--;
           spawnFloatingText(m.x, m.y, 'STUNNED!');
+          playShotgunBlast();
+        }
+      });
+    });
+  }
+
+  // The flamethrower's own automatic defense: its own fuel, a shorter
+  // stun than the tranquilizer, and the monster visibly burns while it lasts.
+  function updateFlamethrowerDefense(now) {
+    if (!(window.GoofyStory && window.GoofyStory.isGunEquipped('flamethrower'))) return;
+    players.forEach((p) => {
+      if (p.caught || p.flameAmmo <= 0) return;
+      monsters.forEach((m) => {
+        if (p.flameAmmo <= 0) return;
+        if (now < m.frozenUntil || m.state !== 'alert') return;
+        if (Math.hypot(p.x - m.x, p.y - m.y) < FLAME_RANGE) {
+          m.frozenUntil = now + FLAME_STUN_MS;
+          m.burnUntil = now + FLAME_STUN_MS;
+          p.flameAmmo--;
+          flameBursts.push({ x: p.x, y: p.y, tx: m.x, ty: m.y, at: now });
+          spawnFloatingText(m.x, m.y, 'BURNED!');
           playShotgunBlast();
         }
       });
@@ -1392,6 +1453,10 @@
     const meltCount = Math.round(SNOW_TILES.length * 0.1);
     meltedSet = new Set(shuffled.slice(0, meltCount).map((t) => `${t.x},${t.y}`));
     spawnFloatingText(tileCenter(LEVEL.heater.x, LEVEL.heater.y).x, tileCenter(LEVEL.heater.x, LEVEL.heater.y).y, 'HEATER ON');
+    if (flamethrowerAtAlcove) {
+      const w = tileCenter(LEVEL.flamethrower.x, LEVEL.flamethrower.y - 1);
+      spawnFloatingText(w.x, w.y, 'SOMETHING MELTED...');
+    }
   }
 
   function drawTiles(g, camX, camY) {
@@ -1414,6 +1479,7 @@
           case 'W': color = floorShade(x, y); break;
           case 'N': color = meltedSet.has(`${x},${y}`) ? '#2a3a44' : '#dce8f0'; break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
+          case 'M': color = heaterOn ? '#2a3a44' : '#dce8f0'; break;
           default: color = floorShade(x, y);
         }
         g.fillStyle = color;
@@ -1429,6 +1495,17 @@
           g.beginPath();
           g.arc(px + 10 + (seed % 4) * 4, py + 10 + ((seed * 2) % 4) * 4, 2.5, 0, Math.PI * 2);
           g.fill();
+        }
+        if (ch === 'M') {
+          if (!heaterOn) {                       // packed snow, drifting and crusted
+            g.fillStyle = 'rgba(255,255,255,0.55)';
+            g.fillRect(px + 2, py + 2, TILE - 4, 5);
+            g.strokeStyle = 'rgba(120,160,190,0.55)'; g.lineWidth = 1;
+            g.beginPath(); g.moveTo(px + 3, py + TILE - 6); g.lineTo(px + TILE - 3, py + TILE - 10); g.moveTo(px + 6, py + 12); g.lineTo(px + TILE - 8, py + 14); g.stroke();
+          } else {                               // a puddle where the wall stood
+            g.fillStyle = 'rgba(60,100,130,0.35)';
+            g.beginPath(); g.ellipse(px + TILE / 2, py + TILE / 2, 9, 5, 0, 0, Math.PI * 2); g.fill();
+          }
         }
         if (ch === 'N' && meltedSet.has(`${x},${y}`)) {
           g.fillStyle = 'rgba(60,100,130,0.3)';
@@ -1527,8 +1604,10 @@
     drawBloodSplatters(g);
     drawCrates(g);
     drawBigCrates(g);
+    drawFlamethrowerPickup(g, performance.now());
     drawMeatLure(g);
     drawFloatingTexts(g);
+    drawFlameBursts(g, performance.now());
   }
 
   function drawTable(g, cx, cy) {
@@ -1600,6 +1679,31 @@
       g.moveTo(px + w - 2, py + 2); g.lineTo(px + 2, py + h - 2);
       g.stroke();
     });
+  }
+
+  // The secret flamethrower, resting in the alcove behind the snow wall --
+  // gone for good the moment someone picks it up.
+  function drawFlamethrowerPickup(g, now) {
+    if (!flamethrowerAtAlcove) return;
+    const c = tileCenter(LEVEL.flamethrower.x, LEVEL.flamethrower.y);
+    const bob = Math.sin(now * 0.003) * 3;
+    g.save();
+    g.translate(c.x, c.y + bob);
+    const glow = g.createRadialGradient(0, 0, 2, 0, 0, 28);
+    glow.addColorStop(0, 'rgba(255,150,40,0.5)'); glow.addColorStop(1, 'rgba(255,100,10,0)');
+    g.fillStyle = glow; g.beginPath(); g.arc(0, 0, 28, 0, Math.PI * 2); g.fill();
+    g.rotate(-0.5);
+    g.fillStyle = '#b8321e';                        // fuel tank
+    g.fillRect(-12, -5, 11, 10);
+    g.strokeStyle = '#3a0e08'; g.lineWidth = 1.2; g.strokeRect(-12, -5, 11, 10);
+    g.fillStyle = '#4a4a52';                        // barrel and nozzle
+    g.fillRect(-1, -2, 14, 4);
+    g.fillRect(11, -3.5, 3, 7);
+    g.fillStyle = '#ffb02e';                        // pilot flame
+    g.shadowColor = '#ff8a1e'; g.shadowBlur = 8;
+    g.beginPath(); g.ellipse(17, 0, 3 + Math.sin(now * 0.03) * 0.8, 2, 0, 0, Math.PI * 2); g.fill();
+    g.shadowBlur = 0;
+    g.restore();
   }
 
   function drawCrates(g) {
@@ -1749,6 +1853,15 @@
 
     drawMonsterEye(g, m);
 
+    if (t < (m.burnUntil || 0)) {
+      for (let i = 0; i < 5; i++) {
+        const fa = (i / 5) * Math.PI * 2 + t * 0.004;
+        const fr = m.radius * (0.5 + 0.35 * Math.sin(t * 0.02 + i * 1.7));
+        const fx = Math.cos(fa) * fr, fy = Math.sin(fa) * fr - 4 - Math.abs(Math.sin(t * 0.015 + i)) * 7;
+        g.fillStyle = i % 2 ? 'rgba(255,200,60,0.85)' : 'rgba(255,100,20,0.85)';
+        g.beginPath(); g.ellipse(fx, fy, 4, 7, 0, 0, Math.PI * 2); g.fill();
+      }
+    }
     if (t < m.frozenUntil) {
       g.beginPath();
       for (let i = 0; i <= points; i++) {
@@ -2221,6 +2334,7 @@
     drawRadar(vx, p, now, nearest);
     drawScanner(vx, p, now);
     drawShotgunHud(vx, p);
+    drawFlamethrowerHud(vx, p);
     const minimapH = drawMinimap(vx, now);
     drawStaminaBar(vx, p, minimapH);
 
@@ -2232,6 +2346,53 @@
   // A small HUD badge in the corner once a player's carrying at least one
   // shotgun shell -- the shell icon plus a live "Nx" count, since ammo now
   // stacks up to SHOTGUN_AMMO_MAX instead of capping at a single shell.
+  function drawFlameBursts(g, now) {
+    flameBursts = flameBursts.filter((b) => now - b.at < 450);
+    flameBursts.forEach((b) => {
+      const k = (now - b.at) / 450;
+      const dx = b.tx - b.x, dy = b.ty - b.y, len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      for (let i = 0; i < 14; i++) {
+        const u = Math.min(1, (i / 14) + k * 0.4);
+        const spread = (u * 14) * Math.sin(i * 12.9 + k * 6);
+        const x = b.x + dx * u + nx * spread, y = b.y + dy * u + ny * spread;
+        g.fillStyle = i % 2 ? `rgba(255,210,70,${0.9 - k * 0.8})` : `rgba(255,90,20,${0.9 - k * 0.8})`;
+        g.beginPath(); g.arc(x, y, 3 + u * 6 * (1 - k * 0.5), 0, Math.PI * 2); g.fill();
+      }
+    });
+  }
+
+  function drawFlamethrowerHud(vx, p) {
+    if (p.flameAmmo <= 0) return;
+    if (!(window.GoofyStory && window.GoofyStory.isGunEquipped('flamethrower'))) return;
+    const cx = vx + VIEW_W - 34, cy = 98;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(45,15,5,0.75)';
+    ctx.fill();
+    ctx.strokeStyle = '#ff7a2e';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(cx - 6, cy);
+    ctx.fillStyle = '#ff9a2e';
+    ctx.beginPath();
+    ctx.moveTo(0, -7);
+    ctx.quadraticCurveTo(5, -1, 3, 4);
+    ctx.quadraticCurveTo(0, 8, -3, 4);
+    ctx.quadraticCurveTo(-5, -1, 0, -7);
+    ctx.fill();
+    ctx.fillStyle = '#ffe27a';
+    ctx.beginPath(); ctx.ellipse(0, 3, 1.8, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffd27a';
+    ctx.fillText(`${p.flameAmmo}x`, cx + 3, cy + 4);
+    ctx.restore();
+  }
+
   function drawShotgunHud(vx, p) {
     if (p.shotgunAmmo <= 0) return;
     const cx = vx + VIEW_W - 34, cy = 64;
@@ -2431,6 +2592,7 @@
       updateSmokeBombs(now);
       monsters.forEach((m) => updateMonster(m, now, dt));
       updateShotgunDefense(now);
+      updateFlamethrowerDefense(now);
       updateCatch(now);
       updateCutscenes(now);
       updateExploration();
