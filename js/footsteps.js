@@ -1,5 +1,5 @@
 // Footstep sound effects, one sound per surface: a hard facility floor, a
-// crunchy snow floor, a flooded floor (splashes) and grass. Each level
+// crunchy snow floor, a flooded floor (splashes), grass and metal plating. Each level
 // declares which surface it is, and routes its walk cycle through
 // Footsteps.advance() -- a step plays every time the walk animation puts a
 // foot down, so the pace of the steps always matches how fast you're moving
@@ -70,6 +70,18 @@
       burst(ctx, s, t, 0.1, 0.075 * v, 'bandpass', 3400 * r, 0.5);
       burst(ctx, s, t + 0.015, 0.06, 0.04 * v, 'highpass', 5200, 0.6);
       thump(ctx, s, t, 0.035 * v, 100, 55, 0.07);
+    } else if (surface === 'metal') {
+      // a boot on steel plate: a sharp tick, then the plate rings and booms hollow underneath
+      burst(ctx, s, t, 0.025, 0.1 * v, 'highpass', 3800, 0.8);
+      burst(ctx, s, t, 0.05, 0.07 * v, 'bandpass', 2400 * r, 1.4);
+      [[520, 0.055, 0.17], [1310, 0.035, 0.12], [2150, 0.018, 0.08]].forEach(([f, vol, dur]) => {
+        const o = ctx.createOscillator(); o.type = 'sine';
+        o.frequency.setValueAtTime(f * r * (0.97 + Math.random() * 0.06), t);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(vol * v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g); g.connect(s.out); o.start(t); o.stop(t + dur + 0.02);
+      });
+      thump(ctx, s, t, 0.1 * v, 170 * r, 70, 0.1);
     } else {
       // a hard floor: a crisp tap and a low knock
       burst(ctx, s, t, 0.04, 0.11 * v, 'bandpass', 1500 * r, 1.1);

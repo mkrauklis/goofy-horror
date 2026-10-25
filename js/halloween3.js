@@ -1,6 +1,6 @@
 (function () {
   const HM = window.HardMode;
-  const FOOT_SURFACE = 'normal'; // which footstep sound to use (js/footsteps.js)
+  const FOOT_SURFACE = 'metal'; // which footstep sound to use (js/footsteps.js)
   // The Halloween chapter has its own unlock chain (see js/story.js): the
   // first level is always open, each later one needs the one before it.
   if (window.GoofyStory && !window.GoofyStory.isHalloweenUnlocked(3)) {
