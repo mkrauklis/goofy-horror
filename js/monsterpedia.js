@@ -39,9 +39,6 @@
   const multipodCtx = ctxFor('monster-canvas-multipod');
   const hollowJackCtx = ctxFor('monster-canvas-hollowjack');
   const hushCtx = ctxFor('monster-canvas-hush');
-  const masqueCtx = ctxFor('monster-canvas-masque');
-  const risenCtx = ctxFor('monster-canvas-risen');
-  const krakenCtx = ctxFor('monster-canvas-kraken');
   const PORTRAIT = 160;
 
   // While a portrait is being drawn as a member of the Multipod's swarm
@@ -3132,226 +3129,6 @@
     g.restore();
   }
 
-  // The Halloween 3 Masque: tentacled flesh in a cracked mask, no arms (same
-  // drawing as in js/halloween3.js, posed facing right).
-  function drawMasque(g, w, h, t) {
-    clear(g, w, h);
-    g.save();
-    g.translate(w / 2 - 6, h / 2);
-    const r = 26, ang = 0, seed = 5;
-    for (let i = 0; i < 9; i++) {
-      const a = ang + Math.PI * 0.55 + (i / 9) * Math.PI * 1.9 + Math.sin(t * 0.004 + i * 1.7 + seed) * 0.3;
-      const len = r * (1.5 + 0.35 * Math.sin(t * 0.006 + i * 1.3 + seed));
-      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
-      const bow = Math.sin(t * 0.007 + i * 2.2 + seed) * r * 0.5;
-      drawTaperedTentacle(g, tx, ty, tx / 2 - Math.sin(a) * bow, ty / 2 + Math.cos(a) * bow, r * 0.3, i % 2 ? '#a85360' : '#8a3a46');
-    }
-    g.fillStyle = '#4a1620';
-    g.beginPath(); g.arc(0, 0, r * 1.08, 0, Math.PI * 2); g.fill();
-    const body = g.createRadialGradient(-r * 0.3, -r * 0.3, 2, 0, 0, r * 1.1);
-    body.addColorStop(0, '#d98a8a'); body.addColorStop(0.6, '#a8505c'); body.addColorStop(1, '#6a2430');
-    g.fillStyle = body;
-    g.beginPath();
-    for (let i = 0; i <= 14; i++) {
-      const a = (i / 14) * Math.PI * 2;
-      const rr = r + Math.sin(t * 0.006 + i * 1.7 + seed) * r * 0.08;
-      if (i === 0) g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); else g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
-    }
-    g.closePath(); g.fill();
-    g.fillStyle = '#efe8dc'; g.strokeStyle = '#8a8070'; g.lineWidth = 1.2;
-    g.beginPath(); g.ellipse(r * 0.42, 0, r * 0.62, r * 0.8, 0, 0, Math.PI * 2); g.fill(); g.stroke();
-    g.fillStyle = '#0a0608';
-    [-1, 1].forEach((side) => { g.beginPath(); g.ellipse(r * 0.5, side * r * 0.3, r * 0.15, r * 0.22, 0, 0, Math.PI * 2); g.fill(); });
-    g.strokeStyle = '#9a1c24'; g.lineWidth = 1.6;
-    g.beginPath(); g.moveTo(r * 0.78, -r * 0.3); g.quadraticCurveTo(r * 0.98, 0, r * 0.78, r * 0.3); g.stroke();
-    g.strokeStyle = 'rgba(70,60,50,0.7)'; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(r * 0.2, -r * 0.55); g.lineTo(r * 0.4, -r * 0.2); g.lineTo(r * 0.33, r * 0.05); g.moveTo(r * 0.6, r * 0.5); g.lineTo(r * 0.45, r * 0.25); g.stroke();
-    g.restore();
-  }
-
-  // The Halloween 4 Risen: a zombie grown tentacles (same drawing as in
-  // js/halloween4.js, posed facing right).
-  function drawRisen(g, w, h, t) {
-    clear(g, w, h);
-    const m = { radius: 26, lookDir: { x: 1, y: 0 }, seed: 11, tentacleTargets: [], frozenUntil: 0, x: 0, y: 0 };
-    const r = m.radius;
-    const ang = 0;
-    g.save();
-    g.translate(w / 2 - 14, h / 2);
-
-    // the writhing tentacles it drags itself along on
-    for (let i = 0; i < 7; i++) {
-      const a = ang + Math.PI * 0.62 + (i / 6) * Math.PI * 0.76 + Math.sin(t * 0.0045 + i * 1.7 + m.seed) * 0.28;
-      const len = r * (1.6 + 0.4 * Math.sin(t * 0.006 + i * 1.3 + m.seed));
-      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
-      const bow = Math.sin(t * 0.007 + i * 2.2 + m.seed) * r * 0.5;
-      drawTaperedTentacle(g, tx, ty, tx / 2 - Math.sin(a) * bow, ty / 2 + Math.cos(a) * bow, r * 0.32, i % 2 ? '#6f8756' : '#4d6240');
-    }
-    // two tentacles reaching out in front, the way a zombie's arms would
-    [-1, 1].forEach((side, k) => {
-      const reach = r * (2.0 + 0.35 * Math.sin(t * 0.005 + k * 2 + m.seed));
-      const lx = Math.cos(ang) * reach - Math.sin(ang) * side * r * 0.9;
-      const ly = Math.sin(ang) * reach + Math.cos(ang) * side * r * 0.9;
-      const sw = Math.sin(t * 0.006 + k * 3 + m.seed) * r * 0.4;
-      drawTaperedTentacle(g, lx, ly, lx * 0.5 - Math.sin(ang) * sw, ly * 0.5 + Math.cos(ang) * sw, r * 0.3, '#7b9560');
-    });
-
-    // rotting body
-    g.fillStyle = '#2d3a26';
-    g.beginPath(); g.arc(0, 0, r * 1.1, 0, Math.PI * 2); g.fill();
-    const body = g.createRadialGradient(-r * 0.3, -r * 0.3, 2, 0, 0, r * 1.1);
-    body.addColorStop(0, '#a3bd86'); body.addColorStop(0.6, '#728d58'); body.addColorStop(1, '#45573a');
-    g.fillStyle = body;
-    g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
-    g.save();
-    g.rotate(ang);
-    g.fillStyle = 'rgba(58,40,50,0.55)';                              // sores and rot
-    g.beginPath(); g.ellipse(-r * 0.2, r * 0.45, r * 0.3, r * 0.18, 0.4, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.ellipse(-r * 0.4, -r * 0.35, r * 0.22, r * 0.14, -0.3, 0, Math.PI * 2); g.fill();
-    g.fillStyle = '#3a2f26';                                          // rags
-    g.beginPath(); g.moveTo(-r * 0.8, -r * 0.5); g.lineTo(-r * 0.1, -r * 0.7); g.lineTo(-r * 0.3, -r * 0.1); g.lineTo(-r * 0.7, -r * 0.1); g.closePath(); g.fill();
-    // the head: a smaller, paler lump at the front with milky eyes and a slack mouth
-    g.fillStyle = '#b5c79a';
-    g.beginPath(); g.arc(r * 0.55, 0, r * 0.58, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = '#4d6240'; g.lineWidth = 1.2; g.stroke();
-    g.fillStyle = '#e7ecc4';
-    [-1, 1].forEach((side) => { g.beginPath(); g.arc(r * 0.72, side * r * 0.25, r * 0.15, 0, Math.PI * 2); g.fill(); });
-    g.fillStyle = '#16190f';
-    [-1, 1].forEach((side) => { g.beginPath(); g.arc(r * 0.76, side * r * 0.25, r * 0.06, 0, Math.PI * 2); g.fill(); });
-    g.fillStyle = '#251018';
-    g.beginPath(); g.ellipse(r * 0.9, 0, r * 0.1, r * 0.2, 0, 0, Math.PI * 2); g.fill();
-    g.restore();
-
-    g.restore();
-  }
-
-  // The Halloween 5 boss, the Candy Kraken, in the same drawing as the game
-  // (js/halloween5.js). Click the portrait to see it withered.
-  function drawKrakenParts(s, now, withered, stunned, screaming, boss, CANDY_COLORS) {
-    const r = boss.radius;
-    const look = boss.lookDir || { x: 0, y: 1 };
-    const ang = Math.atan2(look.y, look.x);
-
-    const ropes = withered ? ['#b79aa6', '#cfc5ca', '#a38c9a', '#8f9c93'] : ['#e8365d', '#ffffff', '#ff9ec7', '#4fd0a0', '#ffd23a', '#b48cff'];
-    const tentCount = 8;
-    for (let i = 0; i < tentCount; i++) {
-      const a = (i / tentCount) * Math.PI * 2 + Math.sin(now * 0.0017 + i) * 0.2;
-      let len = r * (2.1 + 0.4 * Math.sin(now * 0.004 + i * 1.7 + boss.seed));
-      if (withered) len *= (i % 3 === 0 ? 0.45 : 0.8);
-      if (stunned) len *= 0.85;
-      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
-      const bow = (stunned ? 0.2 : 1) * Math.sin(now * 0.005 + i * 2.3 + boss.seed) * r * 0.5;
-      const mx = tx / 2 - Math.sin(a) * bow, my = ty / 2 + Math.cos(a) * bow;
-      const col = ropes[i % ropes.length];
-      drawTaperedTentacle(s, tx, ty, mx, my, r * 0.52, col);
-      if (!withered) {      // the twist in the candy rope
-        s.strokeStyle = col === '#ffffff' ? '#e8365d' : '#ffffff'; s.lineWidth = 2.4;
-        const nx = -Math.sin(a), ny = Math.cos(a);
-        [0.28, 0.5, 0.72].forEach((t) => {
-          const px = 2 * (1 - t) * t * mx + t * t * tx, py = 2 * (1 - t) * t * my + t * t * ty;
-          s.beginPath(); s.moveTo(px - nx * 4, py - ny * 4); s.lineTo(px + nx * 4, py + ny * 4); s.stroke();
-        });
-      }
-    }
-
-    s.save();
-    if (stunned) s.scale(1.08, 0.92);
-    // body
-    const stops = withered ? ['#dcc8d0', '#b89aa8', '#8a7482'] : ['#ffc2dd', '#ff7eb0', '#c93a76'];
-    const grad = s.createRadialGradient(-r * 0.3, -r * 0.3, 2, 0, 0, r * 1.1);
-    grad.addColorStop(0, stops[0]); grad.addColorStop(0.6, stops[1]); grad.addColorStop(1, stops[2]);
-    s.fillStyle = grad; s.beginPath(); s.arc(0, 0, r, 0, Math.PI * 2); s.fill();
-    // peppermint swirl
-    s.fillStyle = withered ? 'rgba(150,100,120,0.5)' : 'rgba(255,255,255,0.78)';
-    for (let i = 0; i < 8; i++) {
-      const a0 = (i / 8) * Math.PI * 2 + now * 0.0006;
-      s.beginPath(); s.moveTo(0, 0); s.arc(0, 0, r * 0.98, a0, a0 + Math.PI / 8); s.closePath(); s.fill();
-    }
-    // gumdrops round the rim
-    for (let i = 0; i < 10; i++) {
-      if (withered && i % 2) continue;
-      const a = (i / 10) * Math.PI * 2 + 0.3;
-      const px = Math.cos(a) * r * 0.96, py = Math.sin(a) * r * 0.96;
-      s.fillStyle = withered ? '#a89aa6' : CANDY_COLORS[i % CANDY_COLORS.length];
-      s.beginPath(); s.arc(px, py, r * 0.17, 0, Math.PI * 2); s.fill();
-      s.fillStyle = 'rgba(255,255,255,0.5)'; s.beginPath(); s.arc(px - r * 0.05, py - r * 0.05, r * 0.05, 0, Math.PI * 2); s.fill();
-    }
-    if (!withered) {
-      s.fillStyle = 'rgba(255,255,255,0.4)';
-      s.beginPath(); s.ellipse(-r * 0.3, -r * 0.4, r * 0.34, r * 0.18, -0.6, 0, Math.PI * 2); s.fill();
-    }
-
-    s.save();
-    s.rotate(ang); // from here +x is the way it's facing
-    if (withered) {          // a hole in its front, and the ribcage inside
-      s.globalCompositeOperation = 'destination-out';
-      s.beginPath(); s.ellipse(-r * 0.15, 0, r * 0.62, r * 0.74, 0, 0, Math.PI * 2); s.fill();
-      s.globalCompositeOperation = 'source-over';
-      s.fillStyle = '#2a0e18';
-      s.beginPath(); s.ellipse(-r * 0.15, 0, r * 0.58, r * 0.7, 0, 0, Math.PI * 2); s.fill();
-      s.strokeStyle = '#efe6dc'; s.lineWidth = r * 0.08; s.lineCap = 'round';
-      s.beginPath(); s.moveTo(-r * 0.62, 0); s.lineTo(r * 0.3, 0); s.stroke();
-      for (let k = -2; k <= 2; k++) {
-        const x = -r * 0.15 + k * r * 0.2;
-        [-1, 1].forEach((sd) => {
-          s.strokeStyle = '#efe6dc'; s.lineWidth = r * 0.075; s.setLineDash([]);
-          s.beginPath(); s.moveTo(x, 0); s.quadraticCurveTo(x + r * 0.06, sd * r * 0.4, x - r * 0.1, sd * r * 0.62); s.stroke();
-          s.strokeStyle = '#e8365d'; s.lineWidth = r * 0.075; s.setLineDash([3, 5]);
-          s.beginPath(); s.moveTo(x, 0); s.quadraticCurveTo(x + r * 0.06, sd * r * 0.4, x - r * 0.1, sd * r * 0.62); s.stroke();
-          s.setLineDash([]);
-        });
-      }
-    }
-    // the mouth: candy-corn teeth round a dark hollow (wide open mid-scream)
-    const open = screaming ? 1.35 : stunned ? 0.5 : 0.7;
-    s.fillStyle = '#3a0a18';
-    s.beginPath(); s.ellipse(r * 0.7, 0, r * 0.22 * open, r * 0.34 * open, 0, 0, Math.PI * 2); s.fill();
-    for (let i = 0; i < 7; i++) {
-      const t = (i / 6 - 0.5) * 2.2;
-      const bx = r * 0.7 + Math.cos(t) * r * 0.3 * open * 0.7, by = Math.sin(t) * r * 0.4 * open;
-      const tipx = r * 0.7 + Math.cos(t) * r * 0.1, tipy = Math.sin(t) * r * 0.16;
-      s.fillStyle = i % 3 === 0 ? '#fff6e0' : i % 3 === 1 ? '#ffd23a' : '#ff8a1e';
-      s.beginPath(); s.moveTo(bx - 2.5, by - 2); s.lineTo(tipx, tipy); s.lineTo(bx + 2.5, by + 2); s.closePath(); s.fill();
-    }
-    // gumball eyes
-    [-1, 1].forEach((side) => {
-      const ex = r * 0.34, ey = side * r * 0.36;
-      if (withered && side === -1) {            // an empty socket
-        s.fillStyle = '#2a0e18'; s.beginPath(); s.arc(ex, ey, r * 0.2, 0, Math.PI * 2); s.fill();
-        return;
-      }
-      s.fillStyle = withered ? '#e8e0dc' : '#ffffff';
-      s.beginPath(); s.arc(ex, ey, r * 0.22, 0, Math.PI * 2); s.fill();
-      s.strokeStyle = 'rgba(0,0,0,0.3)'; s.lineWidth = 1; s.stroke();
-      if (stunned) {                              // dizzy swirl instead of a pupil
-        s.strokeStyle = '#1a0a10'; s.lineWidth = 2;
-        s.beginPath(); for (let a = 0; a < 9; a += 0.4) { const rr = a * r * 0.017; const px = ex + Math.cos(a + now * 0.01) * rr, py = ey + Math.sin(a + now * 0.01) * rr; if (a === 0) s.moveTo(px, py); else s.lineTo(px, py); } s.stroke();
-      } else {
-        s.fillStyle = screaming ? '#c01030' : '#1a0a10';
-        s.beginPath(); s.arc(ex + r * 0.07, ey, r * 0.11, 0, Math.PI * 2); s.fill();
-        s.fillStyle = '#ffffff'; s.beginPath(); s.arc(ex + r * 0.1, ey - r * 0.04, r * 0.035, 0, Math.PI * 2); s.fill();
-      }
-    });
-    s.restore();
-    s.restore();
-  }
-
-  function drawCandyKraken(g, w, h, t, phase2) {
-    clear(g, w, h);
-    const boss = { radius: 31, lookDir: { x: 1, y: 0.25 }, seed: 3 };
-    const colors = ['#ff4f9a', '#ffe14a', '#6df0ff', '#8aff5a', '#c07aff', '#ff8a2a', '#ff5252', '#ffffff'];
-    g.save();
-    g.translate(w / 2, h / 2);
-    g.scale(0.82, 0.82);
-    drawKrakenParts(g, t, !!phase2, false, false, boss, colors);
-    if (phase2) {                     // chunks bitten out of it
-      g.globalCompositeOperation = 'destination-out';
-      [[0.6, 31], [2.4, 30], [4.2, 33]].forEach(([ang, rr]) => { g.beginPath(); g.arc(Math.cos(ang) * rr * 0.94, Math.sin(ang) * rr * 0.94, rr * 0.34, 0, Math.PI * 2); g.fill(); });
-      g.globalCompositeOperation = 'source-over';
-    }
-    g.restore();
-  }
-
   // The real portrait drawing for every monster, in Monsterpedia order, so
   // the Level 31 Multipod can be built out of the actual models.
   const MODEL_FNS = [drawCrawler, drawDrifter, drawCaterpillar, drawMimic, drawLurker, drawBoss, drawKnight,
@@ -3433,7 +3210,6 @@
   wirePhase2Toggle(cisternCtx);
   wirePhase2Toggle(cultivatorCtx);
   wirePhase2Toggle(garguantuagoyleCtx);
-  wirePhase2Toggle(krakenCtx);
 
   // This page redraws seventeen fully-detailed monster portraits at once, so
   // it caps itself around 30fps instead of riding requestAnimationFrame's
@@ -3479,9 +3255,6 @@
       drawPortraitOrLock(multipodCtx, drawMultipod, t);
       drawPortraitOrLock(hollowJackCtx, drawHollowJack, t);
       drawPortraitOrLock(hushCtx, drawHush, t);
-      drawPortraitOrLock(masqueCtx, drawMasque, t);
-      drawPortraitOrLock(risenCtx, drawRisen, t);
-      drawPortraitOrLock(krakenCtx, drawCandyKraken, t, phase2Shown.has(krakenCtx));
     }
     requestAnimationFrame(loop);
   }

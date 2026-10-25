@@ -62,7 +62,7 @@
   // the one before it is done. Its own tiny save, shared by normal and hard
   // mode, so it never touches story progress.
   const HALLOWEEN_KEY = 'goofy-horror-halloween';
-  const HALLOWEEN_LEVELS = 5;
+  const HALLOWEEN_LEVELS = 2;
   function loadHalloween() {
     try {
       const parsed = JSON.parse(localStorage.getItem(HALLOWEEN_KEY));
