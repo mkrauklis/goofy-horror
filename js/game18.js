@@ -728,12 +728,13 @@
   }
   function lumPickTarget(now) {
     const L = LEVEL.luminescent;
-    for (let tries = 0; tries < 30; tries++) {
+    for (let tries = 0; tries < 60; tries++) {
       const tx = L.x0 + Math.random() * (L.x1 - L.x0), ty = 41 + Math.random() * 17;
       const px = tx * TILE, py = ty * TILE;
-      if (lumFree(px, py)) { lum.target = { x: px, y: py }; lum.nextTargetAt = now + 6000; return; }
+      if (Math.hypot(px - lum.x, py - lum.y) < 260) continue;       // always a proper swim, not a shuffle
+      if (lumFree(px, py)) { lum.target = { x: px, y: py }; lum.nextTargetAt = now + 14000; return; }
     }
-    lum.target = null;
+    lum.target = null; lum.nextTargetAt = now + 500;
   }
   function updateLuminescent(now, dt) {
     if (!lum) return;
@@ -771,6 +772,10 @@
       lum.heading += clamp(d, -turn, turn);
       const nx = lum.x + Math.cos(lum.heading) * speed * dt, ny = lum.y + Math.sin(lum.heading) * speed * dt;
       if (lumFree(nx, ny)) { lum.x = nx; lum.y = ny; } else lum.target = null;
+    }
+    if (!lum.checkAt || now >= lum.checkAt) {                     // wedged against a wall? pick somewhere new
+      if (lum.checkPos && lum.state === 'roam' && Math.hypot(lum.x - lum.checkPos.x, lum.y - lum.checkPos.y) < 90) lum.target = null;
+      lum.checkPos = { x: lum.x, y: lum.y }; lum.checkAt = now + 1800;
     }
     // the body follows the head
     lum.segs[0].x = lum.x; lum.segs[0].y = lum.y;
@@ -989,9 +994,9 @@
     }
   }
 
-  function spawnRipple(x, y) {
-    waterRipples.push({ x, y, bornAt: performance.now() });
-    if (waterRipples.length > 60) waterRipples.shift();
+  function spawnRipple(x, y, size) {
+    waterRipples.push({ x, y, bornAt: performance.now(), size: size || 1 });
+    if (waterRipples.length > 90) waterRipples.shift();
   }
 
   function boatHit(x, y, h) {
@@ -1024,9 +1029,13 @@
     b.angle = b.heading;
     p.x = b.x; p.y = b.y;
     p.facing = { x: Math.cos(b.heading), y: Math.sin(b.heading) };
-    if (Math.abs(b.v) > 70 && now >= p.nextRippleAt) {      // a wake behind it
-      spawnRipple(b.x - Math.cos(b.heading) * 30, b.y - Math.sin(b.heading) * 30);
-      p.nextRippleAt = now + 70;
+    if (Math.abs(b.v) > 25 && now >= p.nextRippleAt) {      // ripples off the bow and a wake behind it
+      const hx = Math.cos(b.heading), hy = Math.sin(b.heading);
+      const sp = clamp(Math.abs(b.v) / BOAT_MAX, 0.2, 1);
+      spawnRipple(b.x + hx * 28 - hy * 8, b.y + hy * 28 + hx * 8, 1.4 + sp);
+      spawnRipple(b.x + hx * 28 + hy * 8, b.y + hy * 28 - hx * 8, 1.4 + sp);
+      spawnRipple(b.x - hx * 32, b.y - hy * 32, 1.8 + sp * 1.2);
+      p.nextRippleAt = now + 130 - sp * 60;
     }
     if (now >= b.nextHumAt) {                                 // the outboard's drone
       b.nextHumAt = now + 150;
@@ -1739,12 +1748,12 @@
       // touch ahead of this frame's rAF timestamp, briefly going negative,
       // and arc() throws on a negative radius.
       const t = Math.max(0, (now - r.bornAt) / RIPPLE_LIFE_MS);
-      const radius = t * RIPPLE_MAX_RADIUS;
-      const alpha = (1 - t) * 0.35;
+      const radius = t * RIPPLE_MAX_RADIUS * r.size;
+      const alpha = (1 - t) * (r.size > 1 ? 0.9 : 0.35);
       g.beginPath();
       g.arc(r.x, r.y, radius, 0, Math.PI * 2);
-      g.strokeStyle = `rgba(200,235,195,${alpha})`;
-      g.lineWidth = 1.4;
+      g.strokeStyle = r.size > 1 ? `rgba(225,245,255,${alpha})` : `rgba(200,235,195,${alpha})`;
+      g.lineWidth = r.size > 1 ? 2.6 : 1.4;
       g.stroke();
     });
   }
@@ -1863,9 +1872,9 @@
           }
         }
 
-        if (ch === '~') {                       // slow wave lines, fading as the water darkens
-          const clear = 1 - waterDepth(x);
-          if (clear > 0.05) {
+        if (ch === '~') {                       // slow wave lines: the same texture all the way, just dimmer in the dark
+          const clear = 1 - 0.6 * waterDepth(x);
+          {
             g.strokeStyle = `rgba(190,225,255,${0.14 * clear})`; g.lineWidth = 1.5;
             const ph = now * 0.002 + x * 0.9 + y * 0.6;
             g.beginPath(); g.moveTo(px + 3, py + 10 + Math.sin(ph) * 3); g.quadraticCurveTo(px + 16, py + 6 + Math.sin(ph + 1) * 3, px + 29, py + 10 + Math.sin(ph + 2) * 3); g.stroke();

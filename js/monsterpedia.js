@@ -23,6 +23,7 @@
   const frozenMutationCtx = ctxFor('monster-canvas-frozenmutation');
   const eelCtx = ctxFor('monster-canvas-eel');
   const currentEelCtx = ctxFor('monster-canvas-currenteel');
+  const luminescentCtx = ctxFor('monster-canvas-luminescent');
   const greatEelCtx = ctxFor('monster-canvas-greateel');
   const tinyEelsCtx = ctxFor('monster-canvas-tinyeels');
   const cisternCtx = ctxFor('monster-canvas-cistern');
@@ -3130,6 +3131,51 @@
     g.restore();
   }
 
+  // The Level 18 Luminescent: a dark purple eel with lights down its sides
+  // (same look as in js/game18.js).
+  function drawLuminescent(g, w, h, t) {
+    clear(g, w, h);
+    const n = 17, hunting = Math.floor(t / 2500) % 2 === 1;
+    const pos = [];
+    for (let i = 0; i < n; i++) {
+      const u = i / (n - 1);
+      const x = w * 0.84 - u * w * 0.7;
+      const y = h * 0.5 + Math.sin(t * 0.003 - u * 6) * h * 0.2 * (0.35 + u);
+      pos.push({ x, y });
+    }
+    const ang = (i) => {
+      const a = pos[Math.max(0, i - 1)], b = pos[Math.min(n - 1, i + 1)];
+      return Math.atan2(a.y - b.y, a.x - b.x);
+    };
+    const rad = (i) => 2.5 + 8 * Math.pow(1 - i / (n - 1), 0.6);
+    for (let i = n - 1; i >= 0; i--) {
+      g.fillStyle = '#1b0a28'; g.beginPath(); g.arc(pos[i].x, pos[i].y, rad(i) + 1.3, 0, Math.PI * 2); g.fill();
+      g.fillStyle = i % 2 ? '#35124d' : '#2c0f42'; g.beginPath(); g.arc(pos[i].x, pos[i].y, rad(i), 0, Math.PI * 2); g.fill();
+    }
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    const col = hunting ? '255,95,150' : '110,245,255';
+    for (let i = 1; i < n; i++) {
+      const pulse = 0.7 + 0.3 * Math.sin(t * 0.008 - i * 0.9);
+      [-1, 1].forEach((side) => {
+        const a = ang(i) + side * Math.PI / 2;
+        const lx = pos[i].x + Math.cos(a) * (rad(i) - 1), ly = pos[i].y + Math.sin(a) * (rad(i) - 1);
+        const gr = g.createRadialGradient(lx, ly, 0, lx, ly, 10);
+        gr.addColorStop(0, `rgba(${col},${0.85 * pulse})`); gr.addColorStop(1, `rgba(${col},0)`);
+        g.fillStyle = gr; g.beginPath(); g.arc(lx, ly, 10, 0, Math.PI * 2); g.fill();
+        g.fillStyle = `rgba(255,255,255,${0.9 * pulse})`; g.beginPath(); g.arc(lx, ly, 1.5, 0, Math.PI * 2); g.fill();
+      });
+    }
+    g.restore();
+    const hd = pos[0], ha = ang(0);
+    g.fillStyle = '#1b0a28';
+    g.beginPath(); g.ellipse(hd.x + Math.cos(ha) * 5, hd.y + Math.sin(ha) * 5, 12, 8, ha, 0, Math.PI * 2); g.fill();
+    [-1, 1].forEach((side) => {
+      g.fillStyle = hunting ? '#ff4f7a' : '#d9a8ff';
+      g.beginPath(); g.arc(hd.x + Math.cos(ha) * 8 + Math.cos(ha + side * Math.PI / 2) * 4.5, hd.y + Math.sin(ha) * 8 + Math.sin(ha + side * Math.PI / 2) * 4.5, 2.2, 0, Math.PI * 2); g.fill();
+    });
+  }
+
   // The Halloween 3 Seeper: a slimy purple mutation (same drawing as in
   // js/halloween3.js).
   function drawSeeper(g, w, h, t) {
@@ -3312,6 +3358,7 @@
       drawPortraitOrLock(lastKnightCtx, drawLastKnight, t, phase2Shown.has(lastKnightCtx));
       drawPortraitOrLock(eelCtx, drawEel, t);
       drawPortraitOrLock(currentEelCtx, drawCurrentEel, t);
+      drawPortraitOrLock(luminescentCtx, drawLuminescent, t);
       drawPortraitOrLock(greatEelCtx, drawGreatEel, t);
       drawPortraitOrLock(tinyEelsCtx, drawTinyEels, t);
       drawPortraitOrLock(cisternCtx, drawCistern, t, phase2Shown.has(cisternCtx));
