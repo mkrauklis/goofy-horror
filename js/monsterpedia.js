@@ -41,6 +41,7 @@
   const hollowJackCtx = ctxFor('monster-canvas-hollowjack');
   const hushCtx = ctxFor('monster-canvas-hush');
   const seeperCtx = ctxFor('monster-canvas-seeper');
+  const embergourdCtx = ctxFor('monster-canvas-embergourd');
   const PORTRAIT = 160;
 
   // While a portrait is being drawn as a member of the Multipod's swarm
@@ -3131,6 +3132,110 @@
     g.restore();
   }
 
+  // The Halloween 4 Embergourd: a hulking pumpkin with a smouldering face
+  // (same drawing as in js/halloween4.js).
+  function drawEmbergourd(g, w, h, t) {
+    clear(g, w, h);
+    const cyc = t % 4200;
+    const FIREBALL_WINDUP_MS = 500;
+    const m = { radius: 30, lookDir: { x: Math.cos(t * 0.0008), y: Math.sin(t * 0.0008) * 0.6 }, state: 'alert', seed: 3, frozenUntil: 0,
+      windUpAt: cyc > 3000 && cyc < 3700 ? t - cyc + 3700 : 0, castUntil: cyc >= 3700 && cyc < 3860 ? t + 100 : 0, x: 0, y: 0 };
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    g.save();
+    g.translate(w / 2, h / 2 + 4);
+    const r = m.radius;
+    const look = m.lookDir || { x: 1, y: 0 };
+    const hunting = m.state === 'alert';
+    const cast = clamp(((m.windUpAt || 0) - t) / FIREBALL_WINDUP_MS, 0, 1);           // 1 -> 0 as the shot winds up
+    const flaring = (m.windUpAt && t < m.windUpAt) || t < (m.castUntil || 0);
+    const hop = Math.abs(Math.sin(t * (hunting ? 0.016 : 0.009) + m.seed)) * (hunting ? 5 : 3);
+    g.save();
+    g.translate(0, 0);
+
+    g.fillStyle = 'rgba(0,0,0,0.3)';
+    g.beginPath(); g.ellipse(2, r * 0.85, r * 1.05, r * 0.4, 0, 0, Math.PI * 2); g.fill();
+
+    // rooty little feet that scuttle under it
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.3;
+      const sw = Math.sin(t * (hunting ? 0.022 : 0.012) + i * 1.9 + m.seed) * 4;
+      g.strokeStyle = '#3d2a12'; g.lineWidth = 4; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(Math.cos(a) * r * 0.55, r * 0.5 + Math.sin(a) * r * 0.2);
+      g.lineTo(Math.cos(a) * r * 1.05 + sw, r * 0.78 + Math.sin(a) * r * 0.3); g.stroke();
+    }
+
+    g.translate(0, -hop);
+    const heat = hunting ? 1 : 0.55;
+    // glow thrown by the fire inside
+    const halo = g.createRadialGradient(0, 0, r * 0.6, 0, 0, r * 2.6);
+    halo.addColorStop(0, `rgba(255,${hunting ? 120 : 150},30,${0.32 * heat})`); halo.addColorStop(1, 'rgba(255,100,10,0)');
+    g.fillStyle = halo; g.beginPath(); g.arc(0, 0, r * 2.6, 0, Math.PI * 2); g.fill();
+
+    // the pumpkin
+    g.fillStyle = '#4a1a06';
+    g.beginPath(); g.ellipse(0, r * 0.12, r * 1.18, r * 1.02, 0, 0, Math.PI * 2); g.fill();
+    const body = g.createRadialGradient(-r * 0.3, -r * 0.4, 2, 0, 0, r * 1.2);
+    body.addColorStop(0, '#ffb24a'); body.addColorStop(0.55, '#e96a0e'); body.addColorStop(1, '#8f3208');
+    g.fillStyle = body;
+    g.beginPath(); g.ellipse(0, 0, r * 1.16, r, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(100,32,4,0.6)'; g.lineWidth = 1.6;
+    [-0.62, -0.3, 0, 0.3, 0.62].forEach((k) => {
+      g.beginPath();
+      g.ellipse(0, 0, r * 1.16 * Math.abs(1 - Math.abs(k) * 0.75), r, 0, Math.PI * 0.5, Math.PI * 1.5, k < 0);
+      g.stroke();
+    });
+    // stem and a curling vine
+    g.fillStyle = '#4a5a1c';
+    g.beginPath(); g.moveTo(-r * 0.14, -r * 0.92); g.lineTo(r * 0.16, -r * 0.92); g.lineTo(r * 0.24, -r * 1.34); g.lineTo(-r * 0.2, -r * 1.3); g.closePath(); g.fill();
+    g.strokeStyle = '#4fae3a'; g.lineWidth = 2.2;
+    g.beginPath(); g.moveTo(r * 0.2, -r * 1.05); g.quadraticCurveTo(r * 0.8, -r * 1.2, r * 0.7, -r * 0.7); g.quadraticCurveTo(r * 0.6, -r * 0.5, r * 0.45, -r * 0.62); g.stroke();
+
+    // the carved face, glowing from within (a little toward where it's looking)
+    const fx = look.x * r * 0.1, fy = look.y * r * 0.06;
+    g.save(); g.translate(fx, fy);
+    const flick = 0.85 + 0.15 * Math.sin(t * 0.03 + m.seed);
+    const glow = flaring ? '#ffffff' : (hunting ? '#fff0a0' : '#ffb02e');
+    g.fillStyle = glow;
+    g.shadowColor = hunting ? '#ff3a10' : '#ff8a1e'; g.shadowBlur = 8 + 10 * (flaring ? 1 : 0);
+    g.globalAlpha = Math.min(1, 0.85 * flick + (flaring ? 0.2 : 0));
+    g.beginPath();
+    g.moveTo(-r * 0.7, -r * 0.05); g.lineTo(-r * 0.2, -r * 0.05); g.lineTo(-r * 0.45, -r * 0.5); g.closePath();           // brows slanted: angry
+    g.moveTo(r * 0.7, -r * 0.05); g.lineTo(r * 0.2, -r * 0.05); g.lineTo(r * 0.45, -r * 0.5); g.closePath();
+    g.fill();
+    // the mouth: a jagged grin, gaping while it casts
+    const open = flaring ? 0.55 + 0.45 * (1 - cast) : 0.1;
+    g.beginPath();
+    g.moveTo(-r * 0.75, r * 0.2);
+    [[-0.5, 0.2 + open * 0.45], [-0.3, 0.22], [-0.1, 0.25 + open * 0.55], [0.1, 0.22], [0.3, 0.25 + open * 0.45], [0.5, 0.2], [0.75, 0.22]].forEach(([dx, dy]) => g.lineTo(r * dx, r * dy));
+    g.lineTo(r * 0.5, r * 0.1); g.lineTo(-r * 0.5, r * 0.1); g.closePath(); g.fill();
+    g.shadowBlur = 0; g.globalAlpha = 1;
+    if (window.HardMode && window.HardMode.on) {                                           // red-eyed in hard mode
+      g.fillStyle = '#ff1a14';
+      [-1, 1].forEach((s) => { g.beginPath(); g.arc(s * r * 0.4, -r * 0.2, r * 0.1, 0, Math.PI * 2); g.fill(); });
+    }
+    g.restore();
+
+    if (flaring) {                                         // the fireball gathering in front of its mouth
+      const gr = g.createRadialGradient(look.x * r * 1.1, look.y * r * 0.9, 1, look.x * r * 1.1, look.y * r * 0.9, r * (0.5 + 0.9 * (1 - cast)));
+      gr.addColorStop(0, 'rgba(255,240,170,0.95)'); gr.addColorStop(0.5, 'rgba(255,140,30,0.6)'); gr.addColorStop(1, 'rgba(255,90,10,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(look.x * r * 1.1, look.y * r * 0.9, r * (0.5 + 0.9 * (1 - cast)), 0, Math.PI * 2); g.fill();
+    }
+
+    if (t < m.frozenUntil) {
+      g.beginPath();
+      for (let i = 0; i <= 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const rr = r * 1.3 + 3;
+        if (i === 0) g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); else g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      g.closePath();
+      g.fillStyle = 'rgba(140,220,255,0.45)'; g.fill();
+      g.strokeStyle = 'rgba(220,250,255,0.8)'; g.lineWidth = 1.5; g.stroke();
+    }
+    g.restore();
+    g.restore();
+  }
+
   // The Level 18 Luminescent: a dark purple eel with lights down its sides
   // (same look as in js/game18.js).
   function drawLuminescent(g, w, h, t) {
@@ -3376,6 +3481,7 @@
       drawPortraitOrLock(hollowJackCtx, drawHollowJack, t);
       drawPortraitOrLock(hushCtx, drawHush, t);
       drawPortraitOrLock(seeperCtx, drawSeeper, t);
+      drawPortraitOrLock(embergourdCtx, drawEmbergourd, t);
     }
     requestAnimationFrame(loop);
   }

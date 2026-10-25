@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; Halloween 4</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+  <span>&middot;</span>
+  <a href="monsterpedia.html">Monsterpedia</a>
+</nav>
+
+<header class="hero">
+  <h1>Halloween 4 &mdash; The Overgrown Ward</h1>
+  <p class="objective">Find the <strong>bluelighter</strong> and light all <strong>3 green pumpkins</strong> to open the exit &mdash; and watch out for the pumpkin that spits fire.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-buttons">Bluelighter: find it | Pumpkins: 0 / 3</span>
+      <span id="hud-door">Door: locked</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    The hospital again &mdash; the same long corridors, patient rooms and
+    flickering fluorescent lights, the same candy across every floor. But the
+    ward has been left to rot and <strong>grow</strong>: vines creep across
+    the floor and up the sides of the furniture, <strong>jack-o-lanterns</strong>
+    sit here and there on the ground, spread far apart, and huge
+    <strong>2x2 wooden crates</strong> are stacked in the rooms and
+    corridors &mdash; solid, so you'll have to go around.
+  </p>
+  <p class="level-description">
+    To get out you need fire. Somewhere in the ward is a
+    <strong>bluelighter</strong> (it glows blue &mdash; the scanner will point
+    to it). Once you have it, find <strong>3 green pumpkins</strong> hidden
+    far apart across the building and touch each one to light it. When all
+    three burn blue, the exit door opens.
+  </p>
+  <p class="level-description">
+    You aren't alone: <strong>the Embergourd</strong>, a hulking pumpkin with
+    a smouldering carved face, rolls through the ward at <strong>0.8x</strong>
+    your speed. The moment it sees you it speeds up to <strong>1.3x</strong>
+    &mdash; and every <strong>5 seconds</strong> it spits a
+    <strong>fireball at 2.5x</strong> your speed. Fireballs burst on walls and
+    crates, so keep cover between you. The safe room is the one place it
+    can't touch you. Item crates are scattered through the ward with the usual
+    radar, scanner, meat, CO2 and the rest.
+  </p>
+  <p class="level-description">
+    Each of you is carrying a tranquilizer gun, empty. Find a shell in a crate
+    (you can carry up to 3 at a time) and each one loads automatically
+    &mdash; let something get close while it's hunting you and it goes
+    off on its own, stunning it for 5 seconds.
+  </p>
+</div>
+
+<script src="js/hardmode.js"></script>
+<script src="js/screenfx.js"></script>
+<script src="js/footsteps.js"></script>
+<script src="js/story.js"></script>
+<script src="levels/halloween4/level.js"></script>
+<script src="js/halloween4.js"></script>
+</body>
+</html>

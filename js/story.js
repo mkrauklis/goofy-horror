@@ -57,12 +57,12 @@
     }
   }
 
-  // The Halloween chapter: five bonus levels that sit outside the main story.
+  // The Halloween chapter: bonus levels that sit outside the main story.
   // Always available (no need to have beaten anything); each level opens once
   // the one before it is done. Its own tiny save, shared by normal and hard
   // mode, so it never touches story progress.
   const HALLOWEEN_KEY = 'goofy-horror-halloween';
-  const HALLOWEEN_LEVELS = 2;
+  const HALLOWEEN_LEVELS = 4;
   function loadHalloween() {
     try {
       const parsed = JSON.parse(localStorage.getItem(HALLOWEEN_KEY));
