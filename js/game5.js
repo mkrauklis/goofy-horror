@@ -683,7 +683,9 @@
   // coordinates, so plain floor reads as worn/mottled concrete instead of
   // one flat color -- stable across frames since it's a function of (x, y),
   // not random noise re-rolled every draw.
-  const FLOOR_SHADES = ['#4c4c53', '#525258', '#58585f', '#5e5e66', '#54545c', '#605f68'];
+  // This arena's floor is dark obsidian: near-black volcanic glass, each tile a
+  // slightly different cool tint (see drawObsidianSheen for the polish on top).
+  const FLOOR_SHADES = ['#25222d', '#2a2634', '#2f2a3a', '#272330', '#322c40', '#2b2736'];
   function floorShade(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length;
@@ -2215,9 +2217,11 @@
 
   // ---- magma cracks and embers ----
   // The floor is split open and glowing. The cracks are generated once from a
-  // fixed seed (so every run has the same ones), baked into three offscreen
-  // layers -- a charred edge, the hot orange/yellow seam, and a small soft
-  // glow -- so each frame is only a few drawImage calls with a pulsing alpha.
+  // fixed seed (so every run has the same ones), baked into two offscreen
+  // layers -- a charred edge, the hot orange seam, and a small soft glow -- so
+  // each frame is only a few drawImage calls with a pulsing alpha. All of it
+  // is drawn under the darkness: the cracks glow, but like the floor they're
+  // in, you only see that where light reaches them.
   const crackPts = [];
   let crackCrust = null, crackHot = null, crackGlow = null;
   const GLOW_DIV = 4;
@@ -2352,25 +2356,24 @@
     g.save();
     g.globalAlpha = 0.6 * pulse;
     g.drawImage(crackHot, x0, y0, w, h, x0, y0, w, h);
+    g.globalCompositeOperation = 'lighter';   // the seams' own glow, spilling onto the floor round them
+    g.globalAlpha = 0.5 * pulse;
+    g.drawImage(crackGlow, x0 / GLOW_DIV, y0 / GLOW_DIV, w / GLOW_DIV, h / GLOW_DIV, x0, y0, w, h);
     g.restore();
   }
 
-  // over the darkness mask: magma and embers are light sources, so they
-  // shine through the black instead of being swallowed by it
+  // over the darkness mask: fire, fireballs, magma pools and embers are light
+  // sources, so they shine through the black (the floor cracks, glow and all,
+  // stay under it)
   function drawMagmaGlow(g, camX, camY, now) {
     const x0 = Math.max(0, camX - VISIBLE_HALF_W), y0 = Math.max(0, camY - VISIBLE_HALF_H);
     const w = Math.min(WORLD_W - x0, VISIBLE_HALF_W * 2), h = Math.min(WORLD_H - y0, VISIBLE_HALF_H * 2);
     if (w <= 0 || h <= 0) return;
-    const pulse = 0.8 + 0.14 * Math.sin(now * 0.0031) + 0.04 * Math.sin(now * 0.011);
     g.save();
     g.translate(VIEW_W / 2, VIEW_H / 2);
     g.scale(ZOOM, ZOOM);
     g.translate(-camX, -camY);
     g.globalCompositeOperation = 'lighter';
-    g.globalAlpha = 0.16 * pulse;
-    g.drawImage(crackHot, x0, y0, w, h, x0, y0, w, h);
-    g.globalAlpha = 0.2 * pulse;
-    g.drawImage(crackGlow, x0 / GLOW_DIV, y0 / GLOW_DIV, w / GLOW_DIV, h / GLOW_DIV, x0, y0, w, h);
     for (let i = 0; i < fireTrail.length; i += 2) {
       const f = fireTrail[i];
       if (Math.abs(f.x - camX) > VISIBLE_HALF_W + 40 || Math.abs(f.y - camY) > VISIBLE_HALF_H + 40) continue;
@@ -2654,6 +2657,31 @@
     });
   }
 
+  // The polish on an obsidian tile: bevelled edges catching light, a faint
+  // diagonal reflection, and now and then a purple glint -- all from the tile's
+  // own coordinates, so it's identical every frame.
+  function drawObsidianSheen(g, tx, ty, px, py) {
+    const h = Math.imul(tx + 7, 374761393) ^ Math.imul(ty + 3, 668265263);
+    const r1 = ((h ^ (h >>> 13)) >>> 0) % 1000 / 1000;
+    const r2 = ((h >>> 7) >>> 0) % 1000 / 1000;
+    g.fillStyle = 'rgba(255,255,255,0.1)';             // lit top-left edges
+    g.fillRect(px, py, TILE, 1.5);
+    g.fillRect(px, py, 1.5, TILE);
+    g.fillStyle = 'rgba(0,0,0,0.4)';                   // shadowed bottom-right edges
+    g.fillRect(px, py + TILE - 1.5, TILE, 1.5);
+    g.fillRect(px + TILE - 1.5, py, 1.5, TILE);
+    g.strokeStyle = `rgba(200,185,240,${0.1 + 0.12 * r1})`;   // a slanted reflection
+    g.lineWidth = 1.6;
+    g.beginPath();
+    g.moveTo(px + TILE * (0.1 + 0.4 * r2), py + TILE * 0.95);
+    g.lineTo(px + TILE * (0.5 + 0.4 * r2), py + TILE * 0.05);
+    g.stroke();
+    if (r1 > 0.78) {                                    // a bright glint
+      g.fillStyle = 'rgba(220,200,255,0.3)';
+      g.fillRect(px + TILE * 0.2, py + TILE * 0.2, 4, 4);
+    }
+  }
+
   // ---- rendering ----
   function drawTiles(g, camX, camY, now) {
     const minTX = Math.max(0, Math.floor((camX - VISIBLE_HALF_W) / TILE) - 1);
@@ -2674,6 +2702,7 @@
         }
         g.fillStyle = color;
         g.fillRect(px, py, TILE, TILE);
+        if (ch === '.' || ch === 'X' || (ch === 'D' && doorUnlocked)) drawObsidianSheen(g, x, y, px, py);
 
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';

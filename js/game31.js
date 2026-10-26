@@ -1043,34 +1043,34 @@
     g.strokeStyle = '#4a4f57'; g.lineWidth = 3; g.strokeRect(fx, fy, fw, fh);
     for (let wy = fy + 52; wy < fy + fh - 70; wy += 52) {
       for (let wx = fx + 28; wx < fx + fw - 40; wx += 64) {
-        if (Math.abs(wx + 20 - doorPos.x) < 150 && wy > fy + fh - 150) continue;
+        if (Math.abs(wx + 20 - doorPos.x) < 95 && wy > fy + fh - 110) continue;
         g.fillStyle = '#a8d4f0'; g.fillRect(wx, wy, 40, 30);
         g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(wx + 3, wy + 3, 14, 10);
         g.strokeStyle = '#4a4f57'; g.lineWidth = 2; g.strokeRect(wx, wy, 40, 30);
       }
     }
     // entrance
-    const dw = 9 * TILE, dx = doorPos.x - dw / 2, dy = fy + fh - 96;
-    g.fillStyle = '#2a2d33'; g.fillRect(dx - 8, dy - 8, dw + 16, 104 + 8);
+    const dw = 4 * TILE, DOOR_H = 64, dx = doorPos.x - dw / 2, dy = fy + fh - DOOR_H;
+    g.fillStyle = '#2a2d33'; g.fillRect(dx - 8, dy - 8, dw + 16, DOOR_H + 16);
     if (doorsOpen > 0) {
-      g.fillStyle = `rgba(15,5,20,${0.6 + doorsOpen * 0.4})`; g.fillRect(dx, dy, dw, 96);
-      const glow = g.createRadialGradient(doorPos.x, dy + 90, 5, doorPos.x, dy + 90, 160);
+      g.fillStyle = `rgba(15,5,20,${0.6 + doorsOpen * 0.4})`; g.fillRect(dx, dy, dw, DOOR_H);
+      const glow = g.createRadialGradient(doorPos.x, dy + 60, 5, doorPos.x, dy + 60, 110);
       glow.addColorStop(0, `rgba(190,60,230,${0.55 * doorsOpen})`); glow.addColorStop(1, 'rgba(190,60,230,0)');
-      g.fillStyle = glow; g.fillRect(dx - 80, dy - 60, dw + 160, 220);
+      g.fillStyle = glow; g.fillRect(dx - 60, dy - 50, dw + 120, 170);
     } else {
-      g.fillStyle = '#7fb4d8'; g.fillRect(dx, dy, dw / 2 - 3, 96); g.fillRect(dx + dw / 2 + 3, dy, dw / 2 - 3, 96);
-      g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(dx + 8, dy + 8, 26, 40); g.fillRect(dx + dw / 2 + 11, dy + 8, 26, 40);
+      g.fillStyle = '#7fb4d8'; g.fillRect(dx, dy, dw / 2 - 3, DOOR_H); g.fillRect(dx + dw / 2 + 3, dy, dw / 2 - 3, DOOR_H);
+      g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(dx + 6, dy + 6, 18, 26); g.fillRect(dx + dw / 2 + 9, dy + 6, 18, 26);
     }
     // a man in a hazmat suit braced against the doors, holding them shut; every few
     // seconds something thumps them from inside and shoves him back a step. Once the
     // chase starts there's only a stain on the step where he stood.
-    const stoop = dy + 96;
+    const stoop = dy + DOOR_H;
     if (doorsOpen === 0 && window.BossCutscene && window.BossCutscene._hazmat) {
       const cyc = now % 3400, thump = cyc < 260 ? Math.exp(-cyc / 90) : 0;
       if (thump > 0.05) {                                    // the leaves flinch with it
-        g.fillStyle = `rgba(190,60,230,${0.45 * thump})`; g.fillRect(dx + dw / 2 - 3, dy, 6, 96);
+        g.fillStyle = `rgba(190,60,230,${0.45 * thump})`; g.fillRect(dx + dw / 2 - 3, dy, 6, DOOR_H);
         g.strokeStyle = `rgba(20,20,26,${0.5 * thump})`; g.lineWidth = 4;
-        g.beginPath(); g.ellipse(doorPos.x - 34, dy + 48, 14, 20, 0, 0, Math.PI * 2); g.stroke();
+        g.beginPath(); g.ellipse(doorPos.x - 22, dy + 32, 10, 14, 0, 0, Math.PI * 2); g.stroke();
       }
       window.BossCutscene._hazmat(g, { x: doorPos.x + Math.sin(now * 0.011) * 1.2, y: stoop + 17 + thump * 6, ang: -Math.PI / 2, u: PLAYER_RADIUS * 1.05, armsUp: 1, jitter: 0.05 + 0.2 * thump, time: now, walk: 0, speed: 0 });
     } else if (doorsOpen > 0) {
@@ -1078,9 +1078,9 @@
       g.fillStyle = 'rgba(110,12,18,0.7)';
       [[-14, 18, 5], [20, 34, 4], [-4, 44, 3], [30, 20, 3]].forEach(([ox, oy, r]) => { g.beginPath(); g.arc(doorPos.x + ox, stoop + oy, r, 0, Math.PI * 2); g.fill(); });
     }
-    g.fillStyle = '#3a3d44'; g.fillRect(dx - 16, dy - 40, dw + 32, 28);
-    g.fillStyle = '#fff'; g.font = 'bold 20px monospace'; g.textAlign = 'center';
-    g.fillText('THE FACILITY', doorPos.x, dy - 20);
+    g.fillStyle = '#3a3d44'; g.fillRect(dx - 12, dy - 34, dw + 24, 24);
+    g.fillStyle = '#fff'; g.font = 'bold 16px monospace'; g.textAlign = 'center';
+    g.fillText('THE FACILITY', doorPos.x, dy - 17);
     g.textAlign = 'left';
   }
 

@@ -1432,7 +1432,7 @@
     const U = 15, DUR = 8600;
     // the facade seen from above-and-in-front, like the level itself: the doors are
     // 2*DW wide and DH tall, their sill on y = 0, the lot spreading out south of it
-    const DW = 100, DH = 92;
+    const DW = 70, DH = 66;
     const HITS = [[1500, 7, 10], [3200, 12, 22], [4800, 17, 34]];   // [when, how far the doors bow, how far it shoves him back]
     const BURST = 6000;
     const SWARM = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36];
@@ -1441,7 +1441,7 @@
     for (let i = 0; i < M_N; i++) {
       MEMBERS.push({
         id: SWARM[i % SWARM.length],
-        lane: (hash(i * 3.3) - 0.5) * 190, s: 0.3 + hash(i * 5.7) * 0.3,
+        lane: (hash(i * 3.3) - 0.5) * 140, s: 0.2 + hash(i * 5.7) * 0.2,
         ts: BURST + 40 + hash(i * 4.1) * 1250, v: 0.24 + hash(i * 9.3) * 0.18, ph: hash(i * 1.9) * 6,
       });
     }
@@ -1512,11 +1512,11 @@
       flash: (t) => (t >= BURST ? 0.55 * Math.exp(-(t - BURST) / 110) : 0),
       camera(t) {
         const push = smooth(seg(t, 0, 4800)), fol = smooth(seg(t, BURST, BURST + 1800));
-        return { x: 0, y: lerp(-34, -22, push) + 40 * fol, z: lerp(1.15, 1.5, push) - 0.22 * fol };
+        return { x: 0, y: lerp(-40, -34, push) + 40 * fol, z: lerp(1.5, 2.1, push) - 0.5 * fol };
       },
       lights(t) {
         const L = [{ x: 0, y: -20, r: 540, a: 0.92 }];
-        L.push({ x: 0, y: -50, r: 150 + 120 * glowAt(t), a: 0.35 + 0.5 * glowAt(t) });
+        L.push({ x: 0, y: -34, r: 110 + 90 * glowAt(t), a: 0.35 + 0.5 * glowAt(t) });
         if (t >= BURST) L.push({ x: 0, y: 60, r: 260, a: 0.5 * Math.exp(-(t - BURST) / 900) + 0.2 });
         return L;
       },
@@ -1554,9 +1554,9 @@
             f.strokeStyle = '#4a4f57'; f.lineWidth = 2; f.strokeRect(wx, wy, 40, 30);
           }
           f.fillStyle = '#2a2d33'; f.fillRect(-DW - 10, -DH - 10, DW * 2 + 20, DH + 10);     // the door frame
-          f.fillStyle = '#3a3d44'; f.fillRect(-DW - 26, -DH - 56, DW * 2 + 52, 30);          // the sign
-          f.fillStyle = '#fff'; f.font = 'bold 20px monospace'; f.textAlign = 'center';
-          f.fillText('THE FACILITY', 0, -DH - 34);
+          f.fillStyle = '#3a3d44'; f.fillRect(-DW - 22, -DH - 44, DW * 2 + 44, 26);          // the sign
+          f.fillStyle = '#fff'; f.font = 'bold 17px monospace'; f.textAlign = 'center';
+          f.fillText('THE FACILITY', 0, -DH - 25);
           for (let i = -DW - 10; i < DW + 10; i += 16) {                                      // hazard stripes on the sill
             f.fillStyle = (Math.floor(i / 16) % 2) ? '#d8c020' : '#222';
             f.fillRect(i, 0, 16, 7);
@@ -1567,23 +1567,23 @@
         g.fillStyle = '#10061a'; g.fillRect(-DW, -DH, DW * 2, DH - 2);
         g.save(); g.beginPath(); g.rect(-DW, -DH, DW * 2, DH - 2); g.clip();
         g.globalCompositeOperation = 'lighter';
-        glow(g, 0, -DH * 0.45, 130, '190,60,230', 0.55 * gl);
+        glow(g, 0, -DH * 0.45, 95, '190,60,230', 0.55 * gl);
         g.globalCompositeOperation = 'source-over';
         if (t < BURST + 200) {                                 // shapes shoving against the glass
           for (let k = 0; k < 7; k++) {
-            const sx = -80 + k * 27 + Math.sin(t * 0.004 + k * 1.7) * 9, sy = -46 + Math.cos(t * 0.005 + k) * 12;
+            const sx = -DW * 0.8 + k * DW * 0.27 + Math.sin(t * 0.004 + k * 1.7) * 6, sy = -DH * 0.5 + Math.cos(t * 0.005 + k) * 8;
             g.fillStyle = `rgba(14,0,22,${0.25 + 0.15 * n})`;
-            g.beginPath(); g.ellipse(sx, sy, 14 + (k % 3) * 4, 24 + (k % 2) * 8, 0, 0, TAU); g.fill();
+            g.beginPath(); g.ellipse(sx, sy, 10 + (k % 3) * 3, 17 + (k % 2) * 6, 0, 0, TAU); g.fill();
           }
         } else {
-          g.globalCompositeOperation = 'lighter'; glow(g, 0, -DH * 0.5, 160, '210,90,250', 0.7); g.globalCompositeOperation = 'source-over';
+          g.globalCompositeOperation = 'lighter'; glow(g, 0, -DH * 0.5, 110, '210,90,250', 0.7); g.globalCompositeOperation = 'source-over';
         }
         g.restore();
         // light spilling through the gap onto the lot
         if (t < BURST && gap > 1) {
           g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.min(0.5, gap * 0.04) * gl;
           g.fillStyle = 'rgb(190,60,230)'; g.fillRect(-gap / 2 - 1, -DH, gap + 2, DH - 2);
-          glow(g, 0, 6, 70, '190,60,230', 0.35 * gl);
+          glow(g, 0, 6, 55, '190,60,230', 0.35 * gl);
           g.restore();
         }
         if (t < BURST) {
@@ -1632,7 +1632,7 @@
             leaf(g, side, 14, 8, 3, t);
             g.restore();
           });
-          spray(g, 0, -DH * 0.5, t, BURST, { n: 70, r: 210, seed: 12, size: 3.4, dur: 900, color: 'rgba(200,225,240,0.85)', streak: true, dir: Math.PI / 2, spread: 2.8 });
+          spray(g, 0, -DH * 0.5, t, BURST, { n: 48, r: 130, seed: 12, size: 3, dur: 800, color: 'rgba(200,225,240,0.85)', streak: true, dir: Math.PI / 2, spread: 2.8 });
           // a shock ring and a rolling cloud of dust
           const p = tt / 1100;
           if (p < 1) {
