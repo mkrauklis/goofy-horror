@@ -54,7 +54,8 @@
   // BOSS_INTRO_GRACE_MS window is re-armed from the moment play actually
   // starts, not from when the cutscene began, so it still means
   // something once control is handed back.
-  const BOSS_INTRO_CUTSCENE_MS = 3000;
+  // the opening film (js/bosscutscene.js) sets how long the intro runs; 3s name card if it isn't loaded
+  const BOSS_INTRO_CUTSCENE_MS = window.BossCutscene ? window.BossCutscene.duration('knight') : 3000;
   const BOSS_INTRO_ZOOM_MULT = 1.7;
   const BOSS_INTRO_SHAKE_MAG = 7;
 
@@ -1525,7 +1526,7 @@
   // the run timer and the boss's own BOSS_INTRO_GRACE_MS window both
   // start counting from here, not from whenever the cutscene began.
   function updateIntroCutscene(now) {
-    if (now - introStartedAt < BOSS_INTRO_CUTSCENE_MS) return;
+    if (now - introStartedAt < BOSS_INTRO_CUTSCENE_MS && !(window.BossCutscene && window.BossCutscene.skipRequested(introStartedAt))) return;
     gameState = 'playing';
     runStartTime = now;
     elapsedMs = 0;
@@ -2840,10 +2841,14 @@
     updateFloatingTexts(dt);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    renderViewport(0, now);
-    if (PLAYER_MODE === 2) {
-      renderViewport(1, now);
-      drawDivider();
+    if (gameState === 'intro' && window.BossCutscene) {
+      window.BossCutscene.draw(ctx, canvas.width, canvas.height, now - introStartedAt, 'knight');
+    } else {
+      renderViewport(0, now);
+      if (PLAYER_MODE === 2) {
+        renderViewport(1, now);
+        drawDivider();
+      }
     }
 
     if (gameState === 'freezing') {

@@ -633,7 +633,15 @@
   }
   function playerAtOwnCar(i) { return Math.hypot(players[i].x - cars[i].x, players[i].y - cars[i].y) < BOARD_RADIUS; }
 
+  // boarding the cars first plays the Multipod's opening film (js/bosscutscene.js),
+  // then the chase begins; Enter / Space / Esc skips it
+  let introStartedAt = 0;
   function startChase(now) {
+    if (window.BossCutscene) { gameState = 'intro'; introStartedAt = now; updateEngineSound(0); return; }
+    beginChase(now);
+  }
+  function beginChase(now) {
+    if (gameState === 'intro') runStartTime += now - introStartedAt;   // the film isn't part of the run
     gameState = 'chase';
     chaseStartedAt = now;
     playBoard();
@@ -1663,6 +1671,7 @@
 
   function render(now, dt) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (gameState === 'intro') { window.BossCutscene.draw(ctx, canvas.width, canvas.height, now - introStartedAt, 'multipod'); return; }
     if (gameState === 'nuke') { drawNukeScene(ctx, now - nukeStartedAt); return; }
     if (gameState === 'credits') { drawCredits(ctx, now - creditsStartedAt); return; }
     if (gameState === 'victory') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, FULL_W, VIEW_H); return; }
@@ -1753,6 +1762,9 @@
         updateEngineSound(Math.abs(leadCar().v) / CAR_MAX);
         updateBoss(now, dt);
         if (gameState === 'chase') { updateMissiles(now, dt); updateThrown(now, dt); }
+      } else if (gameState === 'intro') {
+        updateEngineSound(0);
+        if (now - introStartedAt >= window.BossCutscene.duration('multipod') || window.BossCutscene.skipRequested(introStartedAt)) beginChase(now);
       } else if (gameState === 'dying') {
         elapsedMs = now - runStartTime;
         updateDying(now, dt);

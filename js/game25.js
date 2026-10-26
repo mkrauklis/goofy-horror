@@ -41,7 +41,8 @@
   const BOSS_CATCH_RADIUS = BOSS_RADIUS * 1.1;
   const BOSS_NAME = 'THE CULTIVATOR';
 
-  const BOSS_INTRO_CUTSCENE_MS = 3000;
+  // the opening film (js/bosscutscene.js) sets how long the intro runs; 3s name card if it isn't loaded
+  const BOSS_INTRO_CUTSCENE_MS = window.BossCutscene ? window.BossCutscene.duration('cultivator') : 3000;
   const BOSS_INTRO_ZOOM_MULT = 1.7;
   const BOSS_INTRO_SHAKE_MAG = 7;
   const BOSS_INTRO_GRACE_MS = 3000;
@@ -1209,7 +1210,7 @@
 
   // ======================= cutscenes =======================
   function updateIntroCutscene(now) {
-    if (now - introStartedAt < BOSS_INTRO_CUTSCENE_MS) return;
+    if (now - introStartedAt < BOSS_INTRO_CUTSCENE_MS && !(window.BossCutscene && window.BossCutscene.skipRequested(introStartedAt))) return;
     gameState = 'playing';
     runStartTime = now;
     elapsedMs = 0;
@@ -2380,8 +2381,12 @@
       updateFloatingTexts(dt);
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      renderViewport(0, now);
-      if (PLAYER_MODE === 2) { renderViewport(1, now); drawDivider(); }
+      if (gameState === 'intro' && window.BossCutscene) {
+        window.BossCutscene.draw(ctx, canvas.width, canvas.height, now - introStartedAt, 'cultivator');
+      } else {
+        renderViewport(0, now);
+        if (PLAYER_MODE === 2) { renderViewport(1, now); drawDivider(); }
+      }
 
       if (catchFlash > 0) {
         ctx.fillStyle = `rgba(180,20,30,${catchFlash * 0.5})`;

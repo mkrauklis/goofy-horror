@@ -129,7 +129,8 @@
   const PLAYER_LIGHT_RADIUS = TILE * 7;
 
   // ---- boss intro / phase-2 cutscenes ----
-  const BOSS_INTRO_CUTSCENE_MS = 3000;
+  // the opening film (js/bosscutscene.js) sets how long the intro runs; 3s name card if it isn't loaded
+  const BOSS_INTRO_CUTSCENE_MS = window.BossCutscene ? window.BossCutscene.duration('cistern') : 3000;
   const BOSS_INTRO_GRACE_MS = 3000;
   const BOSS_INTRO_ZOOM_MULT = 1.7;
   const BOSS_INTRO_SHAKE_MAG = 7;
@@ -2486,7 +2487,7 @@
 
   function updateIntroCutscene(now) {
     if (gameState !== 'intro') return;
-    if (now - introStartedAt >= BOSS_INTRO_CUTSCENE_MS) {
+    if (now - introStartedAt >= BOSS_INTRO_CUTSCENE_MS || (window.BossCutscene && window.BossCutscene.skipRequested(introStartedAt))) {
       gameState = 'playing';
       boss.nextIdleUntil = now + BOSS_INTRO_GRACE_MS;
       nextSpearSpawnAt = now + 1500;
@@ -2560,10 +2561,14 @@
     updateFloatingTexts(dt);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    renderViewport(0, now);
-    if (PLAYER_MODE === 2) {
-      renderViewport(1, now);
-      drawDivider();
+    if (gameState === 'intro' && window.BossCutscene) {
+      window.BossCutscene.draw(ctx, canvas.width, canvas.height, now - introStartedAt, 'cistern');
+    } else {
+      renderViewport(0, now);
+      if (PLAYER_MODE === 2) {
+        renderViewport(1, now);
+        drawDivider();
+      }
     }
 
     if (catchFlash > 0) {
