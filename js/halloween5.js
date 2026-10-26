@@ -1956,31 +1956,45 @@
     });
     s.fillStyle = '#140200';
     s.beginPath(); s.moveTo(0, 0); s.lineTo(-r * 0.08, ry * 0.2); s.lineTo(r * 0.08, ry * 0.2); s.closePath(); s.fill();
-    const EYE = [[0.10, 0.14], [0.14, -0.02], [0.32, -0.2], [0.55, -0.36], [0.88, -0.54], [0.66, -0.2], [0.42, -0.01], [0.22, 0.06]];
-    [-1, 1].forEach((side) => {
-      s.save();
-      s.translate(side * r * 0.42, -ry * 0.2);
-      if (stunned) s.scale(1, 0.32);                           // half-shut, the light draining out
-      s.shadowColor = hot; s.shadowBlur = stunned ? 0 : 20;
-      s.fillStyle = stunned ? dimCol : hot; s.globalAlpha = stunned ? 0.9 : Math.min(1, 0.92 * flick + (screaming ? 0.15 : 0));
-      s.beginPath();
-      EYE.forEach(([x, y], i) => { const px = side * (x - 0.42) * r, py = (y + 0.2) * ry; if (i) s.lineTo(px, py); else s.moveTo(px, py); });
-      s.closePath(); s.fill();
-      s.shadowBlur = 0;
+    // too many mismatched, bloodshot eyes: two huge bulging ones and a scatter of
+    // little ones, sunk in dark sockets, each with a slit pupil that never leaves
+    // you; they blink out of step, and dilate when it roars
+    const EYES = [[-0.42, -0.2, 0.21, 0], [0.42, -0.2, 0.21, 1.3], [0, -0.64, 0.09, 2.1], [-0.74, -0.02, 0.08, 0.7], [0.74, -0.02, 0.08, 2.6], [-0.2, -0.52, 0.065, 3.1], [0.22, -0.5, 0.065, 1.9]];
+    EYES.forEach(([ex, ey, er, ph]) => {
+      const e = r * er * (1 + 0.2 * (screaming ? 1 : 0)), cx = ex * r, cy = ey * ry;
       if (!stunned) {
-        s.fillStyle = core; s.globalAlpha = 0.9;                // the white-hot heart of the eye
-        s.beginPath(); s.ellipse(side * r * 0.04, -ry * 0.02, r * 0.17, ry * 0.07, side * -0.5, 0, Math.PI * 2); s.fill();
-        s.fillStyle = '#160300'; s.globalAlpha = 1;             // a slit pupil, always on you
-        s.beginPath(); s.ellipse(side * r * 0.04 + look.x * r * 0.05, -ry * 0.02 + look.y * ry * 0.03, r * (screaming ? 0.012 : 0.026), ry * 0.1, side * -0.2, 0, Math.PI * 2); s.fill();
+        s.fillStyle = flourished ? 'rgba(120,210,255,0.22)' : 'rgba(255,170,30,0.22)';        // a glow round the socket
+        s.beginPath(); s.arc(cx, cy, e * 2, 0, Math.PI * 2); s.fill();
       }
-      s.restore();
+      s.fillStyle = '#0c0200';                                      // the sunken socket
+      s.beginPath(); s.ellipse(cx, cy, e * 1.28, e * 1.22, 0, 0, Math.PI * 2); s.fill();
+      const blink = ((now * 0.001 + ph * 1.7) % (3.4 + ph * 0.5)) < 0.14;
+      if (blink) {
+        s.strokeStyle = stunned ? dimCol : hot; s.lineWidth = 2;
+        s.beginPath(); s.moveTo(cx - e, cy); s.quadraticCurveTo(cx, cy + e * 0.5, cx + e, cy); s.stroke();
+        return;
+      }
+      s.fillStyle = stunned ? (flourished ? '#6a8a9a' : '#9a8a5a') : screaming ? '#fff0c8' : flourished ? '#d8f4ff' : '#f2e8a0';
+      s.beginPath(); s.arc(cx, cy, e, 0, Math.PI * 2); s.fill();
+      s.strokeStyle = 'rgba(190,20,40,0.75)'; s.lineWidth = 1;     // bloodshot
+      for (let k = 0; k < 6; k++) {
+        const va = (k / 6) * Math.PI * 2 + ph;
+        s.beginPath(); s.moveTo(cx + Math.cos(va) * e, cy + Math.sin(va) * e);
+        s.lineTo(cx + Math.cos(va + 0.2) * e * 0.45, cy + Math.sin(va + 0.2) * e * 0.45); s.stroke();
+      }
+      const jx = Math.sin(now * 0.013 + ph * 3) * e * 0.06, jy = Math.cos(now * 0.017 + ph) * e * 0.06;
+      s.fillStyle = '#080000';                                      // a slit pupil, staring at you
+      s.beginPath(); s.ellipse(cx + look.x * e * 0.35 + jx, cy + look.y * e * 0.25 + jy, e * (screaming ? 0.1 : 0.17), e * 0.68, 0, 0, Math.PI * 2); s.fill();
+      if (stunned) {                                                // heavy lids sagging over the top
+        s.fillStyle = flourished ? '#10300a' : '#3a1204';
+        s.beginPath(); s.ellipse(cx, cy - e * 0.05, e * 1.05, e * 0.8, 0, Math.PI, Math.PI * 2); s.fill();
+      }
     });
-    s.globalAlpha = 1;
     if (!stunned) {                                          // molten tears running from the eyes
       [-1, 1].forEach((side, i) => {
         const dl = ry * (0.16 + 0.1 * Math.sin(now * 0.004 + i * 2 + boss.seed));
         s.fillStyle = hot; s.globalAlpha = 0.75;
-        s.beginPath(); s.moveTo(side * r * 0.4 - 2, -ry * 0.12); s.lineTo(side * r * 0.4 + 2, -ry * 0.12); s.lineTo(side * r * 0.4, -ry * 0.12 + dl); s.closePath(); s.fill();
+        s.beginPath(); s.moveTo(side * r * 0.42 - 2, ry * 0.0); s.lineTo(side * r * 0.42 + 2, ry * 0.0); s.lineTo(side * r * 0.42, ry * 0.0 + dl); s.closePath(); s.fill();
         s.globalAlpha = 1;
       });
     }
