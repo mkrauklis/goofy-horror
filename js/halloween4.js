@@ -1985,13 +1985,13 @@
     g.fillStyle = halo; g.beginPath(); g.arc(0, 0, r * 2.6, 0, Math.PI * 2); g.fill();
 
     // the pumpkin
-    g.fillStyle = '#4a1a06';
+    g.fillStyle = '#4a3a06';
     g.beginPath(); g.ellipse(0, r * 0.12, r * 1.18, r * 1.02, 0, 0, Math.PI * 2); g.fill();
     const body = g.createRadialGradient(-r * 0.3, -r * 0.4, 2, 0, 0, r * 1.2);
-    body.addColorStop(0, '#ffb24a'); body.addColorStop(0.55, '#e96a0e'); body.addColorStop(1, '#8f3208');
+    body.addColorStop(0, '#fff09a'); body.addColorStop(0.55, '#f2c21a'); body.addColorStop(1, '#9a7208');
     g.fillStyle = body;
     g.beginPath(); g.ellipse(0, 0, r * 1.16, r, 0, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = 'rgba(100,32,4,0.6)'; g.lineWidth = 1.6;
+    g.strokeStyle = 'rgba(110,80,4,0.6)'; g.lineWidth = 1.6;
     [-0.62, -0.3, 0, 0.3, 0.62].forEach((k) => {
       g.beginPath();
       g.ellipse(0, 0, r * 1.16 * Math.abs(1 - Math.abs(k) * 0.75), r, 0, Math.PI * 0.5, Math.PI * 1.5, k < 0);
