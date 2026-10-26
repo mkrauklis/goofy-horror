@@ -14,6 +14,7 @@
 
   const LEVEL = window.LEVEL4;
   const TILE = LEVEL.tileSize;
+  const LD = window.LevelDetails.make(LEVEL, 4);
   const COLS = LEVEL.cols;
   const ROWS = LEVEL.rows;
   const WORLD_W = COLS * TILE;
@@ -2422,6 +2423,7 @@
     maskCtx.globalCompositeOperation = 'source-over';
     maskCtx.fillStyle = '#000000';
     maskCtx.fillRect(0, 0, VIEW_W, VIEW_H);
+    LD.lights(maskCtx, camX, camY, VIEW_W, VIEW_H, now, punchLight);
 
     const sz = LEVEL.safeZone;
     const s0 = worldToScreen(sz.x0 * TILE, sz.y0 * TILE);
@@ -2459,10 +2461,12 @@
     ctx.save();
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY, now);
+    LD.floor(ctx, camX, camY, VIEW_W, VIEW_H, now);
     monsters.forEach((m) => HM.monster(ctx, m, (c) => drawMonster(c, now, m)));
     mimicSpawns.forEach((ms) => drawMimicSpawn(ctx, now, ms));
     drawPlayers(ctx);
     drawParticles(ctx);
+    LD.above(ctx, camX, camY, VIEW_W, VIEW_H, now);
     ctx.restore();
 
     buildDarknessMask(camX, camY, now);
@@ -2733,6 +2737,7 @@
       updateSafeMusic(players.some(isInSafeZone));
     }
     updateParticles(dt);
+    LD.update(dt, players);
     updateFloatingTexts(dt);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
