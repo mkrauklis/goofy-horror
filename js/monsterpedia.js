@@ -3601,7 +3601,8 @@
     drawWinged, drawVaultGuardian, drawWraith, drawDigWorm, drawLastKnight, drawFrostTentacleCreature,
     drawMutation, drawBrood, drawThawSpider, drawFrozenMutation, drawEel, drawGreatEel, drawCurrentEel,
     drawTinyEels, drawCistern, drawGrassDrifter, drawKindling, drawStalker, drawSentry, drawCultivator,
-    drawReacher, drawGargoyle, drawWarden, drawGrotesque, drawGarguantuagoyle];
+    drawReacher, drawGargoyle, drawWarden, drawGrotesque, drawGarguantuagoyle, drawPumpkinKing,
+    drawHollowJack, drawHush, drawRotten, drawEmbergourd];
   let modelExtents = null;
   function measureModelExtents() {
     const c = document.createElement('canvas');
