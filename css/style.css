@@ -30,6 +30,10 @@ html, body {
   font-family: 'Courier New', Courier, monospace;
 }
 
+/* html alone carries the page colour: a painted body would cover the fixed
+   #lobby-bg canvas (z-index -1) wherever the page has content */
+body { background: transparent; }
+
 a {
   color: var(--accent);
 }
