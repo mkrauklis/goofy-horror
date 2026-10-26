@@ -1611,6 +1611,61 @@
     g.restore();
   }
 
+  // The Ashen One's phase 2, Ashen One Magmatic (below 25 HP): the same burnt body, split
+  // open with molten cracks and grown over with magma spikes -- game5.js draws the same two
+  // overlays on the real boss. Shown by clicking the Ashen One's picture on the main menu.
+  function drawBossMagmatic(g, w, h, t) {
+    clear(g, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    const seed = 74, radius = 46;
+    const pulse = 0.8 + 0.2 * Math.sin(t * 0.004);
+    const SPIKES = 11;
+    for (let i = 0; i < SPIKES; i++) {      // spikes first, so the body sits over their roots
+      const a = (i / SPIKES) * Math.PI * 2 + 0.2;
+      const len = radius * (0.5 + 0.16 * Math.sin(i * 2.7 + 1));
+      const bw = radius * 0.2;
+      const bx = Math.cos(a) * radius * 0.86, by = Math.sin(a) * radius * 0.86;
+      const tx = Math.cos(a) * (radius * 0.86 + len), ty = Math.sin(a) * (radius * 0.86 + len);
+      const px = -Math.sin(a) * bw, py = Math.cos(a) * bw;
+      g.beginPath();
+      g.moveTo(bx + px, by + py); g.lineTo(tx, ty); g.lineTo(bx - px, by - py);
+      g.closePath();
+      g.fillStyle = '#1d0b08';
+      g.fill();
+      g.strokeStyle = `rgba(255,110,30,${0.75 * pulse})`;
+      g.lineWidth = 1.6;
+      g.beginPath(); g.moveTo(bx, by); g.lineTo(tx, ty); g.stroke();
+      g.beginPath(); g.arc(tx, ty, 2.2, 0, Math.PI * 2);
+      g.fillStyle = `rgba(255,200,90,${pulse})`;
+      g.fill();
+    }
+    drawBossTentacles(g, radius, t, seed, ['#1a0806', '#4a1210']);
+    drawBlobBody(g, radius, '#2c0a06', '#ff5a1a', seed, t, { rim: '#0a0201', veinColor: 'rgba(255,120,40,0.35)' });
+    g.save();                                // molten cracks, clipped to the body
+    g.beginPath(); g.arc(0, 0, radius * 0.97, 0, Math.PI * 2); g.clip();
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (let i = 0; i < 9; i++) {
+      let a = (i / 9) * Math.PI * 2 + 0.35 * Math.sin(i * 3.1);
+      let x = Math.cos(a) * radius * 0.12, y = Math.sin(a) * radius * 0.12;
+      const pts = [[x, y]];
+      for (let k = 0; k < 5; k++) {
+        a += Math.sin(i * 5.3 + k * 2.1) * 0.7;
+        x += Math.cos(a) * radius * 0.2; y += Math.sin(a) * radius * 0.2;
+        pts.push([x, y]);
+      }
+      [[5, `rgba(255,70,10,${0.28 * pulse})`], [2.2, `rgba(255,150,40,${0.9 * pulse})`], [0.9, `rgba(255,235,160,${pulse})`]].forEach(([lw, col]) => {
+        g.strokeStyle = col; g.lineWidth = lw;
+        g.beginPath(); pts.forEach(([px, py], j) => (j ? g.lineTo(px, py) : g.moveTo(px, py))); g.stroke();
+      });
+    }
+    g.restore();
+    drawBossFlames(g, radius, t, seed);
+    const angle = t * 0.0006;
+    drawEye(g, radius, seed, { x: Math.cos(angle), y: Math.sin(angle) * 0.5 }, { irisHi: '#ffe27a', irisMid: '#ff7a1e', irisEdge: '#8a2208' });
+    g.restore();
+  }
+
   // The Level 6 Knight: the same Crawler blob, but in riveted plate armor
   // with a banded helm-ring over the eye (not covering it -- the eye is
   // still the actual gameplay tell) and a sword held out to one side.
@@ -3602,7 +3657,7 @@
     drawMutation, drawBrood, drawThawSpider, drawFrozenMutation, drawEel, drawGreatEel, drawCurrentEel,
     drawTinyEels, drawCistern, drawGrassDrifter, drawKindling, drawStalker, drawSentry, drawCultivator,
     drawReacher, drawGargoyle, drawWarden, drawGrotesque, drawGarguantuagoyle, drawPumpkinKing,
-    drawHollowJack, drawHush, drawRotten, drawEmbergourd];
+    drawHollowJack, drawHush, drawRotten, drawEmbergourd, drawBossMagmatic];
   let modelExtents = null;
   function measureModelExtents() {
     const c = document.createElement('canvas');
