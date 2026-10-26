@@ -10,6 +10,8 @@
 <canvas id="lobby-bg"></canvas>
 <nav class="level-nav">
   <a href="index.html" class="active">Menu</a>
+  <span>&middot;</span>
+  <button id="music-toggle" class="music-toggle" type="button">&#9834; Music: On</button>
 </nav>
 
 <header class="hero">
@@ -407,6 +409,7 @@
 <script src="js/story.js"></script>
 <script src="js/playermodel.js"></script>
 <script src="js/monsterpedia.js"></script>
+<script src="js/menumusic.js"></script>
 <script>
   // Best times are saved per-level by each game's own script under
   // goofy-horror-best-levelN; read-only here, just for display.
@@ -714,9 +717,39 @@
     };
     const HALLOWEEN_LEVEL_MONSTERS = { 1: [33], 2: [34], 3: [35], 4: [36], 5: [32] };
     const HALLOWEEN_LEVEL_OF = { 33: 1, 34: 2, 35: 3, 36: 4, 32: 5 };
+    // each monster's body radius in the game itself (the player's is 10): the background
+    // draws them at the same proportions to the hazmat chimps as the levels do
+    const GAME_RADIUS = {
+      0: 16, 1: 24, 2: 12, 3: 13, 4: 11, 5: 128, 6: 16, 7: 16, 8: 64, 9: 10, 10: 24, 11: 72, 12: 22, 13: 24, 14: 8,
+      15: 15, 16: 48, 17: 15, 18: 21, 19: 15, 20: 5, 21: 34, 22: 24, 23: 24, 24: 24, 25: 24, 26: 48, 27: 32, 28: 30,
+      29: 28, 30: 5, 31: 70, 32: 72, 33: 19, 34: 17, 35: 16, 36: 17,
+    };
+    const CHIMP_SCALE = 1.3;      // the player's own on-screen scale in the background (radius 10 -> 13px); every monster follows it
+    // a model's body radius in its own portrait: the biggest circle that fits inside it, so
+    // tentacles, wings and spikes don't count
+    const bodyRadii = {};
+    function bodyRadius(id) {
+      if (bodyRadii[id]) return bodyRadii[id];
+      const src = window.MonsterModels.sprite(id, 0), n = src.width;
+      const tmp = document.createElement('canvas'); tmp.width = tmp.height = n;
+      const tg = tmp.getContext('2d', { willReadFrequently: true });
+      tg.drawImage(src, 0, 0);
+      const px = tg.getImageData(0, 0, n, n).data, d = new Float32Array(n * n);
+      for (let i = 0; i < n * n; i++) d[i] = px[i * 4 + 3] > 100 ? 1e9 : 0;
+      const at = (x, y) => (x < 0 || y < 0 || x >= n || y >= n ? 0 : d[y * n + x]);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        if (d[y * n + x]) d[y * n + x] = Math.min(at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + 1.414, at(x + 1, y - 1) + 1.414, 1e9);
+      }
+      let best = 0;
+      for (let y = n - 1; y >= 0; y--) for (let x = n - 1; x >= 0; x--) {
+        if (d[y * n + x]) { d[y * n + x] = Math.min(d[y * n + x], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + 1.414, at(x - 1, y + 1) + 1.414); best = Math.max(best, d[y * n + x]); }
+      }
+      return (bodyRadii[id] = Math.max(6, best));
+    }
+    function trueScale(id) { return GAME_RADIUS[id] * CHIMP_SCALE / bodyRadius(id); }
     const LOBBY = {
-      story: { pool: [0, 1, 3, 6, 11, 16, 21, 26, 31].map((id, i) => ({ id, speed: 24 + (i % 4) * 4 })), lamps: 'cool' },
-      holiday: { pool: [33, 34, 35, 36, 32].map((id, i) => ({ id, speed: [30, 34, 26, 30, 20][i], scale: [1.5, 1.4, 1.4, 1.5, 1.9][i] })), lamps: 'pumpkin' },
+      story: { pool: [0, 1, 3, 6, 8, 10, 15, 22, 24].map((id, i) => ({ id, speed: 24 + (i % 4) * 4 })), lamps: 'cool' },
+      holiday: { pool: [33, 34, 35, 36, 32].map((id, i) => ({ id, speed: [30, 34, 26, 30, 20][i] })), lamps: 'pumpkin' },
     };
     const scenes = {};
     let lobbyShow = 0, hoverLine = null, lineup = [];
@@ -724,9 +757,9 @@
     function bindHover(selector, lineFor) {
       document.querySelectorAll(selector).forEach((el) => {
         const on = () => {
-          hoverLine = lineFor(el); if (hoverLine) lineup = hoverLine;
-          const r = el.getBoundingClientRect();
-          lineBottom = r.top + r.height / 2 < window.innerHeight / 2;
+          hoverLine = lineFor(el); if (!hoverLine) return;
+          lineup = hoverLine;
+          openReveal(el.classList.contains('holiday-card') ? el.parentElement : el);
         };
         const off = () => { hoverLine = null; };
         el.addEventListener('mouseenter', on); el.addEventListener('mouseleave', off);
@@ -792,16 +825,17 @@
     }
     function initLobby(mode) {
       const W = canvas.width, H = canvas.height, def = LOBBY[mode], M = window.MonsterModels;
+      const HW = Math.ceil(H / 60) * 60;       // the room's height: whole tiles, repeating as the page scrolls
       const rnd = (a, b) => a + Math.random() * (b - a);
       return {
-        W, H,
+        W, H, HW,
         mons: def.pool.map((m) => Object.assign({}, m, {
-          scale: m.scale || Math.max(0.8, Math.min(2, 75 / M.extent(m.id))),
-          x: rnd(0.1, 0.9) * W, y: rnd(0.15, 0.85) * H, a: rnd(0, 6.28), turnAt: 0,
+          scale: trueScale(m.id),
+          x: rnd(0.1, 0.9) * W, y: rnd(0.15, 0.85) * HW, a: rnd(0, 6.28), turnAt: 0,
         })),
-        players: [PlayerModel.ORANGE, PlayerModel.GREEN].map((color, i) => ({ color, x: W * (0.3 + 0.4 * i), y: H * 0.6, a: rnd(0, 6.28), phase: 0, turnAt: 0 })),
-        lamps: Array.from({ length: 9 }, (_, i) => ({ x: hash(i * 9.1) * W, y: hash(i * 4.7 + 2) * H, seed: i * 3 })),
-        floor: buildLobbyFloor(mode, W, H),
+        players: [PlayerModel.ORANGE, PlayerModel.GREEN].map((color, i) => ({ color, x: W * (0.3 + 0.4 * i), y: HW * 0.6, a: rnd(0, 6.28), phase: 0, turnAt: 0 })),
+        lamps: Array.from({ length: 9 }, (_, i) => ({ x: hash(i * 9.1) * W, y: hash(i * 4.7 + 2) * HW, seed: i * 3 })),
+        floor: buildLobbyFloor(mode, W, HW),
         dark: null,
       };
     }
@@ -811,64 +845,73 @@
       o.a += Math.max(-turn * dt, Math.min(turn * dt, d));
       o.x += Math.cos(o.a) * speed * dt; o.y += Math.sin(o.a) * speed * dt;
     }
-    // The lineup is drawn on its own canvas above the page, on whichever half of the
-    // screen the hovered card is NOT in, so the cards never cover it.
-    const fg = document.createElement('canvas');
-    fg.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:30;pointer-events:none';
-    document.body.appendChild(fg);
-    const fctx = fg.getContext('2d');
-    let lineBottom = true;
-    function drawLineup(mode, now, show, slots, n) {
-      const W = canvas.width, H = canvas.height, M = window.MonsterModels;
-      if (fg.width !== W || fg.height !== H) { fg.width = W; fg.height = H; }
-      fctx.clearRect(0, 0, W, H);
-      if (show < 0.02) return;
-      const g = fctx, crowded = n > 5, bandH = crowded ? 250 : 300;
-      const spacing = n > 1 ? 0.76 * W / (n - 1) : 300;
-      const maxW = Math.max(110, Math.min(300, spacing * 0.92));
-      const by = lineBottom ? H - bandH / 2 - 8 : bandH / 2 + 8;
-      // a dark band with soft top and bottom edges
-      const gr = g.createLinearGradient(0, by - bandH / 2, 0, by + bandH / 2);
-      gr.addColorStop(0, 'rgba(4,3,9,0)'); gr.addColorStop(0.18, `rgba(4,3,9,${0.9 * show})`);
-      gr.addColorStop(0.82, `rgba(4,3,9,${0.9 * show})`); gr.addColorStop(1, 'rgba(4,3,9,0)');
-      g.fillStyle = gr; g.fillRect(0, by - bandH / 2, W, bandH);
+    // Hovering a level opens a panel in the page right under its card (the cards
+    // below it slide down) and the lineup is drawn into that panel's canvas.
+    const reveal = document.createElement('div');
+    reveal.className = 'monster-reveal';
+    const rc = document.createElement('canvas');
+    reveal.appendChild(rc);
+    const rctx = rc.getContext('2d');
+    reveal.addEventListener('mouseenter', () => { if (revealOpen) hoverLine = lineup; });
+    reveal.addEventListener('mouseleave', () => { hoverLine = null; });
+    let revealOpen = false;
+    function openReveal(anchor) {
+      if (reveal.previousElementSibling !== anchor) { anchor.after(reveal); lobbyShow = 0; }
+      revealOpen = true;
+    }
+    function drawLineup(mode, now, show, n) {
+      const M = window.MonsterModels;
+      if (show < 0.003) {
+        if (reveal.parentNode) reveal.remove();       // fully shut: take no space (or flex gap) at all
+        revealOpen = false;
+        return;
+      }
+      const crowded = n > 3, H = crowded ? 190 : 270;
+      const W = reveal.clientWidth || 640;
+      if (rc.width !== W || rc.height !== H) { rc.width = W; rc.height = H; rc.style.height = H + 'px'; }
+      reveal.style.height = Math.round(show * H) + 'px';
+      const g = rctx;
+      g.clearRect(0, 0, W, H);
+      const spacing = n > 1 ? 0.8 * W / (n - 1) : 0;
+      const wrapW = n > 1 ? Math.max(100, Math.min(260, spacing * 0.92)) : 360;
       const wrap = (text) => {
         const lines = []; let cur = '';
         text.split(' ').forEach((w) => {
-          if (cur && g.measureText(cur + ' ' + w).width > maxW) { lines.push(cur); cur = w; } else cur = cur ? cur + ' ' + w : w;
+          if (cur && g.measureText(cur + ' ' + w).width > wrapW) { lines.push(cur); cur = w; } else cur = cur ? cur + ' ' + w : w;
         });
         if (cur) lines.push(cur);
         return lines;
       };
       const put = (str, x, y, col) => { g.fillStyle = '#000'; g.fillText(str, x + 1, y + 1); g.fillStyle = col; g.fillText(str, x, y); };
       g.globalAlpha = show;
-      slots.forEach((s) => {
-        const cy = by - bandH / 2 + 22 + s.r + 14;
-        const halo = g.createRadialGradient(s.x, cy, 0, s.x, cy, s.r * 1.7);
-        halo.addColorStop(0, mode === 'holiday' ? 'rgba(255,150,40,0.22)' : 'rgba(150,200,255,0.2)'); halo.addColorStop(1, 'rgba(0,0,0,0)');
-        g.fillStyle = halo; g.beginPath(); g.arc(s.x, cy, s.r * 1.7, 0, 6.28); g.fill();
-        if (!s.hidden) {
-          g.save(); g.translate(s.x, cy); g.scale(s.k, s.k); M.draw(s.id, g, now); g.restore();
+      lineup.forEach((e, k) => {
+        const r = n === 1 ? 62 : Math.max(26, Math.min(crowded ? 38 : 62, spacing * 0.42));
+        const x = n === 1 ? W / 2 : W * 0.1 + 0.8 * W * (k / (n - 1)), cy = 22 + r + 12;
+        const halo = g.createRadialGradient(x, cy, 0, x, cy, r * 1.8);
+        halo.addColorStop(0, mode === 'holiday' ? 'rgba(255,150,40,0.24)' : 'rgba(150,200,255,0.22)'); halo.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = halo; g.beginPath(); g.arc(x, cy, r * 1.8, 0, 6.28); g.fill();
+        if (!e.hidden) {
+          g.save(); g.translate(x, cy); const k2 = r / Math.max(30, M.extent(e.id)); g.scale(k2, k2); M.draw(e.id, g, now); g.restore();
         } else {
           // not beaten yet: a blank, featureless blob with a question mark on it
-          const q = s.r * 0.78;
-          const bg = g.createRadialGradient(s.x - q * 0.3, cy - q * 0.3, 2, s.x, cy, q);
+          const q = r * 0.8;
+          const bg = g.createRadialGradient(x - q * 0.3, cy - q * 0.3, 2, x, cy, q);
           bg.addColorStop(0, '#4a4f5a'); bg.addColorStop(1, '#1c1f26');
-          g.fillStyle = bg; g.beginPath(); g.arc(s.x, cy, q, 0, 6.28); g.fill();
+          g.fillStyle = bg; g.beginPath(); g.arc(x, cy, q, 0, 6.28); g.fill();
           g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 2; g.stroke();
           g.textAlign = 'center'; g.textBaseline = 'middle';
           g.font = `700 ${Math.round(q * 1.3)}px "Courier New", monospace`;
-          g.fillStyle = '#d8dce6'; g.fillText('?', s.x, cy + q * 0.06);
+          g.fillStyle = '#d8dce6'; g.fillText('?', x, cy + q * 0.06);
           g.textBaseline = 'alphabetic';
         }
         g.textAlign = 'center';
-        let y = cy + s.r + 20;
-        g.font = `700 ${crowded ? 12 : 17}px "Courier New", monospace`;
-        wrap(s.hidden ? '???' : (MONSTER_NAMES[s.id] || '')).forEach((ln) => { put(ln, s.x, y, mode === 'holiday' ? '#ffae4a' : '#bfe0ff'); y += crowded ? 14 : 20; });
+        let y = cy + r + 22;
+        g.font = `700 ${crowded ? 12 : 16}px "Courier New", monospace`;
+        wrap(e.hidden ? '???' : (MONSTER_NAMES[e.id] || '')).forEach((ln) => { put(ln, x, y, mode === 'holiday' ? '#ffae4a' : '#bfe0ff'); y += crowded ? 14 : 19; });
         if (!crowded) {
           g.font = '13px "Courier New", monospace';
           y += 2;
-          wrap(s.hidden ? 'Beat this level to find out what lurks here.' : (MONSTER_DESC[s.id] || '')).forEach((ln) => { put(ln, s.x, y, '#c4c8d4'); y += 16; });
+          wrap(e.hidden ? 'Beat this level to find out what lurks here.' : (MONSTER_DESC[e.id] || '')).forEach((ln) => { put(ln, x, y, '#c4c8d4'); y += 16; });
         }
       });
       g.globalAlpha = 1;
@@ -877,16 +920,17 @@
       const W = canvas.width, H = canvas.height, def = LOBBY[mode];
       let hol = scenes[mode];
       if (!hol || hol.W !== W || hol.H !== H) hol = scenes[mode] = initLobby(mode);
+      const HW = hol.HW;
       // players run around, steering away from whatever gets close
       hol.players.forEach((p) => {
-        if (now > p.turnAt) { p.wx = Math.random() * W; p.wy = Math.random() * H; p.turnAt = now + 2500 + Math.random() * 3000; }
+        if (now > p.turnAt) { p.wx = Math.random() * W; p.wy = Math.random() * HW; p.turnAt = now + 2500 + Math.random() * 3000; }
         let tx = p.wx, ty = p.wy;
         hol.mons.forEach((m) => {
           const d = Math.hypot(m.x - p.x, m.y - p.y);
           if (d < 260) { tx += (p.x - m.x) * (260 - d) / 40; ty += (p.y - m.y) * (260 - d) / 40; }
         });
         stepToward(p, tx, ty, 78, dt, 3.2);
-        p.x = Math.max(30, Math.min(W - 30, p.x)); p.y = Math.max(30, Math.min(H - 30, p.y));
+        p.x = Math.max(30, Math.min(W - 30, p.x)); p.y = Math.max(40, Math.min(HW - 40, p.y));
         p.phase += 78 * dt * 0.11;
       });
       // monsters amble about and creep after the nearest player
@@ -898,58 +942,62 @@
           if (now > m.turnAt) { m.wa = Math.random() * 6.28; m.turnAt = now + 1500 + Math.random() * 2500; }
           stepToward(m, m.x + Math.cos(m.wa || 0) * 100, m.y + Math.sin(m.wa || 0) * 100, m.speed * 0.7, dt, 1);
         }
-        m.x = Math.max(40, Math.min(W - 40, m.x)); m.y = Math.max(40, Math.min(H - 40, m.y));
+        m.x = Math.max(40, Math.min(W - 40, m.x)); m.y = Math.max(60, Math.min(HW - 60, m.y));
       });
-      // hovering a level lines up its monsters along the lower part of the screen
-      lobbyShow += ((hoverLine ? 1 : 0) - lobbyShow) * Math.min(1, dt * 4);
+      // the panel under a hovered level opens and shuts smoothly
+      lobbyShow += ((hoverLine ? 1 : 0) - lobbyShow) * Math.min(1, dt * 6);
       const show = lobbyShow < 0.003 ? 0 : lobbyShow * lobbyShow * (3 - 2 * lobbyShow);
-      const M = window.MonsterModels, n = lineup.length;
-      const slots = lineup.map((e, k) => {
-        const spacing = n > 1 ? 0.76 * W / (n - 1) : 0;
-        const r = Math.max(34, Math.min(n === 1 ? 84 : 72, spacing * 0.46));
-        return { id: e.id, hidden: e.hidden, x: n === 1 ? W / 2 : W * 0.12 + 0.76 * W * (k / (n - 1)), k: r / Math.max(30, M.extent(e.id)), r };
-      });
+      drawLineup(mode, now, show, lineup.length);
 
-      ctx.drawImage(hol.floor, 0, 0);
-      hol.lamps.forEach((l) => {
-        const fl = 0.8 + 0.2 * Math.sin(now * 0.017 + l.seed);
+      // The room scrolls with the page: it repeats every HW pixels, so draw the visible
+      // slice of it once or (across the seam) twice.
+      const M = window.MonsterModels;
+      const off = ((window.scrollY % HW) + HW) % HW;
+      const tiles = off === 0 ? [0] : [-off, HW - off];
+      const lamp = (l, oy, now2) => {
+        const y = l.y + oy, fl = 0.8 + 0.2 * Math.sin(now2 * 0.017 + l.seed);
         if (def.lamps === 'cool') {
-          const gr = ctx.createRadialGradient(l.x, l.y, 2, l.x, l.y, 130);
+          const gr = ctx.createRadialGradient(l.x, y, 2, l.x, y, 130);
           gr.addColorStop(0, `rgba(190,225,255,${0.3 * fl})`); gr.addColorStop(1, 'rgba(150,200,255,0)');
-          ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(l.x, l.y, 130, 0, 6.28); ctx.fill();
-          ctx.fillStyle = '#2a3038'; ctx.beginPath(); ctx.arc(l.x, l.y, 11, 0, 6.28); ctx.fill();
-          ctx.fillStyle = `rgba(225,242,255,${fl})`; ctx.beginPath(); ctx.arc(l.x, l.y, 6, 0, 6.28); ctx.fill();
+          ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(l.x, y, 130, 0, 6.28); ctx.fill();
+          ctx.fillStyle = '#2a3038'; ctx.beginPath(); ctx.arc(l.x, y, 11, 0, 6.28); ctx.fill();
+          ctx.fillStyle = `rgba(225,242,255,${fl})`; ctx.beginPath(); ctx.arc(l.x, y, 6, 0, 6.28); ctx.fill();
           return;
         }
-        const gr = ctx.createRadialGradient(l.x, l.y, 2, l.x, l.y, 120);
+        const gr = ctx.createRadialGradient(l.x, y, 2, l.x, y, 120);
         gr.addColorStop(0, `rgba(255,170,50,${0.38 * fl})`); gr.addColorStop(1, 'rgba(255,140,20,0)');
-        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(l.x, l.y, 120, 0, 6.28); ctx.fill();
-        ctx.fillStyle = '#c4580c'; ctx.beginPath(); ctx.ellipse(l.x, l.y, 16, 13, 0, 0, 6.28); ctx.fill();
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(l.x, y, 120, 0, 6.28); ctx.fill();
+        ctx.fillStyle = '#c4580c'; ctx.beginPath(); ctx.ellipse(l.x, y, 16, 13, 0, 0, 6.28); ctx.fill();
         ctx.fillStyle = `rgba(255,232,120,${fl})`;
-        ctx.beginPath(); ctx.moveTo(l.x - 9, l.y - 2); ctx.lineTo(l.x - 3, l.y - 2); ctx.lineTo(l.x - 6, l.y - 8); ctx.closePath();
-        ctx.moveTo(l.x + 9, l.y - 2); ctx.lineTo(l.x + 3, l.y - 2); ctx.lineTo(l.x + 6, l.y - 8); ctx.closePath();
-        ctx.moveTo(l.x - 8, l.y + 4); ctx.lineTo(l.x, l.y + 8); ctx.lineTo(l.x + 8, l.y + 4); ctx.lineTo(l.x, l.y + 2); ctx.closePath(); ctx.fill();
-      });
+        ctx.beginPath(); ctx.moveTo(l.x - 9, y - 2); ctx.lineTo(l.x - 3, y - 2); ctx.lineTo(l.x - 6, y - 8); ctx.closePath();
+        ctx.moveTo(l.x + 9, y - 2); ctx.lineTo(l.x + 3, y - 2); ctx.lineTo(l.x + 6, y - 8); ctx.closePath();
+        ctx.moveTo(l.x - 8, y + 4); ctx.lineTo(l.x, y + 8); ctx.lineTo(l.x + 8, y + 4); ctx.lineTo(l.x, y + 2); ctx.closePath(); ctx.fill();
+      };
+      const onScreen = (y, oy) => y + oy > -170 && y + oy < H + 170;
       const shadowed = (id, x, y, k) => {
         ctx.save(); ctx.translate(x, y); ctx.scale(k, k);
         ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(3, 14, 26, 10, 0, 0, 6.28); ctx.fill();
         M.draw(id, ctx, now);
         ctx.restore();
       };
-      ctx.save();
-      hol.mons.forEach((m) => shadowed(m.id, m.x, m.y, m.scale));
-      hol.players.forEach((p) => {
-        ctx.save(); ctx.translate(p.x, p.y); ctx.scale(2.6, 2.6); ctx.translate(-p.x, -p.y);
-        PlayerModel.draw(ctx, 10, { x: p.x, y: p.y, color: p.color, facing: { x: Math.cos(p.a), y: Math.sin(p.a) }, walkPhase: p.phase });
-        ctx.restore();
+      tiles.forEach((oy) => {
+        ctx.drawImage(hol.floor, 0, oy);
+        hol.lamps.forEach((l) => { if (onScreen(l.y, oy)) lamp(l, oy, now); });
+        hol.mons.forEach((m) => { if (onScreen(m.y, oy)) shadowed(m.id, m.x, m.y + oy, m.scale); });
+        hol.players.forEach((p) => {
+          if (!onScreen(p.y, oy)) return;
+          const py = p.y + oy;
+          ctx.save(); ctx.translate(p.x, py); ctx.scale(CHIMP_SCALE, CHIMP_SCALE); ctx.translate(-p.x, -py);
+          PlayerModel.draw(ctx, 10, { x: p.x, y: py, color: p.color, facing: { x: Math.cos(p.a), y: Math.sin(p.a) }, walkPhase: p.phase });
+          ctx.restore();
+        });
       });
-      ctx.restore();
-      // darkness like the real game: the whole screen is near-black, lit only by the
+      // darkness like the real game: the whole room is near-black, lit only by the
       // players' flashlights, the lamps and a faint glow round each monster
-      if (!hol.dark) { hol.dark = document.createElement('canvas'); hol.dark.width = W; hol.dark.height = H; }
+      if (!hol.dark) { hol.dark = document.createElement('canvas'); hol.dark.width = W; hol.dark.height = HW; }
       const d = hol.dark.getContext('2d');
-      d.globalCompositeOperation = 'source-over'; d.clearRect(0, 0, W, H);
-      d.fillStyle = 'rgba(3,2,7,0.93)'; d.fillRect(0, 0, W, H);
+      d.globalCompositeOperation = 'source-over'; d.clearRect(0, 0, W, HW);
+      d.fillStyle = 'rgba(3,2,7,0.93)'; d.fillRect(0, 0, W, HW);
       d.globalCompositeOperation = 'destination-out';
       const light = (x, y, r, a) => {
         const gr = d.createRadialGradient(x, y, 0, x, y, r);
@@ -964,8 +1012,10 @@
       });
       hol.lamps.forEach((l) => light(l.x, l.y, 120 * (0.9 + 0.1 * Math.sin(now * 0.017 + l.seed)), 0.7));
       hol.mons.forEach((m) => light(m.x, m.y, 70, 0.28));
-      ctx.drawImage(hol.dark, 0, 0);
-      drawLineup(mode, now, show, slots, n);
+      // lights near the seam also glow on the far side of it
+      hol.players.forEach((p) => { if (p.y < 320) light(p.x, p.y + HW, 90, 0.75); if (p.y > HW - 320) light(p.x, p.y - HW, 90, 0.75); });
+      hol.lamps.forEach((l) => { if (l.y < 130) light(l.x, l.y + HW, 120, 0.7); if (l.y > HW - 130) light(l.x, l.y - HW, 120, 0.7); });
+      tiles.forEach((oy) => ctx.drawImage(hol.dark, 0, oy));
     }
 
     let last = null;
