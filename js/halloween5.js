@@ -7,7 +7,7 @@
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
-      msg.innerHTML = 'LOCKED &mdash; finish Halloween 4 first. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
+      msg.innerHTML = 'LOCKED &mdash; finish Halloween 4 first. <a href="index.html#halloween-2026" style="color:var(--accent)">Back to the menu</a>';
     }
     return;
   }
@@ -1272,7 +1272,7 @@
     }
     playWinJingle();
     if (window.GoofyStory) window.GoofyStory.completeHalloween(5);
-    setTimeout(() => { window.location.href = 'index.html'; }, 2200);
+    setTimeout(() => { window.location.href = 'index.html#halloween-2026'; }, 2200);
   }
 
   function resetExploration() {
@@ -2384,7 +2384,7 @@
   function updateOverlay() {
     if (gameState === 'wiped') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'BOTH OF YOU ARE DOWN &mdash; press Enter to try again, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
+      messageEl.innerHTML = 'BOTH OF YOU ARE DOWN &mdash; press Enter to try again, or <a href="index.html#halloween-2026" style="color:var(--accent)">back to the menu</a>';
     } else if (gameState === 'dying') {
       messageEl.style.display = 'flex';
       messageEl.innerHTML = 'THE PUMPKIN KING WILTS&hellip;<br>HAPPY HALLOWEEN!';

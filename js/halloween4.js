@@ -1,13 +1,13 @@
 (function () {
   const HM = window.HardMode;
   const FOOT_SURFACE = 'normal'; // which footstep sound to use (js/footsteps.js)
-  // The Halloween chapter has its own unlock chain (see js/story.js): the
+  // Halloween 2026 has its own unlock chain (see js/story.js): the
   // first level is always open, each later one needs the one before it.
   if (window.GoofyStory && !window.GoofyStory.isHalloweenUnlocked(4)) {
     const msg = document.getElementById('game-message');
     if (msg) {
       msg.style.display = 'flex';
-      msg.innerHTML = 'LOCKED &mdash; finish Halloween 3 first. <a href="index.html" style="color:var(--accent)">Back to the menu</a>';
+      msg.innerHTML = 'LOCKED &mdash; finish Halloween 3 first. <a href="index.html#halloween-2026" style="color:var(--accent)">Back to the menu</a>';
     }
     return;
   }

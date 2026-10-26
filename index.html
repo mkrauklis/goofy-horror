@@ -23,7 +23,13 @@
   </p>
 </header>
 
+<nav class="side-tabs" aria-label="Level selector sections">
+  <button type="button" class="side-tab" data-goto="story">&#128214; Story</button>
+  <button type="button" class="side-tab" data-goto="holidays">&#127881; Holidays</button>
+</nav>
+
 <div class="wrap">
+  <div data-view="story">
   <div id="story-cta" class="story-cta">
     <a id="story-continue" class="story-continue-btn" href="level1.html">Start the Story</a>
     <div class="player-mode-toggle" role="group" aria-label="Player count">
@@ -36,47 +42,6 @@
     <button id="hard-toggle" class="hard-toggle-btn" type="button">&#9760; Hard Mode: Off</button>
     <p id="hard-note" class="hard-note"></p>
   </div>
-  <section class="chapter chapter-halloween">
-  <h2 class="chapter-divider">&#127875; Halloween Chapter</h2>
-  <div class="menu-list">
-    <a class="menu-item panel" href="halloween1.html" data-halloween="1">
-      <h2>Halloween 1 &mdash; The Candy Maze <span class="best-time" data-level="halloween1"></span></h2>
-      <p>A Halloween-lit facility turned into a maze: orange floors,
-        jack-o-lanterns, glowing windows. Collect 3 buckets of candy to open
-        the exit &mdash; and don't let the pumpkin-headed tentacle thing
-        see you.</p>
-      <p class="lock-note"></p>
-    </a>
-    <a class="menu-item panel" href="halloween2.html" data-halloween="2">
-      <h2>Halloween 2 &mdash; The Quiet Ward <span class="best-time" data-level="halloween2"></span></h2>
-      <p>A hospital with candy strewn across every floor. Crawl the
-        ventilation ducts and switch off all 4 fans to open the exit
-        &mdash; while a tentacled ghost that's 95% invisible drifts the
-        wards.</p>
-      <p class="lock-note"></p>
-    </a>
-    <a class="menu-item panel" href="halloween3.html" data-halloween="3">
-      <h2>Halloween 3 &mdash; The Ductwork <span class="best-time" data-level="halloween3"></span></h2>
-      <p>A maze of steel ventilation ducts with a little candy on the floor.
-        Reach the giant vent room and both hold a lever for 5 seconds to stop
-        the giant fan and open the door &mdash; past two festering Rotten Ones.</p>
-      <p class="lock-note"></p>
-    </a>
-    <a class="menu-item panel" href="halloween4.html" data-halloween="4">
-      <h2>Halloween 4 &mdash; The Overgrown Ward <span class="best-time" data-level="halloween4"></span></h2>
-      <p>The hospital's overgrown old wing: a sprawl of winding rooms with
-        vines, jack-o-lanterns and big wooden crates. Find the bluelighter and light 3 green pumpkins to
-        open the exit &mdash; while a fireball-spitting pumpkin hunts you.</p>
-      <p class="lock-note"></p>
-    </a>
-    <a class="menu-item panel" href="halloween5.html" data-halloween="5">
-      <h2>Halloween 5 &mdash; The Pumpkin King <span class="best-time" data-level="halloween5"></span></h2>
-      <p>A round arena floored with the ward's tiles, vines and glowing jack-o-lanterns.
-        Face a 3x3 pumpkin with a fire in its mouth &mdash; stun it, then bite it.</p>
-      <p class="lock-note"></p>
-    </a>
-  </div>
-  </section>
   <section class="chapter chapter-1">
   <h2 class="chapter-divider">Chapter 1</h2>
   <div class="menu-list">
@@ -387,6 +352,61 @@
     </a>
   </div>
   </section>
+  </div>
+  <section class="holidays" data-view="holidays" hidden>
+    <h2 class="holidays-title">Holidays</h2>
+    <p class="holidays-sub">Pick a holiday to see its levels. Each one is its own set of bonus levels, separate from the main story.</p>
+    <div class="holiday-list">
+      <button type="button" class="holiday-card panel" data-goto="halloween-2026">
+        <span class="holiday-icon">&#127875;</span>
+        <span class="holiday-name">Halloween 2026</span>
+        <span class="holiday-desc">Five levels, from the Candy Maze to the Pumpkin King.</span>
+        <span class="holiday-progress" id="holiday-halloween-progress"></span>
+      </button>
+    </div>
+  </section>
+  <section class="chapter chapter-halloween" data-view="halloween-2026" hidden>
+  <h2 class="chapter-divider">&#127875; Halloween 2026</h2>
+  <button type="button" class="back-link" data-goto="holidays">&larr; All holidays</button>
+  <div class="menu-list">
+    <a class="menu-item panel" href="halloween1.html" data-halloween="1">
+      <h2>Halloween 1 &mdash; The Candy Maze <span class="best-time" data-level="halloween1"></span></h2>
+      <p>A Halloween-lit facility turned into a maze: orange floors,
+        jack-o-lanterns, glowing windows. Collect 3 buckets of candy to open
+        the exit &mdash; and don't let the pumpkin-headed tentacle thing
+        see you.</p>
+      <p class="lock-note"></p>
+    </a>
+    <a class="menu-item panel" href="halloween2.html" data-halloween="2">
+      <h2>Halloween 2 &mdash; The Quiet Ward <span class="best-time" data-level="halloween2"></span></h2>
+      <p>A hospital with candy strewn across every floor. Crawl the
+        ventilation ducts and switch off all 4 fans to open the exit
+        &mdash; while a tentacled ghost that's 95% invisible drifts the
+        wards.</p>
+      <p class="lock-note"></p>
+    </a>
+    <a class="menu-item panel" href="halloween3.html" data-halloween="3">
+      <h2>Halloween 3 &mdash; The Ductwork <span class="best-time" data-level="halloween3"></span></h2>
+      <p>A maze of steel ventilation ducts with a little candy on the floor.
+        Reach the giant vent room and both hold a lever for 5 seconds to stop
+        the giant fan and open the door &mdash; past two festering Rotten Ones.</p>
+      <p class="lock-note"></p>
+    </a>
+    <a class="menu-item panel" href="halloween4.html" data-halloween="4">
+      <h2>Halloween 4 &mdash; The Overgrown Ward <span class="best-time" data-level="halloween4"></span></h2>
+      <p>The hospital's overgrown old wing: a sprawl of winding rooms with
+        vines, jack-o-lanterns and big wooden crates. Find the bluelighter and light 3 green pumpkins to
+        open the exit &mdash; while a fireball-spitting pumpkin hunts you.</p>
+      <p class="lock-note"></p>
+    </a>
+    <a class="menu-item panel" href="halloween5.html" data-halloween="5">
+      <h2>Halloween 5 &mdash; The Pumpkin King <span class="best-time" data-level="halloween5"></span></h2>
+      <p>A round arena floored with the ward's tiles, vines and glowing jack-o-lanterns.
+        Face a 3x3 pumpkin with a fire in its mouth &mdash; stun it, then bite it.</p>
+      <p class="lock-note"></p>
+    </a>
+  </div>
+  </section>
   <p class="hint">Player 1 (orange): W A S D &nbsp;&middot;&nbsp; Player 2 (green): Arrow keys &nbsp;&middot;&nbsp; local split-screen co-op, sound plays after your first key press in a level</p>
 </div>
 
@@ -441,6 +461,35 @@
       : next === 1 ? 'Start the Story' : `Continue — Level ${next}`);
   }
   renderStoryState();
+
+  // The level selector has a side rail: Story (the main chapters) and Holidays
+  // (bonus level sets per holiday). The view is kept in the URL hash so Back and
+  // links straight into a holiday (the Halloween levels' "Menu" link) both work.
+  const VIEWS = ['story', 'holidays', 'halloween-2026'];
+  function showView(name) {
+    if (!VIEWS.includes(name)) name = 'story';
+    document.querySelectorAll('[data-view]').forEach((el) => { el.hidden = el.dataset.view !== name; });
+    document.querySelectorAll('.side-tab').forEach((b) => {
+      b.classList.toggle('active', b.dataset.goto === name || (b.dataset.goto === 'holidays' && name === 'halloween-2026'));
+    });
+  }
+  function currentViewFromHash() { return location.hash.replace('#', ''); }
+  document.querySelectorAll('[data-goto]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const name = b.dataset.goto;
+      if (location.hash.replace('#', '') !== name) location.hash = name === 'story' ? '' : name;
+      showView(name);
+    });
+  });
+  window.addEventListener('hashchange', () => showView(currentViewFromHash()));
+  showView(currentViewFromHash());
+  (function renderHolidayProgress() {
+    const story = window.GoofyStory, el = document.getElementById('holiday-halloween-progress');
+    if (!story || !el) return;
+    let done = 0;
+    for (let n = 1; n <= 5; n++) if (story.isHalloweenCompleted(n)) done++;
+    el.textContent = done === 5 ? 'All 5 completed' : `${done} / 5 completed`;
+  })();
 
   // Hard mode unlocks the first time the game is beaten. It's a whole
   // separate run with its own save (js/hardmode.js, js/story.js).

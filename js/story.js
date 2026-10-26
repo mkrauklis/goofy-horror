@@ -57,7 +57,7 @@
     }
   }
 
-  // The Halloween chapter: bonus levels that sit outside the main story.
+  // Halloween 2026: bonus levels that sit outside the main story.
   // Always available (no need to have beaten anything); each level opens once
   // the one before it is done. Its own tiny save, shared by normal and hard
   // mode, so it never touches story progress.

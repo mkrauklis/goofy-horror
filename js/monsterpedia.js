@@ -3036,7 +3036,7 @@
   }
 
 
-  // The Halloween chapter's Hollow Jack: a pumpkin with eyeholes carved out,
+  // Halloween 2026's Hollow Jack: a pumpkin with eyeholes carved out,
   // worn by a mass of tentacles. Same drawing as the in-game creature
   // (js/halloween1.js), posed facing right.
   function drawHollowJack(g, w, h, t) {
