@@ -519,18 +519,6 @@ html.hard-mode .story-continue-btn {
   color: #3ddc84;
 }
 
-.menu-item.monsterpedia-item:hover {
-  border-color: #7ac9e8;
-}
-
-.menu-item.monsterpedia-item h2 {
-  color: #7ac9e8;
-}
-
-.wrap.monsterpedia-wrap {
-  max-width: 1400px;
-}
-
 .monster-entry {
   padding: 1.75rem;
   margin-bottom: 1.75rem;

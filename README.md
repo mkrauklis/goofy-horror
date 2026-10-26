@@ -11,12 +11,10 @@ the folder with any static server, e.g.:
 npx serve .
 ```
 
-[`index.html`](index.html) is the main menu, linking out to each level and
-to the [Monsterpedia](monsterpedia.html) — a field guide rendering every
-creature live on canvas, the same drawing code the levels themselves use,
-with a short write-up of how each one hunts. The menu's own background is
-a small procedural facility with a handful of simplified creatures
-wandering it live on canvas, instead of a flat color.
+[`index.html`](index.html) is the main menu, linking out to each level. Its
+background is a dark room lit by flashlights, with the real monster models
+stalking two hazmat chimps; hovering a level lines up that level's monsters
+(or a "?" if you haven't beaten it yet).
 
 ## Story mode & saves
 
