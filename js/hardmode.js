@@ -129,6 +129,7 @@
     drain: on ? (v) => v * STAMINA_DRAIN : id,
     bossHp: on ? (v) => Math.round(v * BOSS_HEALTH * 2) / 2 : id,
     monster,
+    redEyes,
     flicker,
   };
 })();

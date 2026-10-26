@@ -3651,10 +3651,46 @@
     },
   };
 
+  // In hard mode the gallery shows the hard version of every monster: drawn on
+  // a scratch canvas first (so the pale wash only touches the monster's own
+  // pixels), washed pale, and given the red-pupiled eyes the real game gives
+  // it -- except the two that draw their own face.
+  const HARD = !!(window.HardMode && window.HardMode.on);
+  const hardCanvas = document.createElement('canvas');
+  hardCanvas.width = hardCanvas.height = PORTRAIT;
+  const hardG = hardCanvas.getContext('2d');
+  const OWN_FACE = new Set([embergourdCtx, pumpkinKingCtx]);
+  function drawHardPortrait(ctx, drawFn, t, phase2) {
+    const g = hardG;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    g.clearRect(0, 0, PORTRAIT, PORTRAIT);
+    drawFn(g, PORTRAIT, PORTRAIT, t, phase2);
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = 'rgba(234,230,240,0.5)';
+    g.fillRect(0, 0, PORTRAIT, PORTRAIT);
+    g.globalCompositeOperation = 'source-over';
+    if (!OWN_FACE.has(ctx) && window.HardMode.redEyes) window.HardMode.redEyes(g, PORTRAIT / 2, PORTRAIT / 2, 26, { x: 1, y: 0 });
+    ctx.clearRect(0, 0, PORTRAIT, PORTRAIT);
+    ctx.drawImage(hardCanvas, 0, 0);
+  }
+
   function drawPortraitOrLock(ctx, drawFn, t, phase2) {
     if (!ctx) return;
     if (isLocked(ctx)) { drawLockedPlaceholder(ctx, PORTRAIT, PORTRAIT); return; }
+    if (HARD) { drawHardPortrait(ctx, drawFn, t, phase2); return; }
     drawFn(ctx, PORTRAIT, PORTRAIT, t, phase2);
+  }
+
+  if (HARD) {
+    const first = document.querySelector('.monster-entry');
+    if (first && first.parentNode) {
+      const note = document.createElement('p');
+      note.className = 'hard-note';
+      note.style.cssText = 'color:#ff6a5a;text-align:center;margin:0 auto 14px;max-width:640px';
+      note.innerHTML = '<strong>HARD MODE:</strong> every monster is shown as it appears on a hard run &mdash; pale, with red pupils &mdash; and is <strong>1.25x faster</strong> than the speeds listed below, with bosses on <strong>1.5x</strong> the health.';
+      first.parentNode.insertBefore(note, first);
+    }
   }
 
   // Bosses with a real phase 2 (a health-threshold recolor/behavior
