@@ -235,9 +235,99 @@
     if (s === 0) musicTone(ch[0] * (intense ? 2 : 1), t, 0.6, 'sawtooth', intense ? 0.06 : 0.04, 1500);
     if (intense && s === 8) musicTone(ch[2] * 2, t, 0.35, 'square', 0.05, 3200);
   }
+  // ---- the end-game theme: plays under the scrolling credits. A slow,
+  // bittersweet A-minor/C-major ballad (Am F C G | Am F G C): a warm saw pad,
+  // a round bass, a rising arpeggio, and a singing triangle lead that comes in
+  // on the third bar, with a soft heartbeat kick and brushed hats joining as
+  // it builds. It's routed through its own bus so it can be faded out the
+  // moment the credits end (or are skipped), before the closing sting.
+  const CREDITS_BPM = 72;
+  const CR_CHORDS = [[220, 261.63, 329.63], [174.61, 220, 261.63], [196, 261.63, 329.63], [196, 246.94, 293.66]];
+  const CR_PROG = [0, 1, 2, 3, 0, 1, 3, 2];                      // Am F C G | Am F G C
+  const CR_ROOTS = [110, 87.31, 130.81, 98];
+  const CR_MELODY = [                                             // [step, Hz, length in steps]
+    [[0, 659.25, 6], [8, 523.25, 4], [12, 587.33, 4]],
+    [[0, 698.46, 6], [8, 587.33, 4], [12, 523.25, 4]],
+    [[0, 659.25, 4], [4, 783.99, 4], [8, 659.25, 8]],
+    [[0, 587.33, 6], [8, 493.88, 4], [12, 587.33, 4]],
+    [[0, 659.25, 6], [8, 880, 4], [12, 783.99, 4]],
+    [[0, 698.46, 6], [8, 783.99, 4], [12, 698.46, 4]],
+    [[0, 587.33, 4], [4, 698.46, 4], [8, 783.99, 8]],
+    [[0, 659.25, 14]],
+  ];
+  let creditsBus = null;
+  let creditsBusOn = false;
+  let creditsStep = 0;
+  function creditsTone(freq, t, dur, type, gainV, lp, attack) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(gainV, t + (attack || 0.02));
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let node = osc;
+    if (lp) {
+      const f = audioCtx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+      osc.connect(f); node = f;
+    }
+    node.connect(gain); gain.connect(creditsBus);
+    osc.start(t); osc.stop(t + dur + 0.05);
+  }
+  function creditsKick(t) {
+    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+    osc.frequency.setValueAtTime(110, t); osc.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+    gain.gain.setValueAtTime(0.32, t); gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    osc.connect(gain); gain.connect(creditsBus); osc.start(t); osc.stop(t + 0.25);
+  }
+  function creditsHat(t, gainV) {
+    const src = audioCtx.createBufferSource(); src.buffer = noiseBuf;
+    const f = audioCtx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7500;
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(gainV, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    src.connect(f); f.connect(gain); gain.connect(creditsBus);
+    src.start(t); src.stop(t + 0.08);
+  }
+  function scheduleCreditsStep(idx, t, stepDur) {
+    const barIdx = Math.floor(idx / 16), s = idx % 16, bar = barIdx % 8;
+    const ci = CR_PROG[bar], ch = CR_CHORDS[ci];
+    if (s === 0) {
+      ch.forEach((f) => creditsTone(f, t, stepDur * 15, 'sawtooth', 0.03, 900, stepDur * 4));   // the pad swells in over each bar
+      creditsTone(CR_ROOTS[ci], t, stepDur * 7, 'triangle', 0.2, 500, 0.03);
+    }
+    if (s === 8) creditsTone(CR_ROOTS[ci], t, stepDur * 6, 'triangle', 0.16, 500, 0.03);
+    if (s % 2 === 0) creditsTone(ch[[0, 1, 2, 1, 2, 1, 0, 1][(s / 2) % 8]] * 2, t, stepDur * 2.5, 'triangle', 0.05, 2600, 0.01);
+    if (barIdx >= 2) {
+      CR_MELODY[bar].forEach(([ms, hz, len]) => { if (ms === s) creditsTone(hz, t, stepDur * len, 'triangle', 0.1, 3200, 0.05); });
+    }
+    if (barIdx >= 4 && (s === 0 || s === 8)) creditsKick(t);
+    if (barIdx >= 8 && s % 2 === 0) creditsHat(t, s % 4 === 0 ? 0.05 : 0.03);
+  }
+  function scheduleCredits() {
+    if (!creditsBus) { creditsBus = audioCtx.createGain(); creditsBus.gain.value = 0; creditsBus.connect(musicMasterGain); }
+    if (!creditsBusOn) {
+      creditsBus.gain.cancelScheduledValues(audioCtx.currentTime);
+      creditsBus.gain.setTargetAtTime(1, audioCtx.currentTime, 0.4);
+      creditsBusOn = true;
+      creditsStep = 0;
+      nextNoteTime = audioCtx.currentTime + 0.1;
+    }
+    const stepDur = 60 / CREDITS_BPM / 4;
+    while (nextNoteTime < audioCtx.currentTime + 0.14) {
+      scheduleCreditsStep(creditsStep++, nextNoteTime, stepDur);
+      nextNoteTime += stepDur;
+    }
+  }
   function scheduleMusic() {
     if (!audioCtx) return;
     const chasing = gameState === 'chase' || gameState === 'dying';
+    const rolling = gameState === 'credits' && performance.now() - creditsStartedAt < CREDITS_SCROLL_MS;
+    if (creditsBusOn && !(musicEnabled && rolling)) {              // credits over or skipped: fade the theme out
+      creditsBus.gain.cancelScheduledValues(audioCtx.currentTime);
+      creditsBus.gain.setTargetAtTime(0, audioCtx.currentTime, 0.3);
+      creditsBusOn = false;
+    }
+    if (musicEnabled && rolling) { scheduleCredits(); return; }
     if (!musicEnabled || !chasing) { nextNoteTime = audioCtx.currentTime + 0.08; return; }
     const intense = boss.hp <= BOSS_MAX_HEALTH / 2;
     const stepDur = 60 / (intense ? 172 : 152) / 4;
