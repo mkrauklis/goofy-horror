@@ -211,8 +211,8 @@ size — filling enough of the now-small room on its own that there's
 nowhere in it that's really far from danger. It cycles through six
 attacks at random, back to back, for as long as it's alive:
 
-1. **Fireballs** — over 10 seconds it fires four volleys, one every 2.5
-   seconds, of three huge (2x2 tile) fireballs. They ricochet off the
+1. **Fireballs** — over 10 seconds it fires four fireballs, one every 2.5
+   seconds -- one at a time, each a huge (2x2 tile) fireball. They ricochet off the
    walls and leave a trail of fire behind them that can't be walked
    through until it burns out; touching a fireball catches you.
 2. **Throw** — grabs three chunks of rubble and lobs them near the

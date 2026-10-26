@@ -84,7 +84,7 @@
   // fire behind them that can't be walked through until it burns out, and a
   // fireball itself catches whoever it touches.
   const FIREBALL_VOLLEYS = 4;
-  const FIREBALL_PER_VOLLEY = 3;
+  const FIREBALL_PER_VOLLEY = 1;
   const FIREBALL_VOLLEY_GAP_MS = 2500;
   const FIREBALL_FIRST_MS = 500;
   const FIREBALL_DURATION_MS = 10000;
@@ -1672,10 +1672,12 @@
     const live = players.filter((p) => !p.caught);
     const pool = live.length ? live : players;
     for (let i = 0; i < FIREBALL_PER_VOLLEY; i++) {
-      const tgt = pool[i % pool.length];
+      const tgt = pool[(boss.volleysFired + i) % pool.length];
       let a = Math.atan2(tgt.y - boss.y, tgt.x - boss.x);
-      if (pool.length === 1) a += (i - 1) * 0.42;
-      else if (i === FIREBALL_PER_VOLLEY - 1) a += (Math.random() - 0.5) * 1.1;
+      if (FIREBALL_PER_VOLLEY > 1) {
+        if (pool.length === 1) a += (i - 1) * 0.42;
+        else if (i === FIREBALL_PER_VOLLEY - 1) a += (Math.random() - 0.5) * 1.1;
+      }
       let sx = boss.x + Math.cos(a) * boss.radius * 0.5;
       let sy = boss.y + Math.sin(a) * boss.radius * 0.5;
       if (fireballHitsWall(sx, sy)) { sx = boss.x; sy = boss.y; }
