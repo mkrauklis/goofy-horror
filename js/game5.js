@@ -79,9 +79,23 @@
   const BOSS_INTRO_GRACE_MS = 3000;
   const BOSS_IDLE_MAX_MS = 1400;
 
-  // 1. Spin: bounces off the arena walls DVD-logo style at high speed.
-  const SPIN_DURATION_MS = 5000;
-  const SPIN_SPEED = HM.speed(PLAYER_SPEED * 5);
+  // 1. Fireballs: four volleys of three 2x2-tile fireballs, one volley every
+  // 2.5s across a 10s attack. They ricochet off the walls and leave a trail of
+  // fire behind them that can't be walked through until it burns out, and a
+  // fireball itself catches whoever it touches.
+  const FIREBALL_VOLLEYS = 4;
+  const FIREBALL_PER_VOLLEY = 3;
+  const FIREBALL_VOLLEY_GAP_MS = 2500;
+  const FIREBALL_FIRST_MS = 500;
+  const FIREBALL_DURATION_MS = 10000;
+  const FIREBALL_WINDUP_MS = 450; // the boss flares this long before each volley
+  const FIREBALL_RADIUS = TILE; // 2 tiles across
+  const FIREBALL_SPEED = HM.speed(PLAYER_SPEED * 1.7);
+  const FIREBALL_LIFE_MS = 5500;
+  const FIRE_TRAIL_MS = 6000;
+  const FIRE_TRAIL_R = 17;
+  const FIRE_TRAIL_STEP = 20; // a patch of fire every this many px of travel
+  const FIRE_TRAIL_CAP = 520;
 
   // 2. Throw: 3 chunks of rubble land near the players after a telegraphed
   // delay -- a red circle marks each landing spot for the full delay.
@@ -121,6 +135,20 @@
   const TENTACLE_STRIKE_RANGE = BOSS_RADIUS * 3.2;
   const TENTACLE_STRIKE_WIDTH = 22; // half-width of each tentacle's hit line
 
+  // 7. Magma (phase 2 only): three 3x3-tile circles of magma well up out of
+  // the floor, each marked for a full second first, then burn for 3 seconds.
+  const MAGMA_COUNT = 3;
+  const MAGMA_RADIUS = TILE * 1.5; // 3 tiles across
+  const MAGMA_WARN_MS = 1000;
+  const MAGMA_LIFE_MS = 3000;
+
+  // Phase 2: at half health the boss becomes the Ashen One Magmatic -- molten
+  // cracks across its body, magma spikes growing out of it, and the magma
+  // attack added to its set. It spends a moment transforming, unable to hurt.
+  const PHASE2_AT = 0.5;
+  const PHASE2_TRANSFORM_MS = 2600;
+  const PHASE2_SPIKE_GROW_MS = 2000;
+
   const ATTACKS_PER_STUN = 10;
   const STUN_DURATION_MS = 10000;
 
@@ -130,7 +158,7 @@
   // landing one outside that window does 2.5, so the stun window is still
   // where the fight is won fastest.
   const BOMB_LIVE_COUNT = 3;
-  const BOSS_MAX_HEALTH = HM.bossHp(25);
+  const BOSS_MAX_HEALTH = HM.bossHp(50);
   const BOMB_DAMAGE_STUNNED = 5;
   const BOMB_DAMAGE_NORMAL = 2.5;
 
@@ -397,6 +425,45 @@
     gain.connect(audioCtx.destination);
     osc.start(start);
     osc.stop(start + 0.5);
+  }
+
+  // A fireball leaving the boss: a falling roar with a thump under it.
+  function playFireballShot() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(380, start);
+    osc.frequency.exponentialRampToValueAtTime(70, start + 0.4);
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1800, start);
+    filter.frequency.exponentialRampToValueAtTime(260, start + 0.4);
+    gain.gain.setValueAtTime(0.26, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.45);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.5);
+  }
+
+  // A fireball glancing off a wall.
+  function playFireballBounce() {
+    if (!audioCtx) return;
+    const start = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(240, start);
+    osc.frequency.exponentialRampToValueAtTime(70, start + 0.14);
+    gain.gain.setValueAtTime(0.16, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.18);
   }
 
   // The spike attack's own impact sound -- a sharper crack than the
@@ -752,14 +819,17 @@
       path: [], pathIndex: 0, nextRepathAt: 0, // only used while lured, via BFS to the meat item
 
       // ---- attack cycle ----
-      // 'idle' | 'spin' | 'throw' | 'spike' | 'charge' | 'bombs' | 'blink' | 'stunned'
+      // 'idle' | 'fireballs' | 'throw' | 'spike' | 'charge' | 'bombs' | 'blink' | 'magma' | 'transform' | 'stunned'
       phase: 'idle',
       phaseStartedAt: 0,
       nextIdleUntil: 0,
       attackCount: 0,
       lastAttack: null,
-      spinAngle: 0,
-      spinDir: { x: 1, y: 0 },
+      phase2: false,
+      phase2At: 0,
+      volleysFired: 0,
+      nextVolleyAt: 0,
+      windupFor: -1,
       chargeDashesLeft: 0,
       chargeDir: { x: 1, y: 0 },
       chargeSubPhase: 'windup', // 'windup' | 'dash' | 'recover'
@@ -776,6 +846,9 @@
   let telegraphs = []; // throw attack: [{x, y, firesAt}]
   let spikeTelegraphs = []; // spike attack: [{x, y, firesAt}]
   let bossBombs = []; // bombs attack: [{x, y, landAt, explodeAt, exploded}]
+  let fireballs = []; // fireballs attack: [{x, y, vx, vy, dies, seed, trailX, trailY}]
+  let magmaPools = []; // magma attack: [{x, y, warnAt, activeAt, endsAt, seed}]
+  let fireTrail = []; // what they leave behind: [{x, y, born, until, seed}] -- blocks players
 
   // Every open floor tile, precomputed once so spawning a bomb is just a
   // pick from a list instead of re-scanning the whole grid each time.
@@ -835,9 +908,9 @@
     boss.frozenUntil = 0; boss.luredState = 'none'; boss.lureTarget = null; boss.eatingUntil = 0;
     boss.defeated = false;
     boss.phase = 'idle'; boss.phaseStartedAt = 0; boss.nextIdleUntil = performance.now() + BOSS_INTRO_GRACE_MS;
-    boss.attackCount = 0; boss.lastAttack = null; boss.spinAngle = 0;
+    boss.attackCount = 0; boss.lastAttack = null; boss.volleysFired = 0; boss.windupFor = -1; boss.phase2 = false; boss.phase2At = 0;
     boss.blinkSubPhase = 'warning'; boss.blinkStrikesLeft = 0; boss.lastStrikeAt = 0; boss.lastStrikeReaches = null;
-    telegraphs = []; spikeTelegraphs = []; bossBombs = [];
+    telegraphs = []; spikeTelegraphs = []; bossBombs = []; fireballs = []; fireTrail = []; magmaPools = [];
 
     bossHealth = BOSS_MAX_HEALTH;
     bombs = [];
@@ -894,9 +967,20 @@
     });
   }
 
+  // A burning patch can't be walked into -- but it never traps someone it
+  // landed on, who can still walk out.
+  function inFire(x, y) {
+    for (let i = 0; i < fireTrail.length; i++) {
+      if (Math.hypot(x - fireTrail[i].x, y - fireTrail[i].y) < FIRE_TRAIL_R + PLAYER_RADIUS * 0.5) return true;
+    }
+    return false;
+  }
+
   function movePlayer(p, dx, dy) {
-    if (dx !== 0 && canStandAt(p.x + dx, p.y)) p.x += dx;
-    if (dy !== 0 && canStandAt(p.x, p.y + dy)) p.y += dy;
+    const trapped = fireTrail.length > 0 && inFire(p.x, p.y);
+    const clear = (x, y) => trapped || fireTrail.length === 0 || !inFire(x, y);
+    if (dx !== 0 && canStandAt(p.x + dx, p.y) && clear(p.x + dx, p.y)) p.x += dx;
+    if (dy !== 0 && canStandAt(p.x, p.y + dy) && clear(p.x, p.y + dy)) p.y += dy;
   }
 
   // Sprinting drains stamina over 15s of continuous use; run out and you're
@@ -1083,9 +1167,10 @@
 
     ctx.font = '11px monospace';
     ctx.textAlign = 'center';
-    ctx.fillStyle = boss.defeated ? '#8a8578' : boss.phase === 'stunned' ? '#8fd6ff' : '#e8b06a';
+    ctx.fillStyle = boss.defeated ? '#8a8578' : boss.phase === 'stunned' ? '#8fd6ff' : boss.phase2 ? '#ff8a3a' : '#e8b06a';
+    const bossName = boss.phase2 ? 'ASHEN ONE MAGMATIC' : 'BOSS';
     const label = boss.defeated ? 'BOSS — DEFEATED' : boss.phase === 'stunned'
-      ? `BOSS — STUNNED (${bossHealth}/${BOSS_MAX_HEALTH})` : `BOSS (${bossHealth}/${BOSS_MAX_HEALTH})`;
+      ? `${boss.phase2 ? 'MAGMATIC' : 'BOSS'} — STUNNED (${bossHealth}/${BOSS_MAX_HEALTH})` : `${bossName} (${bossHealth}/${BOSS_MAX_HEALTH})`;
     ctx.fillText(label, bx + barW / 2, by - 4);
 
     ctx.fillStyle = '#1a1a1c';
@@ -1282,6 +1367,7 @@
         bossHealth = Math.max(0, bossHealth - dmg);
         spawnFloatingText(b.x, b.y, stunned ? `BOOM! -${dmg}` : `boom -${dmg}`);
         playBombBlast();
+        if (bossHealth > 0 && !boss.phase2 && bossHealth <= BOSS_MAX_HEALTH * PHASE2_AT) startPhase2(now, b.x, b.y);
         if (bossHealth <= 0) {
           boss.defeated = true;
           doorUnlocked = true;
@@ -1372,7 +1458,7 @@
     });
   }
 
-  const ALL_ATTACKS = ['spin', 'throw', 'spike', 'charge', 'bombs', 'blink'];
+  const ALL_ATTACKS = ['fireballs', 'throw', 'spike', 'charge', 'bombs', 'blink'];
 
   // Targets only players still in the fight -- a caught player stays
   // frozen wherever it happened until the whole team wipes, so without
@@ -1400,7 +1486,8 @@
   }
 
   function pickAttack() {
-    const choices = ALL_ATTACKS.filter((a) => a !== boss.lastAttack);
+    const pool = boss.phase2 ? ALL_ATTACKS.concat('magma') : ALL_ATTACKS;
+    const choices = pool.filter((a) => a !== boss.lastAttack);
     return choices[Math.floor(Math.random() * choices.length)];
   }
 
@@ -1409,10 +1496,12 @@
     boss.phaseStartedAt = now;
     boss.lastAttack = kind;
 
-    if (kind === 'spin') {
-      const a = Math.random() * Math.PI * 2;
-      boss.spinDir = { x: Math.cos(a), y: Math.sin(a) };
-      playBossWindup();
+    if (kind === 'fireballs') {
+      boss.volleysFired = 0;
+      boss.windupFor = -1;
+      boss.nextVolleyAt = now + FIREBALL_FIRST_MS;
+    } else if (kind === 'magma') {
+      startMagma(now);
     } else if (kind === 'throw') {
       telegraphs = [];
       for (let i = 0; i < THROW_COUNT; i++) {
@@ -1491,15 +1580,168 @@
     boss.lookDir = { x: dx / d, y: dy / d };
   }
 
-  function updateBossSpin(now, dt) {
-    if (now - boss.phaseStartedAt >= SPIN_DURATION_MS) { finishAttack(now); return; }
-    boss.spinAngle += dt * 26;
-    const step = SPIN_SPEED * dt;
-    const nx = boss.x + boss.spinDir.x * step;
-    const ny = boss.y + boss.spinDir.y * step;
-    if (canBossStandAt(nx, boss.y)) boss.x = nx; else boss.spinDir.x *= -1;
-    if (canBossStandAt(boss.x, ny)) boss.y = ny; else boss.spinDir.y *= -1;
-    boss.lookDir = boss.spinDir;
+  // ---- phase 2: the Ashen One Magmatic ----
+  function startPhase2(now, hx, hy) {
+    boss.phase2 = true;
+    boss.phase2At = now;
+    boss.phase = 'transform';
+    boss.phaseStartedAt = now;
+    telegraphs = []; spikeTelegraphs = []; bossBombs = [];
+    boss.chargeSubPhase = 'recover';
+    spawnEmberBurst(boss.x, boss.y, 60);
+    spawnFloatingText(boss.x, boss.y - boss.radius * 0.4, 'PHASE 2');
+    spawnFloatingText(boss.x, boss.y, 'THE ASHEN ONE MAGMATIC');
+    catchFlash = 0.55;
+    playBossWindup();
+    playBombBlast();
+    void hx; void hy;
+  }
+
+  function updateBossTransform(now) {
+    if (Math.random() < 0.5) spawnEmber(boss.x + (Math.random() - 0.5) * boss.radius * 1.6, boss.y + (Math.random() - 0.5) * boss.radius * 1.6, true);
+    if (now - boss.phaseStartedAt >= PHASE2_TRANSFORM_MS) {
+      boss.phase = 'idle';
+      boss.nextIdleUntil = now + 700;
+    }
+  }
+
+  function startMagma(now) {
+    magmaPools = [];
+    const live = players.filter((p) => !p.caught);
+    const pool = live.length ? live : players;
+    const standable = (x, y) => {
+      const r = MAGMA_RADIUS * 0.7;
+      return [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].every(([ox, oy]) => {
+        const t = worldToTile(x + ox, y + oy);
+        return !isWallForPlayer(t.x, t.y);
+      });
+    };
+    for (let i = 0; i < MAGMA_COUNT; i++) {
+      const p = pool[i % pool.length];
+      let x = p.x, y = p.y;
+      for (let tries = 0; tries < 14; tries++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = i < pool.length ? Math.random() * 44 : 70 + Math.random() * 60;
+        const cx = clamp(p.x + Math.cos(a) * d, TILE * 2, WORLD_W - TILE * 2);
+        const cy = clamp(p.y + Math.sin(a) * d, TILE * 2, WORLD_H - TILE * 2);
+        if (standable(cx, cy)) { x = cx; y = cy; break; }
+      }
+      magmaPools.push({ x, y, warnAt: now, activeAt: now + MAGMA_WARN_MS, endsAt: now + MAGMA_WARN_MS + MAGMA_LIFE_MS, seed: Math.random() * 1000 });
+    }
+    playBossWindup();
+  }
+
+  function updateBossMagma(now) {
+    if (now - boss.phaseStartedAt >= MAGMA_WARN_MS + MAGMA_LIFE_MS) finishAttack(now);
+  }
+
+  // Pools burn on their own clock: whoever stands in one while it's lit is caught.
+  function updateMagmaPools(now, dt) {
+    if (gameState !== 'playing' || boss.defeated) { magmaPools = []; return; }
+    for (let i = magmaPools.length - 1; i >= 0; i--) {
+      const m = magmaPools[i];
+      if (now >= m.endsAt) { magmaPools.splice(i, 1); continue; }
+      if (now < m.activeAt) continue;
+      if (Math.random() < dt * 30) {
+        const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * MAGMA_RADIUS * 0.85;
+        spawnEmber(m.x + Math.cos(a) * d, m.y + Math.sin(a) * d, false);
+      }
+      if (now - m.activeAt < 120) spawnEmberBurst(m.x, m.y, 3);
+      players.forEach((p) => {
+        if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
+        if (Math.hypot(p.x - m.x, p.y - m.y) < MAGMA_RADIUS * 0.92 + PLAYER_RADIUS * 0.5) triggerCaught(p, now);
+      });
+    }
+  }
+
+  function fireballHitsWall(x, y) {
+    const r = FIREBALL_RADIUS * 0.8;
+    for (let k = 0; k < 8; k++) {
+      const a = (k * Math.PI) / 4;
+      const t = worldToTile(x + Math.cos(a) * r, y + Math.sin(a) * r);
+      if (isWallForPlayer(t.x, t.y)) return true;
+    }
+    return false;
+  }
+
+  // One volley: the first two fireballs go straight at the players (both at
+  // the same one when solo, fanned out), the third strays a little.
+  function fireVolley(now) {
+    const live = players.filter((p) => !p.caught);
+    const pool = live.length ? live : players;
+    for (let i = 0; i < FIREBALL_PER_VOLLEY; i++) {
+      const tgt = pool[i % pool.length];
+      let a = Math.atan2(tgt.y - boss.y, tgt.x - boss.x);
+      if (pool.length === 1) a += (i - 1) * 0.42;
+      else if (i === FIREBALL_PER_VOLLEY - 1) a += (Math.random() - 0.5) * 1.1;
+      let sx = boss.x + Math.cos(a) * boss.radius * 0.5;
+      let sy = boss.y + Math.sin(a) * boss.radius * 0.5;
+      if (fireballHitsWall(sx, sy)) { sx = boss.x; sy = boss.y; }
+      fireballs.push({
+        x: sx, y: sy,
+        vx: Math.cos(a) * FIREBALL_SPEED, vy: Math.sin(a) * FIREBALL_SPEED,
+        dies: now + FIREBALL_LIFE_MS, seed: Math.random() * 1000,
+        trailX: sx, trailY: sy,
+      });
+      spawnEmberBurst(sx, sy, 12);
+    }
+    playFireballShot();
+  }
+
+  function updateBossFireballs(now, dt) {
+    if (now - boss.phaseStartedAt >= FIREBALL_DURATION_MS) { finishAttack(now); return; }
+    if (boss.volleysFired < FIREBALL_VOLLEYS) {
+      if (boss.windupFor !== boss.volleysFired && now >= boss.nextVolleyAt - FIREBALL_WINDUP_MS) {
+        boss.windupFor = boss.volleysFired;
+        playBossWindup();
+      }
+      if (now >= boss.nextVolleyAt) {
+        fireVolley(now);
+        boss.volleysFired++;
+        boss.nextVolleyAt = Math.max(boss.nextVolleyAt + FIREBALL_VOLLEY_GAP_MS, now + 1000);
+      }
+    }
+    // it holds its ground, turning to face whoever's nearest and creeping closer
+    const target = nearestPlayer(boss.x, boss.y);
+    const dx = target.x - boss.x, dy = target.y - boss.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1) return;
+    boss.lookDir = { x: dx / d, y: dy / d };
+    const step = BOSS_IDLE_SPEED * 0.5 * dt;
+    const nx = boss.x + boss.lookDir.x * step, ny = boss.y + boss.lookDir.y * step;
+    if (canBossStandAt(nx, boss.y)) boss.x = nx;
+    if (canBossStandAt(boss.x, ny)) boss.y = ny;
+  }
+
+  // Fireballs fly on their own clock, whatever the boss is doing next: they
+  // ricochet, drop fire behind them, and catch anyone they touch.
+  function updateFireballs(now, dt) {
+    if (gameState !== 'playing' || boss.defeated) { fireballs = []; fireTrail = []; return; }
+    for (let i = fireTrail.length - 1; i >= 0; i--) if (now >= fireTrail[i].until) fireTrail.splice(i, 1);
+    for (let i = fireballs.length - 1; i >= 0; i--) {
+      const f = fireballs[i];
+      if (now >= f.dies || fireballHitsWall(f.x, f.y)) {
+        spawnEmberBurst(f.x, f.y, 14);
+        fireballs.splice(i, 1);
+        continue;
+      }
+      let bounced = false;
+      if (fireballHitsWall(f.x + f.vx * dt, f.y)) { f.vx = -f.vx; bounced = true; } else f.x += f.vx * dt;
+      if (fireballHitsWall(f.x, f.y + f.vy * dt)) { f.vy = -f.vy; bounced = true; } else f.y += f.vy * dt;
+      if (bounced) {
+        spawnEmberBurst(f.x, f.y, 10);
+        playFireballBounce();
+      }
+      if (Math.hypot(f.x - f.trailX, f.y - f.trailY) >= FIRE_TRAIL_STEP) {
+        f.trailX = f.x; f.trailY = f.y;
+        if (fireTrail.length < FIRE_TRAIL_CAP) fireTrail.push({ x: f.x, y: f.y, born: now, until: now + FIRE_TRAIL_MS, seed: Math.random() * 1000 });
+      }
+      if (Math.random() < dt * 45) spawnEmber(f.x + (Math.random() - 0.5) * FIREBALL_RADIUS, f.y + (Math.random() - 0.5) * FIREBALL_RADIUS, false);
+      players.forEach((p) => {
+        if (p.caught || now < p.invulnerableUntil || isHidden(p, now)) return;
+        if (Math.hypot(p.x - f.x, p.y - f.y) < FIREBALL_RADIUS * 0.85 + PLAYER_RADIUS * 0.8) triggerCaught(p, now);
+      });
+    }
   }
 
   // Shared resolution for the throw/spike telegraph arrays: fires whatever
@@ -1523,6 +1765,7 @@
   function updateBossThrow(now) {
     const done = resolveTelegraphs(telegraphs, THROW_RADIUS, now, (tg) => {
       spawnFloatingText(tg.x, tg.y, 'BOOM!');
+      spawnEmberBurst(tg.x, tg.y, 34);
       playBombBlast();
     });
     if (done) finishAttack(now);
@@ -1531,6 +1774,7 @@
   function updateBossSpike(now) {
     const done = resolveTelegraphs(spikeTelegraphs, SPIKE_RADIUS, now, (tg) => {
       spawnFloatingText(tg.x, tg.y, 'SPIKE!');
+      spawnEmberBurst(tg.x, tg.y, 26);
       playSpikeStrike();
     });
     if (done) finishAttack(now);
@@ -1708,7 +1952,9 @@
     switch (boss.phase) {
       case 'stunned': updateBossStunned(now); break;
       case 'idle': updateBossIdle(now, dt); break;
-      case 'spin': updateBossSpin(now, dt); break;
+      case 'fireballs': updateBossFireballs(now, dt); break;
+      case 'magma': updateBossMagma(now); break;
+      case 'transform': updateBossTransform(now); break;
       case 'throw': updateBossThrow(now); break;
       case 'spike': updateBossSpike(now); break;
       case 'charge': updateBossCharge(now, dt); break;
@@ -1744,7 +1990,7 @@
     if (boss.defeated) return;
     if (now < boss.frozenUntil) return;
     if (boss.luredState !== 'none') return;
-    if (boss.phase === 'stunned') return;
+    if (boss.phase === 'stunned' || boss.phase === 'transform') return;
     players.forEach((p) => {
       if (p.caught) return;
       if (now < p.invulnerableUntil) return;
@@ -1967,6 +2213,447 @@
     });
   }
 
+  // ---- magma cracks and embers ----
+  // The floor is split open and glowing. The cracks are generated once from a
+  // fixed seed (so every run has the same ones), baked into three offscreen
+  // layers -- a charred edge, the hot orange/yellow seam, and a small soft
+  // glow -- so each frame is only a few drawImage calls with a pulsing alpha.
+  const crackPts = [];
+  let crackCrust = null, crackHot = null, crackGlow = null;
+  const GLOW_DIV = 4;
+  (function bakeMagmaCracks() {
+    let seed = 0x5eed1234;
+    const rnd = () => {
+      seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const onFloor = (x, y) => {
+      const tx = Math.floor(x / TILE), ty = Math.floor(y / TILE);
+      return tx >= 0 && ty >= 0 && tx < COLS && ty < ROWS && LEVEL.grid[ty][tx] === '.';
+    };
+    const lines = [];
+    function walk(x, y, a, steps, w, depth) {
+      const pts = [[x, y]];
+      for (let i = 0; i < steps; i++) {
+        a += (rnd() - 0.5) * 1.2;
+        const len = 10 + rnd() * 14;
+        const nx = x + Math.cos(a) * len, ny = y + Math.sin(a) * len;
+        if (!onFloor(nx, ny)) break;
+        x = nx; y = ny;
+        pts.push([x, y]);
+        if (depth < 2 && rnd() < 0.2) {
+          walk(x, y, a + (rnd() < 0.5 ? -1 : 1) * (0.5 + rnd() * 0.6), 3 + Math.floor(rnd() * 5), w * 0.6, depth + 1);
+        }
+      }
+      if (pts.length > 1) lines.push({ pts, w });
+    }
+    for (let i = 0; i < 32; i++) {
+      let x = 0, y = 0, tries = 0;
+      do { x = rnd() * WORLD_W; y = rnd() * WORLD_H; } while (!onFloor(x, y) && ++tries < 60);
+      if (tries >= 60) continue;
+      const a = rnd() * Math.PI * 2, w = 1.8 + rnd() * 1.1, n = 4 + Math.floor(rnd() * 7);
+      walk(x, y, a, n, w, 0);              // a crack runs both ways from where it starts
+      walk(x, y, a + Math.PI, n, w, 0);
+    }
+    const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+    crackCrust = mk(WORLD_W, WORLD_H);
+    crackHot = mk(WORLD_W, WORLD_H);
+    crackGlow = mk(Math.ceil(WORLD_W / GLOW_DIV), Math.ceil(WORLD_H / GLOW_DIV));
+    // each seam tapers toward its tip: drawn edge by edge, a little thinner each time
+    const stroke = (c, sc, extra, scale) => {
+      c.lineCap = 'round'; c.lineJoin = 'round';
+      lines.forEach((ln) => {
+        const n = ln.pts.length - 1;
+        for (let i = 0; i < n; i++) {
+          c.beginPath();
+          c.moveTo(ln.pts[i][0] * sc, ln.pts[i][1] * sc);
+          c.lineTo(ln.pts[i + 1][0] * sc, ln.pts[i + 1][1] * sc);
+          c.lineWidth = Math.max(0.6, (ln.w * (1 - 0.65 * (i / n)) + extra) * scale) * sc;
+          c.stroke();
+        }
+      });
+    };
+    const cc = crackCrust.getContext('2d');
+    cc.strokeStyle = 'rgba(14,8,6,0.55)';
+    stroke(cc, 1, 3, 1);
+    const ch = crackHot.getContext('2d');
+    ch.strokeStyle = '#6e2610'; stroke(ch, 1, 1.2, 1);
+    ch.strokeStyle = '#b8501a'; stroke(ch, 1, 0, 0.65);
+    ch.strokeStyle = '#e08a34'; stroke(ch, 1, -1, 0.3);
+    const cg = crackGlow.getContext('2d');
+    try { cg.filter = 'blur(1.5px)'; } catch (e) { /* no canvas filters: the glow just stays crisp */ }
+    cg.strokeStyle = 'rgba(220,90,30,0.45)';
+    stroke(cg, 1 / GLOW_DIV, 9, 1);
+    lines.forEach((ln) => ln.pts.forEach((pt) => crackPts.push({ x: pt[0], y: pt[1] })));
+  })();
+
+  let embers = [];
+  const EMBER_CAP = 320;
+
+  function spawnEmber(x, y, burst) {
+    if (embers.length >= EMBER_CAP) return;
+    const a = burst ? Math.random() * Math.PI * 2 : -Math.PI / 2 + (Math.random() - 0.5) * 1.1;
+    const sp = burst ? 40 + Math.random() * 120 : 14 + Math.random() * 34;
+    embers.push({
+      x, y,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp - (burst ? 30 : 0),
+      life: 0,
+      maxLife: burst ? 0.5 + Math.random() * 0.8 : 1.3 + Math.random() * 2.2,
+      size: burst ? 1 + Math.random() * 1.6 : 0.8 + Math.random() * 1.7,
+      wob: Math.random() * 6.28,
+      burst: !!burst,
+    });
+  }
+  function spawnEmberBurst(x, y, n) {
+    for (let i = 0; i < n; i++) spawnEmber(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 10, true);
+  }
+
+  function updateEmbers(dt) {
+    for (let i = embers.length - 1; i >= 0; i--) {
+      const e = embers[i];
+      e.life += dt;
+      if (e.life >= e.maxLife) { embers.splice(i, 1); continue; }
+      e.x += (e.vx + Math.sin(e.life * 3 + e.wob) * 9) * dt;
+      e.y += e.vy * dt;
+      const drag = Math.min(1, dt * (e.burst ? 3 : 0.6));
+      e.vx *= 1 - drag;
+      e.vy *= 1 - drag;
+      if (!e.burst) e.vy -= 10 * dt; // heat keeps them climbing
+    }
+    // ambient: only worth spawning where somebody can see them
+    if (!players.length) return;
+    const near = (x, y) => players.some((pl) => Math.abs(x - pl.x) < VISIBLE_HALF_W + 30 && Math.abs(y - pl.y) < VISIBLE_HALF_H + 30);
+    let budget = dt * 42 * PLAYER_MODE;
+    while (budget > 0) {
+      if (Math.random() > budget) break;
+      budget -= 1;
+      let src = null;
+      if (Math.random() < 0.8 && crackPts.length) src = crackPts[Math.floor(Math.random() * crackPts.length)];
+      else if (fires.length) { const f = fires[Math.floor(Math.random() * fires.length)]; src = tileCenter(f.x, f.y); }
+      if (src && near(src.x, src.y)) spawnEmber(src.x + (Math.random() - 0.5) * 6, src.y + (Math.random() - 0.5) * 4, false);
+    }
+    // now and then a seam spits a handful of sparks
+    if (crackPts.length && Math.random() < dt * 2.2) {
+      const src = crackPts[Math.floor(Math.random() * crackPts.length)];
+      if (near(src.x, src.y)) spawnEmberBurst(src.x, src.y, 5 + Math.floor(Math.random() * 5));
+    }
+  }
+
+  // under the darkness: the charred edge, then the seam, pulsing
+  function drawMagmaCracks(g, camX, camY, now) {
+    const x0 = Math.max(0, camX - VISIBLE_HALF_W), y0 = Math.max(0, camY - VISIBLE_HALF_H);
+    const w = Math.min(WORLD_W - x0, VISIBLE_HALF_W * 2), h = Math.min(WORLD_H - y0, VISIBLE_HALF_H * 2);
+    if (w <= 0 || h <= 0) return;
+    g.drawImage(crackCrust, x0, y0, w, h, x0, y0, w, h);
+    const pulse = 0.8 + 0.14 * Math.sin(now * 0.0031) + 0.04 * Math.sin(now * 0.011);
+    g.save();
+    g.globalAlpha = 0.6 * pulse;
+    g.drawImage(crackHot, x0, y0, w, h, x0, y0, w, h);
+    g.restore();
+  }
+
+  // over the darkness mask: magma and embers are light sources, so they
+  // shine through the black instead of being swallowed by it
+  function drawMagmaGlow(g, camX, camY, now) {
+    const x0 = Math.max(0, camX - VISIBLE_HALF_W), y0 = Math.max(0, camY - VISIBLE_HALF_H);
+    const w = Math.min(WORLD_W - x0, VISIBLE_HALF_W * 2), h = Math.min(WORLD_H - y0, VISIBLE_HALF_H * 2);
+    if (w <= 0 || h <= 0) return;
+    const pulse = 0.8 + 0.14 * Math.sin(now * 0.0031) + 0.04 * Math.sin(now * 0.011);
+    g.save();
+    g.translate(VIEW_W / 2, VIEW_H / 2);
+    g.scale(ZOOM, ZOOM);
+    g.translate(-camX, -camY);
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = 0.16 * pulse;
+    g.drawImage(crackHot, x0, y0, w, h, x0, y0, w, h);
+    g.globalAlpha = 0.2 * pulse;
+    g.drawImage(crackGlow, x0 / GLOW_DIV, y0 / GLOW_DIV, w / GLOW_DIV, h / GLOW_DIV, x0, y0, w, h);
+    for (let i = 0; i < fireTrail.length; i += 2) {
+      const f = fireTrail[i];
+      if (Math.abs(f.x - camX) > VISIBLE_HALF_W + 40 || Math.abs(f.y - camY) > VISIBLE_HALF_H + 40) continue;
+      const age = (now - f.born) / (f.until - f.born);
+      softGlow(g, f.x, f.y, FIRE_TRAIL_R * 2.2, '255,120,32', 0.26 * (age > 0.78 ? Math.max(0, (1 - age) / 0.22) : 1));
+    }
+    fireballs.forEach((f) => softGlow(g, f.x, f.y, FIREBALL_RADIUS * 2.1, '255,140,50', 0.5));
+    magmaPools.forEach((m) => { if (now >= m.activeAt) softGlow(g, m.x, m.y, MAGMA_RADIUS * 1.7, '255,110,30', 0.5 * Math.min(1, (m.endsAt - now) / 380)); });
+    embers.forEach((e) => {
+      if (Math.abs(e.x - camX) > VISIBLE_HALF_W + 10 || Math.abs(e.y - camY) > VISIBLE_HALF_H + 10) return;
+      const k = e.life / e.maxLife;
+      const flick = 0.75 + 0.25 * Math.sin(now * 0.04 + e.wob * 7);
+      const r = e.size * (1 - 0.5 * k);
+      g.globalAlpha = Math.min(1, (1 - k) * 1.3) * flick;
+      g.fillStyle = k < 0.25 ? '#fff2b0' : k < 0.6 ? '#ffa030' : '#e8481a';
+      g.beginPath(); g.arc(e.x, e.y, r, 0, Math.PI * 2); g.fill();
+      if (r > 1.4) {
+        g.globalAlpha *= 0.28;
+        g.beginPath(); g.arc(e.x, e.y, r * 3, 0, Math.PI * 2); g.fill();
+      }
+    });
+    g.restore();
+  }
+
+  // The fire the fireballs leave behind -- solid ground nobody can step on.
+  function drawFireTrail(g, camX, camY, now) {
+    for (let i = 0; i < fireTrail.length; i++) {
+      const f = fireTrail[i];
+      if (Math.abs(f.x - camX) > VISIBLE_HALF_W + 40 || Math.abs(f.y - camY) > VISIBLE_HALF_H + 40) continue;
+      const age = (now - f.born) / (f.until - f.born);
+      const fade = Math.min(1, (now - f.born) / 150) * (age > 0.78 ? Math.max(0, (1 - age) / 0.22) : 1);
+      if (fade <= 0) continue;
+      g.save();
+      g.translate(f.x, f.y);
+      g.globalAlpha = fade;
+      g.fillStyle = 'rgba(20,8,4,0.45)';
+      g.beginPath(); g.ellipse(0, 3, FIRE_TRAIL_R * 1.15, FIRE_TRAIL_R * 0.8, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(255,110,30,0.38)';
+      g.beginPath(); g.arc(0, 0, FIRE_TRAIL_R * 1.1, 0, Math.PI * 2); g.fill();
+      for (let k = 0; k < 3; k++) {
+        const wob = Math.sin(now * 0.015 + f.seed + k * 2.1) * 3.5;
+        const h = (16 + k * 5 + Math.sin(now * 0.02 + f.seed * 1.7 + k) * 3) * (1 - 0.35 * age);
+        const ox = (k - 1) * 8;
+        g.beginPath();
+        g.moveTo(ox - 5, 5);
+        g.quadraticCurveTo(ox + 3 + wob, -h * 0.5, ox + wob * 0.6, -h);
+        g.quadraticCurveTo(ox - 3 + wob, -h * 0.5, ox + 5, 5);
+        g.closePath();
+        g.fillStyle = k === 1 ? '#ffd873' : k === 0 ? '#ff9c3d' : '#e0541f';
+        g.fill();
+      }
+      g.restore();
+    }
+  }
+
+  function drawFireballs(g, now) {
+    fireballs.forEach((f) => {
+      const r = FIREBALL_RADIUS;
+      const sp = Math.hypot(f.vx, f.vy) || 1;
+      const ux = f.vx / sp, uy = f.vy / sp;
+      g.save();
+      g.translate(f.x, f.y);
+      const halo = g.createRadialGradient(0, 0, r * 0.5, 0, 0, r * 2);
+      halo.addColorStop(0, 'rgba(255,140,40,0.42)');
+      halo.addColorStop(1, 'rgba(255,90,20,0)');
+      g.fillStyle = halo;
+      g.beginPath(); g.arc(0, 0, r * 2, 0, Math.PI * 2); g.fill();
+      for (let j = 7; j >= 1; j--) {            // a streaming tail
+        const wob = Math.sin(now * 0.02 + f.seed + j) * 3;
+        g.fillStyle = `rgba(${255 - j * 6},${120 - j * 10},30,${0.5 * (1 - j / 8)})`;
+        g.beginPath();
+        g.arc(-ux * j * r * 0.42 - uy * wob, -uy * j * r * 0.42 + ux * wob, r * (1 - j * 0.1), 0, Math.PI * 2);
+        g.fill();
+      }
+      const body = g.createRadialGradient(0, 0, 2, 0, 0, r);
+      body.addColorStop(0, '#fff6c8');
+      body.addColorStop(0.3, '#ffc23a');
+      body.addColorStop(0.68, '#ff6a1a');
+      body.addColorStop(1, '#b52008');
+      g.fillStyle = body;
+      g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+      for (let k = 0; k < 6; k++) {             // licking flame lobes round the rim
+        const a = now * 0.009 + f.seed + (k * Math.PI) / 3;
+        const rr = r * (0.82 + Math.sin(now * 0.02 + k * 1.7 + f.seed) * 0.12);
+        g.fillStyle = k % 2 ? 'rgba(255,200,80,0.6)' : 'rgba(255,120,30,0.6)';
+        g.beginPath(); g.arc(Math.cos(a) * rr, Math.sin(a) * rr, r * 0.3, 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
+    });
+  }
+
+  // a soft additive glow: a radial gradient from rgb at alpha a down to nothing
+  function softGlow(g, x, y, r, rgb, a) {
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, `rgba(${rgb},${a})`);
+    gr.addColorStop(1, `rgba(${rgb},0)`);
+    g.globalAlpha = 1;
+    g.fillStyle = gr;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+
+  // ---- phase 2 drawing: molten cracks, magma spikes, magma pools ----
+  // Fixed crack lines in unit-radius coordinates, made once from a seed so
+  // the body doesn't re-roll them every frame.
+  const BODY_CRACKS = (() => {
+    let sd = 0x2b0de7;
+    const rnd = () => {
+      sd = (sd + 0x6D2B79F5) | 0;
+      let t = Math.imul(sd ^ (sd >>> 15), 1 | sd);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const lines = [];
+    for (let i = 0; i < 10; i++) {
+      let a = (i / 10) * Math.PI * 2 + rnd() * 0.5;
+      let r = 0.1 + rnd() * 0.15;
+      const pts = [[Math.cos(a) * r, Math.sin(a) * r]];
+      while (r < 1.0) {
+        a += (rnd() - 0.5) * 0.9;
+        r += 0.09 + rnd() * 0.1;
+        pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+        if (rnd() < 0.2 && lines.length < 22) {
+          let ba = a + (rnd() < 0.5 ? -1 : 1) * (0.7 + rnd() * 0.5), br = r;
+          const bp = [[Math.cos(ba) * br, Math.sin(ba) * br]];
+          for (let k = 0; k < 3; k++) { ba += (rnd() - 0.5) * 0.9; br += 0.07 + rnd() * 0.06; bp.push([Math.cos(ba) * br, Math.sin(ba) * br]); }
+          lines.push(bp);
+        }
+      }
+      lines.push(pts);
+    }
+    return lines;
+  })();
+  const BODY_SPIKES = (() => {
+    const list = [];
+    for (let i = 0; i < 13; i++) {
+      const h = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+      list.push({ a: (i / 13) * Math.PI * 2 + 0.2, len: 0.26 + h * 0.24, w: 0.1 + (1 - h) * 0.05 });
+    }
+    return list;
+  })();
+
+  // behind the body: dark basalt spikes, veined and tipped with glowing magma
+  function drawMagmaSpikes(g, t) {
+    const R = boss.radius;
+    const grow = clamp((t - boss.phase2At) / PHASE2_SPIKE_GROW_MS, 0, 1);
+    const cold = boss.defeated;
+    BODY_SPIKES.forEach((sp, i) => {
+      const gi = clamp(grow * 1.7 - i * 0.06, 0, 1);
+      if (gi <= 0) return;
+      const eased = 1 - Math.pow(1 - gi, 3);
+      const len = sp.len * eased * (1 + 0.04 * Math.sin(t * 0.004 + i));
+      const r0 = R * 0.78, r1 = R * (1 + len);
+      const ca = Math.cos(sp.a), sa = Math.sin(sp.a);
+      const px = -sa, py = ca;
+      const bw = R * sp.w;
+      const bx = ca * r0, by = sa * r0, tx = ca * r1, ty = sa * r1;
+      const grad = g.createLinearGradient(bx, by, tx, ty);
+      grad.addColorStop(0, '#120807');
+      grad.addColorStop(0.55, cold ? '#2a2420' : '#3a140c');
+      grad.addColorStop(1, cold ? '#4a3f36' : '#ff7a1e');
+      g.beginPath();
+      g.moveTo(bx + px * bw, by + py * bw);
+      g.lineTo(tx, ty);
+      g.lineTo(bx - px * bw, by - py * bw);
+      g.closePath();
+      g.fillStyle = grad;
+      g.fill();
+      if (!cold) {
+        g.strokeStyle = `rgba(255,140,50,${0.45 + 0.2 * Math.sin(t * 0.006 + i * 1.3)})`;
+        g.lineWidth = 1.6;
+        g.beginPath(); g.moveTo(bx, by); g.lineTo(tx - ca * R * 0.04, ty - sa * R * 0.04); g.stroke();
+      }
+    });
+  }
+
+  // over the body: charred shading and glowing seams, clipped to the silhouette
+  function drawMagmaBody(g, t) {
+    if (boss.defeated) return;
+    const R = boss.radius;
+    const grow = clamp((t - boss.phase2At) / PHASE2_SPIKE_GROW_MS, 0, 1);
+    g.save();
+    g.beginPath();
+    g.arc(0, 0, R * 0.98, 0, Math.PI * 2);
+    g.clip();
+    g.fillStyle = `rgba(14,5,3,${0.38 * grow})`;
+    g.fillRect(-R, -R, R * 2, R * 2);
+    const pulse = 0.75 + 0.25 * Math.sin(t * 0.0045);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    BODY_CRACKS.forEach((ln, li) => {
+      const upto = clamp(grow * 1.4 - (li % 5) * 0.08, 0, 1);
+      if (upto <= 0) return;
+      const n = Math.max(1, Math.floor((ln.length - 1) * upto));
+      const trace = () => {
+        g.beginPath();
+        g.moveTo(ln[0][0] * R, ln[0][1] * R);
+        for (let i = 1; i <= n; i++) g.lineTo(ln[i][0] * R, ln[i][1] * R);
+      };
+      g.save();
+      g.shadowColor = '#ff6a1a'; g.shadowBlur = R * 0.09;
+      g.globalAlpha = pulse;
+      g.strokeStyle = '#d4521a'; g.lineWidth = R * 0.034; trace(); g.stroke();
+      g.restore();
+      g.strokeStyle = '#ffc060'; g.globalAlpha = 0.9 * pulse; g.lineWidth = R * 0.012; trace(); g.stroke();
+      g.globalAlpha = 1;
+    });
+    g.restore();
+  }
+
+  // the rings and flash as the boss changes
+  function drawPhase2Burst(g, now) {
+    if (!boss.phase2) return;
+    const age = now - boss.phase2At;
+    if (age < 0 || age > 1500) return;
+    const k = age / 1500;
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 3; i++) {
+      const kk = clamp(k * 1.4 - i * 0.18, 0, 1);
+      if (kk <= 0 || kk >= 1) continue;
+      g.strokeStyle = `rgba(255,${150 + i * 25},60,${0.7 * (1 - kk)})`;
+      g.lineWidth = 8 * (1 - kk) + 1;
+      g.beginPath(); g.arc(boss.x, boss.y, boss.radius * (0.8 + 2.4 * kk), 0, Math.PI * 2); g.stroke();
+    }
+    g.restore();
+  }
+
+  function drawMagmaPools(g, camX, camY, now) {
+    magmaPools.forEach((m) => {
+      if (Math.abs(m.x - camX) > VISIBLE_HALF_W + 120 || Math.abs(m.y - camY) > VISIBLE_HALF_H + 120) return;
+      const R = MAGMA_RADIUS;
+      g.save();
+      g.translate(m.x, m.y);
+      if (now < m.activeAt) {
+        // the warning: a ring closing in on the spot, the ground reddening
+        const k = clamp((now - m.warnAt) / MAGMA_WARN_MS, 0, 1);
+        const flick = 0.7 + 0.3 * Math.sin(now * 0.03);
+        g.fillStyle = `rgba(255,90,20,${(0.1 + 0.2 * k) * flick})`;
+        g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = `rgba(255,150,50,${0.55 + 0.35 * flick})`;
+        g.lineWidth = 3;
+        g.setLineDash([10, 8]);
+        g.lineDashOffset = -now * 0.04;
+        g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.stroke();
+        g.setLineDash([]);
+        g.strokeStyle = `rgba(255,220,140,${0.6 * (1 - k)})`;
+        g.lineWidth = 2;
+        g.beginPath(); g.arc(0, 0, R * (1.5 - 0.5 * k), 0, Math.PI * 2); g.stroke();
+      } else {
+        const born = clamp((now - m.activeAt) / 160, 0, 1);
+        const out = clamp((m.endsAt - now) / 380, 0, 1);
+        const rr = R * (0.55 + 0.45 * (1 - Math.pow(1 - born, 3)));
+        g.globalAlpha = out;
+        g.fillStyle = 'rgba(16,6,4,0.7)';                     // scorched crust round the edge
+        g.beginPath(); g.arc(0, 0, rr * 1.12, 0, Math.PI * 2); g.fill();
+        const grad = g.createRadialGradient(0, 0, 0, 0, 0, rr);
+        grad.addColorStop(0, '#fff0a0');
+        grad.addColorStop(0.3, '#ffb030');
+        grad.addColorStop(0.7, '#ff5a14');
+        grad.addColorStop(1, '#a02208');
+        g.fillStyle = grad;
+        g.beginPath(); g.arc(0, 0, rr, 0, Math.PI * 2); g.fill();
+        for (let i = 0; i < 7; i++) {                          // the surface churning
+          const a = now * 0.0008 * (i % 2 ? 1 : -1) + i * 0.9 + m.seed;
+          const d = rr * (0.25 + 0.45 * ((i * 37) % 10) / 10);
+          g.fillStyle = i % 2 ? 'rgba(255,230,140,0.45)' : 'rgba(255,120,30,0.5)';
+          g.beginPath(); g.ellipse(Math.cos(a) * d, Math.sin(a) * d, rr * 0.22, rr * 0.13, a, 0, Math.PI * 2); g.fill();
+        }
+        for (let i = 0; i < 6; i++) {                          // bubbles swelling and bursting
+          const cyc = 900 + i * 130;
+          const ph = ((now + m.seed * 13 + i * 377) % cyc) / cyc;
+          const a = i * 1.07 + m.seed, d = rr * (0.15 + 0.6 * (((i * 53) % 10) / 10));
+          g.strokeStyle = `rgba(255,236,170,${0.8 * (1 - ph)})`;
+          g.lineWidth = 1.5;
+          g.beginPath(); g.arc(Math.cos(a) * d, Math.sin(a) * d, 2 + ph * 9, 0, Math.PI * 2); g.stroke();
+        }
+        g.strokeStyle = 'rgba(255,120,40,0.7)';
+        g.lineWidth = 2.5;
+        g.beginPath(); g.arc(0, 0, rr * 1.0, 0, Math.PI * 2); g.stroke();
+      }
+      g.restore();
+    });
+  }
+
   // ---- rendering ----
   function drawTiles(g, camX, camY, now) {
     const minTX = Math.max(0, Math.floor((camX - VISIBLE_HALF_W) / TILE) - 1);
@@ -1994,6 +2681,8 @@
         }
       }
     }
+
+    drawMagmaCracks(g, camX, camY, now);
 
     // door plug (a short 2-tile gap in the exit alcove's wall)
     let dx0 = Infinity, dy0 = Infinity, dx1 = -Infinity, dy1 = -Infinity;
@@ -2373,15 +3062,30 @@
   function drawBoss(g, t) {
     g.save();
     g.translate(boss.x, boss.y);
-    // Visibly spinning (rather than just relocating fast) is what sells the
-    // DVD-logo bounce as an attack in progress and not just fast pathing.
-    if (boss.phase === 'spin') g.rotate(boss.spinAngle);
-
+    if (boss.phase === 'transform') {            // it shudders as it changes
+      g.translate((Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7);
+    }
     drawBossTentacles(g, t);
+    if (boss.phase2) drawMagmaSpikes(g, t);
     drawBossBody(g, t);
+    if (boss.phase2) drawMagmaBody(g, t);
     if (!boss.defeated) {
       if (boss.phase !== 'stunned') drawBossFlames(g, t);
       drawBossEye(g);
+      if (boss.phase === 'fireballs' && boss.volleysFired < FIREBALL_VOLLEYS) {
+        // it swells and brightens just before every volley
+        const lead = boss.nextVolleyAt - t;
+        if (lead < FIREBALL_WINDUP_MS && lead > -60) {
+          const k = 1 - clamp(lead / FIREBALL_WINDUP_MS, 0, 1);
+          const r = boss.radius * (0.25 + 0.6 * k);
+          const gl = g.createRadialGradient(0, 0, 0, 0, 0, r);
+          gl.addColorStop(0, `rgba(255,240,170,${0.85 * k})`);
+          gl.addColorStop(0.5, `rgba(255,150,40,${0.5 * k})`);
+          gl.addColorStop(1, 'rgba(255,80,20,0)');
+          g.fillStyle = gl;
+          g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+        }
+      }
     } else {
       // one last dim ember and a closed, dead eye -- the fight is over
       g.beginPath();
@@ -2739,11 +3443,24 @@
       punchLight(maskCtx, s.x, s.y, 130 * ZOOM, 0.75);
     });
 
+    fireballs.forEach((f) => {
+      const sc = worldToScreen(f.x, f.y);
+      punchLight(maskCtx, sc.x, sc.y, 170 * ZOOM, 0.95);
+    });
+    magmaPools.forEach((m) => {
+      const sc = worldToScreen(m.x, m.y);
+      punchLight(maskCtx, sc.x, sc.y, (m.activeAt > now ? 80 : 170) * ZOOM, m.activeAt > now ? 0.5 : 0.95);
+    });
+    for (let i = 0; i < fireTrail.length; i += 3) {
+      const sc = worldToScreen(fireTrail[i].x, fireTrail[i].y);
+      punchLight(maskCtx, sc.x, sc.y, 60 * ZOOM, 0.55);
+    }
+
     // the boss is on fire -- it lights up its own surroundings, giving
     // players a chance to spot the glow before they're close enough for
     // its own detection range to find them.
     const bs = worldToScreen(boss.x, boss.y);
-    punchLight(maskCtx, bs.x, bs.y, boss.radius * 2.2 * ZOOM, 0.6);
+    punchLight(maskCtx, bs.x, bs.y, boss.radius * (boss.phase2 ? 2.8 : 2.2) * ZOOM, boss.phase2 ? 0.75 : 0.6);
   }
 
   function renderViewport(index, now) {
@@ -2769,17 +3486,26 @@
     ctx.translate(-camX, -camY);
     drawTiles(ctx, camX, camY, now);
     drawFires(ctx, now);
+    drawFireTrail(ctx, camX, camY, now);
     drawSmokeBombs(ctx, now);
     drawAttackTelegraphs(ctx, now);
     drawBossBombHazards(ctx, now);
+    drawMagmaPools(ctx, camX, camY, now);
     drawBoss(ctx, now);
+    drawPhase2Burst(ctx, now);
     drawPlayers(ctx);
+    drawFireballs(ctx, now);
     drawParticles(ctx);
     drawFloatingTexts(ctx);
     ctx.restore();
 
     buildDarknessMask(camX, camY, now);
     ctx.drawImage(maskCanvas, vx, 0);
+    ctx.save();
+    ctx.translate(vx, 0);
+    ctx.beginPath(); ctx.rect(0, 0, VIEW_W, VIEW_H); ctx.clip();
+    drawMagmaGlow(ctx, camX, camY, now);
+    ctx.restore();
 
     if (now < nvgUntil) {
       ctx.fillStyle = 'rgba(40,255,120,0.16)';
@@ -3066,6 +3792,9 @@
     }
     if (gameState === 'collapsing') updateCollapse(now);
     updateParticles(dt);
+    updateEmbers(dt);
+    updateFireballs(now, dt);
+    updateMagmaPools(now, dt);
     updateFloatingTexts(dt);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);

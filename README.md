@@ -211,8 +211,10 @@ size — filling enough of the now-small room on its own that there's
 nowhere in it that's really far from danger. It cycles through six
 attacks at random, back to back, for as long as it's alive:
 
-1. **Spin** — bounces off the arena walls DVD-logo style at **5x** your
-   speed for 5 seconds, changing direction off every wall it hits.
+1. **Fireballs** — over 10 seconds it fires four volleys, one every 2.5
+   seconds, of three huge (2x2 tile) fireballs. They ricochet off the
+   walls and leave a trail of fire behind them that can't be walked
+   through until it burns out; touching a fireball catches you.
 2. **Throw** — grabs three chunks of rubble and lobs them near the
    players; each lands inside a **red circle** that's been marked on the
    ground for a full 2.5 seconds beforehand.
@@ -230,6 +232,15 @@ attacks at random, back to back, for as long as it's alive:
    vent isn't just "safe," it's the one place guaranteed to block this
    specific attack outright.
 
+At **half health (25 HP)** it enters **phase 2, the Ashen One Magmatic**:
+a short transformation (it can't hurt you while it changes), molten
+cracks across its body, magma spikes growing out of it — and a seventh
+attack:
+
+7. **Magma** — three 3x3-tile circles of magma well up near the players,
+   each marked on the ground for a full **1 second** first, then burning
+   for **3 seconds**. Standing in one while it's lit catches you.
+
 Its own touch still catches you at any point in that cycle, same as
 every other level's monsters — this is on top of that, not instead of
 it. Every 10th attack, though, it keels over **stunned** for 10 seconds
@@ -237,9 +248,9 @@ instead of attacking: a ring of dazed stars over its head and a distinct
 sound cue mark the window, and it's the one moment its own contact won't
 catch you either.
 
-That stun window is the entire strategy. The boss has a flat **25 HP** —
+That stun window is the entire strategy. The boss has a flat **50 HP** —
 a bomb landed on it while it's stunned takes a real **5 points** off;
-landed at any other point in the cycle, the same hit only does **1** —
+landed at any other point in the cycle, the same hit only does **2.5** —
 walking up mid-charge to land a "free" hit is technically possible but
 not remotely worth it next to just waiting the ten seconds out. Up to
 **three** of your own bombs sit on the map at once (not one), and

@@ -42,8 +42,61 @@
     <button id="hard-toggle" class="hard-toggle-btn" type="button">&#9760; Hard Mode: Off</button>
     <p id="hard-note" class="hard-note"></p>
   </div>
-  <section class="chapter chapter-1">
-  <h2 class="chapter-divider">Chapter 1</h2>
+  <div class="chapter-list">
+    <button type="button" class="chapter-card panel chapter-1" data-goto="chapter-1">
+      <span class="chapter-icon">&#128293;</span>
+      <span class="chapter-num">Chapter 1</span>
+      <span class="chapter-name">The Facility</span>
+      <span class="chapter-range">Levels 1&ndash;5 &middot; boss: The Ashen One</span>
+      <span class="chapter-progress" data-chapter-progress="1"></span>
+    </button>
+    <button type="button" class="chapter-card panel chapter-2" data-goto="chapter-2">
+      <span class="chapter-icon">&#9876;&#65039;</span>
+      <span class="chapter-num">Chapter 2</span>
+      <span class="chapter-name">The Undercroft</span>
+      <span class="chapter-range">Levels 6&ndash;10 &middot; boss: The Last Knight</span>
+      <span class="chapter-progress" data-chapter-progress="2"></span>
+    </button>
+    <button type="button" class="chapter-card panel chapter-3" data-goto="chapter-3">
+      <span class="chapter-icon">&#10052;&#65039;</span>
+      <span class="chapter-num">Chapter 3</span>
+      <span class="chapter-name">The Frost</span>
+      <span class="chapter-range">Levels 11&ndash;15 &middot; boss: The Frozen Mutation</span>
+      <span class="chapter-progress" data-chapter-progress="3"></span>
+    </button>
+    <button type="button" class="chapter-card panel chapter-4" data-goto="chapter-4">
+      <span class="chapter-icon">&#127754;</span>
+      <span class="chapter-num">Chapter 4</span>
+      <span class="chapter-name">The Flood</span>
+      <span class="chapter-range">Levels 16&ndash;20 &middot; boss: The Cistern</span>
+      <span class="chapter-progress" data-chapter-progress="4"></span>
+    </button>
+    <button type="button" class="chapter-card panel chapter-5" data-goto="chapter-5">
+      <span class="chapter-icon">&#127812;</span>
+      <span class="chapter-num">Chapter 5</span>
+      <span class="chapter-name">The Overgrowth</span>
+      <span class="chapter-range">Levels 21&ndash;25 &middot; boss: The Cultivator</span>
+      <span class="chapter-progress" data-chapter-progress="5"></span>
+    </button>
+    <button type="button" class="chapter-card panel chapter-6" data-goto="chapter-6">
+      <span class="chapter-icon">&#127747;</span>
+      <span class="chapter-num">Chapter 6</span>
+      <span class="chapter-name">The Rooftops</span>
+      <span class="chapter-range">Levels 26&ndash;30 &middot; boss: The Garguantuagoyle</span>
+      <span class="chapter-progress" data-chapter-progress="6"></span>
+    </button>
+    <button type="button" class="chapter-card panel chapter-7" data-goto="chapter-7">
+      <span class="chapter-icon">&#128663;</span>
+      <span class="chapter-num">Chapter 7</span>
+      <span class="chapter-name">The Way Out</span>
+      <span class="chapter-range">Level 31 &middot; boss: The Multipod</span>
+      <span class="chapter-progress" data-chapter-progress="7"></span>
+    </button>
+  </div>
+  </div>
+  <section class="chapter chapter-1" data-view="chapter-1" hidden>
+  <h2 class="chapter-divider">&#128293; Chapter 1 &mdash; The Facility</h2>
+  <button type="button" class="back-link" data-goto="story">&larr; All chapters</button>
   <div class="menu-list">
     <a class="menu-item panel" href="level1.html" data-level="1">
       <h2>Level 1 &mdash; The Facility <span class="best-time" data-level="level1"></span></h2>
@@ -82,8 +135,9 @@
   </div>
   </section>
 
-  <section class="chapter chapter-2">
-  <h2 class="chapter-divider">Chapter 2</h2>
+  <section class="chapter chapter-2" data-view="chapter-2" hidden>
+  <h2 class="chapter-divider">&#9876;&#65039; Chapter 2 &mdash; The Undercroft</h2>
+  <button type="button" class="back-link" data-goto="story">&larr; All chapters</button>
   <div class="menu-list">
     <a class="menu-item panel" href="level6.html" data-level="6">
       <h2>Level 6 &mdash; The Undercroft <span class="best-time" data-level="level6"></span></h2>
@@ -123,8 +177,9 @@
   </div>
   </section>
 
-  <section class="chapter chapter-3">
-  <h2 class="chapter-divider">Chapter 3</h2>
+  <section class="chapter chapter-3" data-view="chapter-3" hidden>
+  <h2 class="chapter-divider">&#10052;&#65039; Chapter 3 &mdash; The Frost</h2>
+  <button type="button" class="back-link" data-goto="story">&larr; All chapters</button>
   <div class="menu-list">
     <a class="menu-item panel" href="level11.html" data-level="11">
       <h2>Level 11 &mdash; The Frost <span class="best-time" data-level="level11"></span></h2>
@@ -165,8 +220,9 @@
   </div>
   </section>
 
-  <section class="chapter chapter-4">
-  <h2 class="chapter-divider">Chapter 4</h2>
+  <section class="chapter chapter-4" data-view="chapter-4" hidden>
+  <h2 class="chapter-divider">&#127754; Chapter 4 &mdash; The Flood</h2>
+  <button type="button" class="back-link" data-goto="story">&larr; All chapters</button>
   <div class="menu-list">
     <a class="menu-item panel" href="level16.html" data-level="16">
       <h2>Level 16 &mdash; The Flood <span class="best-time" data-level="level16"></span></h2>
@@ -212,8 +268,9 @@
   </div>
   </section>
 
-  <section class="chapter chapter-5">
-  <h2 class="chapter-divider">Chapter 5</h2>
+  <section class="chapter chapter-5" data-view="chapter-5" hidden>
+  <h2 class="chapter-divider">&#127812; Chapter 5 &mdash; The Overgrowth</h2>
+  <button type="button" class="back-link" data-goto="story">&larr; All chapters</button>
   <div class="menu-list">
     <a class="menu-item panel" href="level21.html" data-level="21">
       <h2>Level 21 &mdash; The Overgrowth <span class="best-time" data-level="level21"></span></h2>
@@ -266,8 +323,9 @@
     </a>
   </div>
   </section>
-  <section class="chapter chapter-6">
-  <h2 class="chapter-divider">Chapter 6</h2>
+  <section class="chapter chapter-6" data-view="chapter-6" hidden>
+  <h2 class="chapter-divider">&#127747; Chapter 6 &mdash; The Rooftops</h2>
+  <button type="button" class="back-link" data-goto="story">&larr; All chapters</button>
   <div class="menu-list">
     <a class="menu-item panel" href="level26.html" data-level="26">
       <h2>Level 26 &mdash; Rooftops <span class="best-time" data-level="level26"></span></h2>
@@ -329,8 +387,9 @@
     </a>
   </div>
   </section>
-  <section class="chapter chapter-7">
-  <h2 class="chapter-divider">Chapter 7</h2>
+  <section class="chapter chapter-7" data-view="chapter-7" hidden>
+  <h2 class="chapter-divider">&#128663; Chapter 7 &mdash; The Way Out</h2>
+  <button type="button" class="back-link" data-goto="story">&larr; All chapters</button>
   <div class="menu-list">
     <a class="menu-item panel" href="level31.html" data-level="31">
       <h2>Level 31 &mdash; The Way Out <span class="best-time" data-level="level31"></span></h2>
@@ -347,7 +406,6 @@
     </a>
   </div>
   </section>
-  </div>
   <section class="holidays" data-view="holidays" hidden>
     <h2 class="holidays-title">Holidays</h2>
     <p class="holidays-sub">Pick a holiday to see its levels. Each one is its own set of bonus levels, separate from the main story.</p>
@@ -463,13 +521,14 @@
   // The level selector has a side rail: Story (the main chapters) and Holidays
   // (bonus level sets per holiday). The view is kept in the URL hash so Back and
   // links straight into a holiday (the Halloween levels' "Menu" link) both work.
-  const VIEWS = ['story', 'holidays', 'halloween-2026'];
+  const VIEWS = ['story', 'chapter-1', 'chapter-2', 'chapter-3', 'chapter-4', 'chapter-5', 'chapter-6', 'chapter-7', 'holidays', 'halloween-2026'];
   function showView(name) {
     if (!VIEWS.includes(name)) name = 'story';
     document.querySelectorAll('[data-view]').forEach((el) => { el.hidden = el.dataset.view !== name; });
-    window.__lobbyMode = name === 'story' ? 'story' : 'holiday';
+    const isStory = name === 'story' || name.startsWith('chapter-');
+    window.__lobbyMode = isStory ? 'story' : 'holiday';
     document.querySelectorAll('.side-tab').forEach((b) => {
-      b.classList.toggle('active', b.dataset.goto === name || (b.dataset.goto === 'holidays' && name === 'halloween-2026'));
+      b.classList.toggle('active', (b.dataset.goto === 'story' && isStory) || b.dataset.goto === name || (b.dataset.goto === 'holidays' && name === 'halloween-2026'));
     });
   }
   function currentViewFromHash() { return location.hash.replace('#', ''); }
@@ -482,6 +541,19 @@
   });
   window.addEventListener('hashchange', () => showView(currentViewFromHash()));
   showView(currentViewFromHash());
+  (function renderChapterProgress() {
+    const story = window.GoofyStory;
+    if (!story) return;
+    document.querySelectorAll('[data-chapter-progress]').forEach((el) => {
+      const c = parseInt(el.dataset.chapterProgress, 10);
+      const first = (c - 1) * 5 + 1, last = Math.min(31, c * 5);
+      let done = 0;
+      for (let n = first; n <= last; n++) if (story.isCompleted(n)) done++;
+      const total = last - first + 1;
+      el.textContent = !story.isUnlocked(first) ? 'Locked' : done === total ? `All ${total} completed` : `${done} / ${total} completed`;
+      el.closest('.chapter-card').classList.toggle('locked', !story.isUnlocked(first));
+    });
+  })();
   (function renderHolidayProgress() {
     const story = window.GoofyStory, el = document.getElementById('holiday-halloween-progress');
     if (!story || !el) return;

@@ -769,3 +769,40 @@ html.hard-mode .story-continue-btn {
   cursor: pointer;
 }
 .back-link:hover { color: var(--accent); }
+
+/* ---- the Story view's chapter picker ---- */
+.chapter-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+  max-width: 1000px;
+  margin: 1.5rem auto 0;
+}
+
+.chapter-card {
+  font: inherit;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  width: 220px;
+  padding: 1.1rem 1rem;
+  cursor: pointer;
+  text-align: center;
+  border: 1px solid var(--chapter-color);
+  background: linear-gradient(180deg, var(--chapter-wash), rgba(20, 14, 28, 0.8));
+}
+
+.chapter-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.chapter-card.locked { opacity: 0.5; }
+.chapter-icon { font-size: 2.1rem; }
+.chapter-num { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+.chapter-name { font-size: 1.15rem; font-weight: 700; color: #fff; }
+.chapter-range { color: var(--dim); font-size: 0.85rem; }
+.chapter-progress { margin-top: 0.25rem; font-size: 0.85rem; color: var(--accent); }
+
+.chapter-5 { --chapter-color: rgba(122, 200, 70, 0.4); --chapter-wash: rgba(122, 200, 70, 0.05); }
+.chapter-6 { --chapter-color: rgba(214, 160, 90, 0.4); --chapter-wash: rgba(214, 160, 90, 0.05); }
+.chapter-7 { --chapter-color: rgba(255, 90, 90, 0.4); --chapter-wash: rgba(255, 90, 90, 0.05); }

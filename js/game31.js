@@ -27,6 +27,7 @@
   // single full-width view in both modes.
   const FOOT_VIEW_W = PLAYER_MODE === 1 ? FULL_W : FULL_W / 2;
   const FOOT_ZOOM = 1;
+  const FOOT_CAM_LEAN = 60; // on foot the camera sits this far north of the player, so the facility's entrance stays in view
   const CHASE_ZOOM_MAX = 0.62;
   const CHASE_ZOOM_MIN = 0.3;
 
@@ -1060,6 +1061,23 @@
       g.fillStyle = '#7fb4d8'; g.fillRect(dx, dy, dw / 2 - 3, 96); g.fillRect(dx + dw / 2 + 3, dy, dw / 2 - 3, 96);
       g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(dx + 8, dy + 8, 26, 40); g.fillRect(dx + dw / 2 + 11, dy + 8, 26, 40);
     }
+    // a man in a hazmat suit braced against the doors, holding them shut; every few
+    // seconds something thumps them from inside and shoves him back a step. Once the
+    // chase starts there's only a stain on the step where he stood.
+    const stoop = dy + 96;
+    if (doorsOpen === 0 && window.BossCutscene && window.BossCutscene._hazmat) {
+      const cyc = now % 3400, thump = cyc < 260 ? Math.exp(-cyc / 90) : 0;
+      if (thump > 0.05) {                                    // the leaves flinch with it
+        g.fillStyle = `rgba(190,60,230,${0.45 * thump})`; g.fillRect(dx + dw / 2 - 3, dy, 6, 96);
+        g.strokeStyle = `rgba(20,20,26,${0.5 * thump})`; g.lineWidth = 4;
+        g.beginPath(); g.ellipse(doorPos.x - 34, dy + 48, 14, 20, 0, 0, Math.PI * 2); g.stroke();
+      }
+      window.BossCutscene._hazmat(g, { x: doorPos.x + Math.sin(now * 0.011) * 1.2, y: stoop + 17 + thump * 6, ang: -Math.PI / 2, u: PLAYER_RADIUS * 1.05, armsUp: 1, jitter: 0.05 + 0.2 * thump, time: now, walk: 0, speed: 0 });
+    } else if (doorsOpen > 0) {
+      g.fillStyle = 'rgba(90,10,14,0.8)'; g.beginPath(); g.ellipse(doorPos.x + 6, stoop + 26, 22, 11, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(110,12,18,0.7)';
+      [[-14, 18, 5], [20, 34, 4], [-4, 44, 3], [30, 20, 3]].forEach(([ox, oy, r]) => { g.beginPath(); g.arc(doorPos.x + ox, stoop + oy, r, 0, Math.PI * 2); g.fill(); });
+    }
     g.fillStyle = '#3a3d44'; g.fillRect(dx - 16, dy - 40, dw + 32, 28);
     g.fillStyle = '#fff'; g.font = 'bold 20px monospace'; g.textAlign = 'center';
     g.fillText('THE FACILITY', doorPos.x, dy - 20);
@@ -1679,7 +1697,7 @@
       players.forEach((p, i) => {
         const vx = i * FOOT_VIEW_W;
         const halfW = FOOT_VIEW_W / 2 / FOOT_ZOOM, halfH = VIEW_H / 2 / FOOT_ZOOM;
-        const camX = clamp(p.x, halfW, WORLD_W - halfW), camY = clamp(p.y, halfH, WORLD_H - halfH);
+        const camX = clamp(p.x, halfW, WORLD_W - halfW), camY = clamp(p.y - FOOT_CAM_LEAN, halfH, WORLD_H - halfH);
         drawViewWorld(vx, FOOT_VIEW_W, camX, camY, FOOT_ZOOM, now);
         ctx.save(); ctx.beginPath(); ctx.rect(vx, 0, FOOT_VIEW_W, VIEW_H); ctx.clip();
         drawHintOverFoot(vx, FOOT_VIEW_W, camX, camY, now);

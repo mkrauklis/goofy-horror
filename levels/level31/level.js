@@ -48,8 +48,10 @@ window.LEVEL31 = {
     "#..................................T................................TTT..TTT.TTTT..TTTT.TT..TTTT.T.T..TTTTTTTTT..TT.TTT.TTTTTTTTT.TT..TTTT.TT.TT.TTTT.T.TT.TTTT.",
     "################################################################################################################################################################",
   ],
-  spawn1: {x:36,y:21},
-  spawn2: {x:36,y:24},
+  // both start close enough to the entrance (and the foot camera leans north, see
+  // game31.js) that the man holding the doors shut is in view from the first frame
+  spawn1: {x:34,y:17},
+  spawn2: {x:38,y:18},
   cars: [{x:46,y:21,heading:0.0},{x:46,y:24,heading:0.0}],
   door: {x:33,y:13},
   facility: {x0:8,y0:3,x1:58,y1:12},

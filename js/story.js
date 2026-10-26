@@ -323,6 +323,7 @@
     const label = document.createElement('span');
     label.className = 'nav-chapter-label';
     label.textContent = hallo ? 'Halloween' : `Chapter ${chapterForLevel(n)}`;
+    if (!hallo) menuLink.setAttribute('href', `index.html#chapter-${chapterForLevel(n)}`);
     const sep = document.createElement('span');
     sep.textContent = '·';
     menuLink.after(sep, label);
