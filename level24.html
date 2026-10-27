@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Desolate Apes &mdash; Thornmother</title>
+<title>Desolate Apes &mdash; Level 24</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -12,44 +12,57 @@
 </nav>
 
 <header class="hero">
-  <h1 id="level-title">Thornmother</h1>
-  <p class="objective" id="level-objective"></p>
+  <h1>Level 24 &mdash; The Gearworks</h1>
+  <p class="objective">Same moss, grass and wooden roots as the wing next door, now with wildflowers growing through it and slow conveyor belts cutting across both sections. Spin all <strong>3</strong> gears (<strong>5 seconds</strong> held at each) to open the exit. Two Sentries hunt by sight, same traits as Level 22's Kindling but <strong>15%</strong> slower &mdash; each one firing its own shotgun at the closest player every 5 seconds.</p>
 </header>
 
 <div class="wrap">
   <div id="game-fullscreen-wrap">
     <div id="hud">
-      <span id="hud-obj">Boss HP</span>
-      <span id="hud-door">Door: locked</span>
       <span id="hud-timer">Time: 0:00.0</span>
       <span id="hud-best">Best: --:--</span>
+      <span id="hud-gears">Gears: 0/3</span>
       <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
     </div>
     <div id="game-canvas-holder" class="panel">
       <canvas id="game-canvas" width="920" height="340"></canvas>
       <div id="game-message"></div>
-    </div>
+  </div>
   </div>
   <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
 </div>
 
 <div class="wrap">
-  <p class="level-description" id="level-desc"></p>
-  <p class="level-description"><a href="editor.html#24">Open this level in the designer</a></p>
+  <p class="level-description">
+    Same decor as the wing next door &mdash; moss and grass over 90% of
+    the floor, wooden roots threading the gaps, windows the only fixed
+    light besides your own &mdash; except wildflowers now grow up through
+    the grass too, and a few conveyor belts run across each section,
+    carrying anyone standing on them along at half your walking speed.
+  </p>
+  <p class="level-description">
+    No lever, no item this time &mdash; 3 gears, one in each section and
+    one in the hallway between them. Stand at one for a full
+    <strong>5 seconds</strong> to spin it; step away and it slowly winds
+    back down. Spin all 3 and the exit opens.
+  </p>
+  <p class="level-description">
+    Two Sentries &mdash; tentacled, gear-studded machines with one red
+    eye &mdash; hunt the same way Level 22's Kindling does, just
+    <strong>15%</strong> slower: always closing the instant they can see
+    you, no slow patrol and fast charge to it. Each one also carries a
+    shotgun of its own, firing at whichever of you it can currently see
+    that's closest every 5 seconds, the blast covering ground at
+    <strong>3x</strong> your speed.
+  </p>
 </div>
 
-<script>window.CUSTOM_SLOT = 24;</script>
 <script src="js/hardmode.js"></script>
 <script src="js/screenfx.js"></script>
 <script src="js/footsteps.js"></script>
 <script src="js/story.js"></script>
-<script src="js/playermodel.js"></script>
-<script src="js/bossmusic.js"></script>
-<script src="js/custommonster.js"></script>
-<script src="js/customdata.js"></script>
-<script src="js/customdefaults.js"></script>
-<script src="js/bosscutscene.js"></script>
+<script src="levels/level24/level.js"></script>
 <script src="js/leveldetails.js"></script>
-<script src="js/customgame.js"></script>
+<script src="js/game24.js"></script>
 </body>
 </html>

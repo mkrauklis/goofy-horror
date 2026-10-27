@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Desolate Apes &mdash; The Ossuary Warden</title>
+<title>Desolate Apes &mdash; Level 9</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -12,14 +12,14 @@
 </nav>
 
 <header class="hero">
-  <h1 id="level-title">The Ossuary Warden</h1>
-  <p class="objective" id="level-objective"></p>
+  <h1>Level 9 &mdash; The Dig</h1>
+  <p class="objective">Search the minecarts scattered along the rail tracks &mdash; 3 of the 36 are holding dynamite. Find all 3 and they blow the exit door open. A huge armored caterpillar prowls the halls at <strong>3x</strong> your speed.</p>
 </header>
 
 <div class="wrap">
   <div id="game-fullscreen-wrap">
     <div id="hud">
-      <span id="hud-obj">Boss HP</span>
+      <span id="hud-dynamite">Dynamite: 0 / 3</span>
       <span id="hud-door">Door: locked</span>
       <span id="hud-timer">Time: 0:00.0</span>
       <span id="hud-best">Best: --:--</span>
@@ -28,28 +28,42 @@
     <div id="game-canvas-holder" class="panel">
       <canvas id="game-canvas" width="920" height="340"></canvas>
       <div id="game-message"></div>
-    </div>
+  </div>
   </div>
   <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
 </div>
 
 <div class="wrap">
-  <p class="level-description" id="level-desc"></p>
-  <p class="level-description"><a href="editor.html#9">Open this level in the designer</a></p>
+  <p class="level-description">
+    Rail tracks run through every hall down here, and 36 stationary
+    minecarts sit on them, abandoned mid-dig. Most are empty. Three
+    are holding dynamite, no way to tell which from the outside &mdash;
+    you just have to search them. Find all three and they blow the
+    exit door clean open.
+  </p>
+  <p class="level-description">
+    The thing that lives down here is a cousin of the caterpillar from
+    the sinkhole &mdash; except this one is twice as thick, five times
+    as long, armor-plated along every segment of its body, pale as
+    bone, and a mouth full of teeth where its cousin just had an eye.
+    It doesn't need to be triggered by a meat vine or anything else:
+    it's simply fast, a flat <strong>3x</strong> your own speed,
+    whether it's patrolling or already locked onto you.
+  </p>
+  <p class="level-description">
+    A few patches of floor have caved in to bare sand underneath &mdash;
+    you can't cross them, but there's always a plank boardwalk laid
+    through somewhere nearby. The caterpillar doesn't need one; it
+    crosses the sand just as easily as solid ground.
+  </p>
 </div>
 
-<script>window.CUSTOM_SLOT = 9;</script>
 <script src="js/hardmode.js"></script>
 <script src="js/screenfx.js"></script>
 <script src="js/footsteps.js"></script>
 <script src="js/story.js"></script>
-<script src="js/playermodel.js"></script>
-<script src="js/bossmusic.js"></script>
-<script src="js/custommonster.js"></script>
-<script src="js/customdata.js"></script>
-<script src="js/customdefaults.js"></script>
-<script src="js/bosscutscene.js"></script>
+<script src="levels/level9/level.js"></script>
 <script src="js/leveldetails.js"></script>
-<script src="js/customgame.js"></script>
+<script src="js/game9.js"></script>
 </body>
 </html>

@@ -46,13 +46,10 @@
     floor() {}, above() {}, lights() {}, update() {}, ice() { return false; },
   };
 
-  // `chapterOverride` is for the designer levels (ids 32+), whose chapter
-  // isn't derivable from the id; they also skip the boss-arena exclusion.
-  function make(LEVEL, n, chapterOverride) {
-    if (!LEVEL || !LEVEL.grid) return NOOP;
-    if (!chapterOverride && (n % 5 === 0 || n > 30)) return NOOP;
+  function make(LEVEL, n) {
+    if (!LEVEL || !LEVEL.grid || n % 5 === 0 || n > 30) return NOOP;
     const T = LEVEL.tileSize, G = LEVEL.grid, cols = LEVEL.cols, rows = LEVEL.rows;
-    const chapter = chapterOverride || Math.ceil(n / 5);
+    const chapter = Math.ceil(n / 5);
     const S = n * 17 + 3;
 
     const at = (x, y) => (x < 0 || y < 0 || x >= cols || y >= rows) ? '#' : G[y][x];

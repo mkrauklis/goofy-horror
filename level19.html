@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Desolate Apes &mdash; The Tidegrub</title>
+<title>Desolate Apes &mdash; Level 19</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -12,14 +12,14 @@
 </nav>
 
 <header class="hero">
-  <h1 id="level-title">The Tidegrub</h1>
-  <p class="objective" id="level-objective"></p>
+  <h1>Level 19 &mdash; The Drains</h1>
+  <p class="objective">Same clear blue water and coral as the room before it. Hold each of 3 storm drains open for <strong>2.5 seconds</strong> to unlock the exit door &mdash; either player can work any drain, no carrying required. 10 tiny coral-covered eels patrol the halls, each a third the size of a normal eel but always swimming straight for whoever's nearest at <strong>1.2x</strong> your speed.</p>
 </header>
 
 <div class="wrap">
   <div id="game-fullscreen-wrap">
     <div id="hud">
-      <span id="hud-obj">Boss HP</span>
+      <span id="hud-drains">Drains: 0 / 3</span>
       <span id="hud-door">Door: locked</span>
       <span id="hud-timer">Time: 0:00.0</span>
       <span id="hud-best">Best: --:--</span>
@@ -28,28 +28,40 @@
     <div id="game-canvas-holder" class="panel">
       <canvas id="game-canvas" width="920" height="340"></canvas>
       <div id="game-message"></div>
-    </div>
+  </div>
   </div>
   <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
 </div>
 
 <div class="wrap">
-  <p class="level-description" id="level-desc"></p>
-  <p class="level-description"><a href="editor.html#19">Open this level in the designer</a></p>
+  <p class="level-description">
+    Same room/corridor dimensions and the same clear blue, coral-grown
+    water as the hub room before it &mdash; no current this time, just
+    open swimming. Three storm drains sit open somewhere in the halls;
+    stand on one and hold your ground for a full 2.5 seconds to shut it,
+    stepping off part way through and it starts draining back open.
+    Either of you can work any drain, nothing to carry. Shut all three
+    and the exit door unlocks.
+  </p>
+  <p class="level-description">
+    What's actually dangerous here isn't one creature, it's ten. A
+    swarm of tiny eels, each barely a third the size of the usual
+    flood eel, every one of them grown over with its own little patch
+    of coral. None of them stalk or hide &mdash; there's no detection
+    range to sneak past, no cover to break line of sight. Each one
+    just beelines for whichever player is nearest, all the time, at a
+    flat <strong>1.2x</strong> your own speed. One alone is barely a
+    threat. Ten of them funneling you into a corner is a different
+    problem.
+  </p>
 </div>
 
-<script>window.CUSTOM_SLOT = 19;</script>
 <script src="js/hardmode.js"></script>
 <script src="js/screenfx.js"></script>
 <script src="js/footsteps.js"></script>
 <script src="js/story.js"></script>
-<script src="js/playermodel.js"></script>
-<script src="js/bossmusic.js"></script>
-<script src="js/custommonster.js"></script>
-<script src="js/customdata.js"></script>
-<script src="js/customdefaults.js"></script>
-<script src="js/bosscutscene.js"></script>
+<script src="levels/level19/level.js"></script>
 <script src="js/leveldetails.js"></script>
-<script src="js/customgame.js"></script>
+<script src="js/game19.js"></script>
 </body>
 </html>

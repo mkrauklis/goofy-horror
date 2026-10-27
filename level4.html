@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Desolate Apes &mdash; Magmatron</title>
+<title>Desolate Apes &mdash; Level 4</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -12,14 +12,14 @@
 </nav>
 
 <header class="hero">
-  <h1 id="level-title">Magmatron</h1>
-  <p class="objective" id="level-objective"></p>
+  <h1>Level 4 &mdash; Overgrown</h1>
+  <p class="objective">Pull the <strong>electrical room's lever</strong> and get both players aboard the train &mdash; watch for the thing wandering the halls that looks just like a person.</p>
 </header>
 
 <div class="wrap">
   <div id="game-fullscreen-wrap">
     <div id="hud">
-      <span id="hud-obj">Boss HP</span>
+      <span id="hud-power">Power: off</span>
       <span id="hud-door">Door: locked</span>
       <span id="hud-timer">Time: 0:00.0</span>
       <span id="hud-best">Best: --:--</span>
@@ -28,28 +28,47 @@
     <div id="game-canvas-holder" class="panel">
       <canvas id="game-canvas" width="920" height="340"></canvas>
       <div id="game-message"></div>
-    </div>
+  </div>
   </div>
   <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
 </div>
 
 <div class="wrap">
-  <p class="level-description" id="level-desc"></p>
-  <p class="level-description"><a href="editor.html#4">Open this level in the designer</a></p>
+  <p class="level-description">
+    The same facility as Level 3, years later and noticeably bigger, with
+    more dead-end side corridors to get turned around in &mdash; vegetation
+    has swallowed the corridors (on top of the same patches of missing
+    floor), and a good number of fires burn permanently once you find
+    them. Find the electrical room (wrapped in exposed wiring so it's
+    unmistakable) and pull its lever &mdash; either player can do it alone
+    &mdash; to power up the train, then get both players aboard. Three
+    mimics disguise themselves as people and wander the halls at close to
+    your own pace &mdash; get too close and the act drops instantly,
+    shrinking into a small toothy tentacle thing that charges at 2x your
+    speed. Item crates are everywhere here, restocking twice as fast as
+    other levels, and a few are secretly mimic crates in disguise.
+  </p>
+  <p class="level-description">
+    Each of you is carrying a tranquilizer gun, empty. Find a shell in a crate
+    (you can carry up to 3 at a time) and each one loads automatically
+    &mdash; let something get close while it's hunting you and it goes
+    off on its own, stunning it for 5 seconds.
+  </p>
+  <p class="level-description">
+    Somewhere in the walls here is a crack with a revolver tucked inside
+    it &mdash; find it once and it's yours for good, in every level from
+    then on (press <strong>R</strong> any time to check your Loadout).
+    It works just like the tranquilizer gun, its own separate ammo (up to 6 shots,
+    2 per shell found) and a shorter 2-second stun.
+  </p>
 </div>
 
-<script>window.CUSTOM_SLOT = 4;</script>
 <script src="js/hardmode.js"></script>
 <script src="js/screenfx.js"></script>
 <script src="js/footsteps.js"></script>
 <script src="js/story.js"></script>
-<script src="js/playermodel.js"></script>
-<script src="js/bossmusic.js"></script>
-<script src="js/custommonster.js"></script>
-<script src="js/customdata.js"></script>
-<script src="js/customdefaults.js"></script>
-<script src="js/bosscutscene.js"></script>
+<script src="levels/level4/level.js"></script>
 <script src="js/leveldetails.js"></script>
-<script src="js/customgame.js"></script>
+<script src="js/game4.js"></script>
 </body>
 </html>
