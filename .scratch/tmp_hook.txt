@@ -1,1 +1,0 @@
-  /*TMP*/ window.__t = { boss, players, startAttack, fireballs: () => fireballs, trail: () => fireTrail, embers: () => embers, crack: () => crackPts.length, state: () => gameState, ft: () => lastFrameTime, loop, ctx, startPhase2, hp: (v) => { bossHealth = v; }, pools: () => magmaPools };
