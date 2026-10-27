@@ -465,10 +465,9 @@
     return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
   }
 
-  // A handful of near-identical grays, picked per-tile by hashing its
-  // coordinates, so plain floor reads as worn/mottled concrete instead of
-  // one flat color.
-  const FLOOR_SHADES = ['#4c4c53', '#525258', '#58585f', '#5e5e66', '#54545c', '#605f68'];
+  // This level's floor is dark obsidian: near-black volcanic glass, each tile a
+  // slightly different cool tint (drawObsidianSheen adds the polish on top).
+  const FLOOR_SHADES = ['#25222d', '#2a2634', '#2f2a3a', '#272330', '#322c40', '#2b2736'];
   function floorShade(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length;
@@ -1345,6 +1344,81 @@
     return { x0, y0, x1, y1 };
   })();
 
+  // The polish on an obsidian tile: bevelled edges catching light, a faint
+  // diagonal reflection, and now and then a purple glint -- all from the tile's
+  // own coordinates, so it's identical every frame.
+  function drawObsidianSheen(g, tx, ty, px, py) {
+    const h = Math.imul(tx + 7, 374761393) ^ Math.imul(ty + 3, 668265263);
+    const r1 = ((h ^ (h >>> 13)) >>> 0) % 1000 / 1000;
+    const r2 = ((h >>> 7) >>> 0) % 1000 / 1000;
+    g.fillStyle = 'rgba(255,255,255,0.1)';
+    g.fillRect(px, py, TILE, 1.5);
+    g.fillRect(px, py, 1.5, TILE);
+    g.fillStyle = 'rgba(0,0,0,0.4)';
+    g.fillRect(px, py + TILE - 1.5, TILE, 1.5);
+    g.fillRect(px + TILE - 1.5, py, 1.5, TILE);
+    g.strokeStyle = `rgba(200,185,240,${0.1 + 0.12 * r1})`;
+    g.lineWidth = 1.6;
+    g.beginPath();
+    g.moveTo(px + TILE * (0.1 + 0.4 * r2), py + TILE * 0.95);
+    g.lineTo(px + TILE * (0.5 + 0.4 * r2), py + TILE * 0.05);
+    g.stroke();
+    if (r1 > 0.78) {
+      g.fillStyle = 'rgba(220,200,255,0.3)';
+      g.fillRect(px + TILE * 0.2, py + TILE * 0.2, 4, 4);
+    }
+  }
+
+  // Every now and then a fire breaks out on the obsidian somewhere, burns for a
+  // few seconds and gutters out again. Purely scenery, but it lights its corner
+  // of the dark while it lasts. Sites are picked once from the map; each runs on
+  // its own slow cycle so there's rarely more than one or two alight in view.
+  const sinkFires = (() => {
+    const sites = [];
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (LEVEL.grid[y][x] !== '.') continue;
+        const h = ((Math.imul(x + 5, 374761393) ^ Math.imul(y + 11, 668265263)) >>> 0);
+        if (h % 1000 > 7) continue;
+        if (sites.some((f) => Math.hypot(f.x - x, f.y - y) < 9)) continue;
+        sites.push({ x, y, period: 22000 + (h >>> 3) % 26000, dur: 5500 + (h >>> 5) % 4500, phase: (h >>> 7) % 20000, seed: (h >>> 9) % 100 });
+      }
+    }
+    return sites;
+  })();
+  function fireLevel(f, now) {
+    const t = (now + f.phase) % f.period;
+    if (t >= f.dur) return 0;
+    return Math.min(1, t / 700, (f.dur - t) / 1000);
+  }
+  function drawSinkFires(g, camX, camY, now) {
+    sinkFires.forEach((f) => {
+      const lv = fireLevel(f, now);
+      if (lv <= 0) return;
+      const c = tileCenter(f.x, f.y);
+      if (Math.abs(c.x - camX) > VIEW_W / 2 + 40 || Math.abs(c.y - camY) > VIEW_H / 2 + 40) return;
+      g.save();
+      g.translate(c.x, c.y + 8);
+      // charred patch it's burning on
+      g.fillStyle = `rgba(10,5,4,${0.45 * lv})`;
+      g.beginPath(); g.ellipse(0, 2, 13 * lv, 7 * lv, 0, 0, Math.PI * 2); g.fill();
+      const layers = [['#ff3a10', 1], ['#ff8a1e', 0.72], ['#ffd25a', 0.46], ['#fff6c8', 0.22]];
+      for (let k = 0; k < 3; k++) {
+        const ox = (k - 1) * 7, sway = Math.sin(now * 0.012 + f.seed + k * 2) * 3.5;
+        const w = 9 * lv, hh = (20 + k % 2 * 7) * lv * (0.9 + 0.1 * Math.sin(now * 0.03 + f.seed + k));
+        layers.forEach(([col, kk]) => {
+          g.fillStyle = col;
+          g.beginPath();
+          g.moveTo(ox - w * kk * 0.5, 0);
+          g.quadraticCurveTo(ox - w * kk * 0.55 + sway * 0.4, -hh * kk * 0.55, ox + sway * kk, -hh * kk);
+          g.quadraticCurveTo(ox + w * kk * 0.55 + sway * 0.4, -hh * kk * 0.55, ox + w * kk * 0.5, 0);
+          g.closePath(); g.fill();
+        });
+      }
+      g.restore();
+    });
+  }
+
   function drawTiles(g, camX, camY) {
     const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
     const maxTX = Math.min(COLS - 1, Math.ceil((camX + VIEW_W / 2) / TILE) + 1);
@@ -1366,6 +1440,7 @@
         }
         g.fillStyle = color;
         g.fillRect(px, py, TILE, TILE);
+        if (ch === '.' || ch === 'S' || ch === 'P' || (ch === 'D' && doorUnlocked)) drawObsidianSheen(g, x, y, px, py);
 
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';
@@ -2030,6 +2105,14 @@
     maskCtx.fillStyle = '#000000';
     maskCtx.fillRect(0, 0, VIEW_W, VIEW_H);
     LD.lights(maskCtx, camX, camY, VIEW_W, VIEW_H, now, punchLight);
+    sinkFires.forEach((f) => {
+      const lv = fireLevel(f, now);
+      if (lv <= 0) return;
+      const c = tileCenter(f.x, f.y);
+      const s = worldToScreen(c.x, c.y);
+      const flick = 0.85 + 0.15 * Math.sin(now * 0.04 + f.seed);
+      punchLight(maskCtx, s.x, s.y, 95 * lv * flick, 0.85 * lv);
+    });
 
     const sz = LEVEL.safeZone;
     const s0 = worldToScreen(sz.x0 * TILE, sz.y0 * TILE);
@@ -2063,6 +2146,7 @@
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
     drawTiles(ctx, camX, camY);
     LD.floor(ctx, camX, camY, VIEW_W, VIEW_H, now);
+    drawSinkFires(ctx, camX, camY, now);
     drawSmokeBombs(ctx, now);
     HM.monster(ctx, monster, (c) => drawMonster(c, now));
     drawPlayers(ctx);

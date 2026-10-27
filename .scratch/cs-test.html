@@ -1,0 +1,16 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>cs test</title>
+<style>body{margin:0;background:#222;color:#ccc;font:12px monospace}canvas{display:block}</style></head><body>
+<canvas id="sheet" width="920" height="1100"></canvas>
+<script src="../js/hardmode.js"></script><script src="../js/story.js"></script>
+<script src="../js/monsterpedia.js"></script><script src="../js/bosscutscene.js"></script>
+<script>
+const q=new URLSearchParams(location.search), kind=q.get('kind')||'pumpkin';
+const frames=(q.get('f')||'0.12,0.3,0.42,0.5,0.6,0.7,0.8,0.95').split(',').map(Number);
+const h=+(q.get('h')||340);
+const cv=document.getElementById('sheet'); const cols=+(q.get('cols')||2), cw=cols===1?920:460, ch=Math.round(460*h/920);
+cv.width=cols*cw; cv.height=Math.ceil(frames.length/cols)*ch;
+const g=cv.getContext('2d'); const off=document.createElement('canvas'); off.width=920; off.height=h; const og=off.getContext('2d');
+const dur=BossCutscene.duration(kind);
+window.renderSheet=function(){ frames.forEach((f,i)=>{ og.clearRect(0,0,920,h); BossCutscene.draw(og,920,h,f*dur,kind); g.drawImage(off,(i%cols)*cw,Math.floor(i/cols)*ch,cw,ch); g.fillStyle='#fff'; g.font='11px monospace'; g.fillText(Math.round(f*dur)+'ms',(i%cols)*cw+6,Math.floor(i/cols)*ch+12); }); };
+renderSheet();
+</script></body></html>

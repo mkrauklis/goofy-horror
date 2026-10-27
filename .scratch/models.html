@@ -1,0 +1,7 @@
+<!DOCTYPE html><html><body style="margin:0;background:#333"><canvas id="c" width="1200" height="520"></canvas>
+<script src="../js/hardmode.js"></script><script src="../js/story.js"></script><script src="../js/monsterpedia.js"></script>
+<script>
+const g=document.getElementById('c').getContext('2d');const ids=[5,16,21,26,31,32];
+ids.forEach((id,i)=>{const e=MonsterModels.extent(id);g.save();g.translate(100+i*200,200);g.scale(1,1);MonsterModels.draw(id,g,1000);g.restore();g.fillStyle='#fff';g.font='14px monospace';g.fillText(id+' ext '+Math.round(e),60+i*200,440);
+g.strokeStyle='#f0f';g.strokeRect(100+i*200-e,200-e,e*2,e*2)});
+</script></body></html>

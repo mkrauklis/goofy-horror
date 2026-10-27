@@ -12,7 +12,33 @@
   const KEY = HARD ? 'goofy-horror-story-hard' : NORMAL_KEY;
   // Set the first time the final level is beaten; what unlocks hard mode.
   const BEATEN_KEY = 'goofy-horror-beaten';
-  const TOTAL_LEVELS = 31;
+  // Play order. Each chapter's 4th level has been replaced by a designer-made
+  // mini boss (ids 4, 9, 14, 19, 24, 29 -- see js/customgame.js and editor.html)
+  // and two designer-made levels (ids 32-43) now sit between it and the
+  // chapter's boss. The designer levels keep ids above 31 so every existing
+  // save, best time and boss check keyed on the old ids keeps working; only
+  // the order (and the number shown to players, see displayNumber) changes.
+  const ORDER = [
+    1, 2, 3, 4, 32, 33, 5,
+    6, 7, 8, 9, 34, 35, 10,
+    11, 12, 13, 14, 36, 37, 15,
+    16, 17, 18, 19, 38, 39, 20,
+    21, 22, 23, 24, 40, 41, 25,
+    26, 27, 28, 29, 42, 43, 30,
+    31,
+  ];
+  const TOTAL_LEVELS = ORDER.length;
+  const FINAL_LEVEL = 31;
+  function orderIndex(n) { return ORDER.indexOf(n); }
+  // The number a player sees ("Level 7"): where the level falls in the play order.
+  function displayNumber(n) { const i = orderIndex(n); return i === -1 ? n : i + 1; }
+  function chapterOf(n) {
+    if (n === 31) return 7;
+    if (n >= 32) return Math.floor((n - 32) / 2) + 1;
+    return Math.ceil(n / 5);
+  }
+  function previousLevel(n) { const i = orderIndex(n); return i > 0 ? ORDER[i - 1] : 0; }
+  function nextInOrder(n) { const i = orderIndex(n); return i >= 0 && i + 1 < ORDER.length ? ORDER[i + 1] : 0; }
 
   function load() {
     try {
@@ -37,8 +63,12 @@
     }
   }
 
+  // A level opens once the one before it in the play order is beaten (or it
+  // was already beaten itself -- saves from before the designer levels were
+  // added have later levels done but not the new ones in between).
   function isUnlocked(n) {
-    return n <= state.unlocked;
+    const prev = previousLevel(n);
+    return prev === 0 || isCompleted(prev) || isCompleted(n);
   }
 
   function isCompleted(n) {
@@ -50,9 +80,10 @@
   // calls this again harmlessly.
   function completeLevel(n) {
     if (!isCompleted(n)) state.completed.push(n);
-    if (n + 1 > state.unlocked && n + 1 <= TOTAL_LEVELS) state.unlocked = n + 1;
+    const nx = nextInOrder(n);
+    if (nx > state.unlocked) state.unlocked = nx;
     persist();
-    if (n === TOTAL_LEVELS) {
+    if (n === FINAL_LEVEL) {
       try { localStorage.setItem(BEATEN_KEY, '1'); } catch (e) { /* ignore */ }
     }
   }
@@ -87,7 +118,7 @@
       if (localStorage.getItem(BEATEN_KEY) === '1') return true;
       const raw = localStorage.getItem(NORMAL_KEY);
       const parsed = raw && JSON.parse(raw);
-      return !!(parsed && Array.isArray(parsed.completed) && parsed.completed.indexOf(TOTAL_LEVELS) !== -1);
+      return !!(parsed && Array.isArray(parsed.completed) && parsed.completed.indexOf(FINAL_LEVEL) !== -1);
     } catch (e) {
       return false;
     }
@@ -97,14 +128,14 @@
   // yet beaten, or the last one if the whole story's done (so replaying
   // from the menu lands you back on the finale, not level 1).
   function nextLevel() {
-    for (let i = 1; i <= TOTAL_LEVELS; i++) {
-      if (!isCompleted(i)) return i;
+    for (let i = 0; i < ORDER.length; i++) {
+      if (!isCompleted(ORDER[i])) return ORDER[i];
     }
-    return TOTAL_LEVELS;
+    return FINAL_LEVEL;
   }
 
   function isStoryComplete() {
-    return state.completed.length >= TOTAL_LEVELS;
+    return ORDER.every(isCompleted);
   }
 
   function resetProgress() {
@@ -140,8 +171,8 @@
   // unlockGun(id) wherever it's actually found.
   const LOADOUT_KEY = 'goofy-horror-loadout';
   const GUNS = [
-    { id: 'revolver', name: 'Revolver', level: 4, hint: 'Find it in a crack in the wall.' },
-    { id: 'flamethrower', name: 'Flamethrower', level: 14, hint: 'Hidden behind the melted snow wall.' },
+    { id: 'revolver', name: 'Revolver', level: 4, hint: 'Dropped by the Magmatron.' },
+    { id: 'flamethrower', name: 'Flamethrower', level: 14, hint: 'Dropped by Rimeback.' },
     { id: 'watergun', name: 'Water Gun', level: 18, hint: 'Down the long hallway, past the door the wheel opens.' },
   ];
 
@@ -261,7 +292,7 @@
       return `<div class="loadout-row ${unlocked ? (equipped ? 'unlocked' : 'unequipped') : 'locked'}">`
         + `<span class="loadout-name">${g.name}</span>`
         + `<span class="loadout-state">${state}</span>`
-        + `<span class="loadout-hint">${unlocked ? `Level ${g.level}` : g.hint}</span>`
+        + `<span class="loadout-hint">${unlocked ? `Level ${displayNumber(g.level)}` : g.hint}</span>`
         + toggleBtn
         + `</div>`;
     }).join('');
@@ -284,6 +315,11 @@
 
   window.GoofyStory = {
     TOTAL_LEVELS,
+    ORDER,
+    displayNumber,
+    chapterOf,
+    previousLevel,
+    nextInOrder,
     isUnlocked,
     isCompleted,
     completeLevel,
@@ -309,7 +345,7 @@
   // chapter it's part of without reintroducing the old row of direct
   // level-to-level jump links.
   function chapterForLevel(n) {
-    return Math.ceil(n / 5);
+    return chapterOf(n);
   }
 
   function injectChapterLabel() {
@@ -377,10 +413,33 @@
     }
   }
 
+  // Page text says "Level N" with N = the level's internal id; the play order
+  // now has designer levels slotted in, so show each one's real position
+  // instead. One pass over the static text, never touching scripts/styles.
+  function renumberLevelText(root) {
+    const walker = document.createTreeWalker(root || document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const tag = node.parentNode && node.parentNode.nodeName;
+        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA') return NodeFilter.FILTER_REJECT;
+        return /Level \d+/.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    const hits = [];
+    while (walker.nextNode()) hits.push(walker.currentNode);
+    hits.forEach((node) => {
+      node.nodeValue = node.nodeValue.replace(/Level (\d+)/g, (m, d) => `Level ${displayNumber(parseInt(d, 10))}`);
+    });
+    if (document.title) document.title = document.title.replace(/Level (\d+)/g, (m, d) => `Level ${displayNumber(parseInt(d, 10))}`);
+  }
+  window.GoofyStory.renumberLevelText = renumberLevelText;
+
   function onReady(fn) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
     else fn();
   }
+  // The menu renumbers itself (its cards are re-labelled alongside the unlock
+  // state in index.html); every level page does it here.
+  if (!/(^|\/)(index\.html)?$/.test(window.location.pathname) && !/editor\.html$/.test(window.location.pathname)) onReady(() => renumberLevelText());
   onReady(injectChapterLabel);
   onReady(setupFullscreenToggle);
   onReady(applyPlayerModeHint);

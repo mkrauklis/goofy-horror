@@ -1,0 +1,10 @@
+<body><pre id=o></pre><script src="/levels/level21/level.js"></script><script src="/levels/level22/level.js"></script><script src="/levels/level23/level.js"></script><script src="/levels/level24/level.js"></script><script>
+const out=[];
+for(const n of [21,22,23,24]){const L=window['LEVEL'+n];const G=L.grid;const R=L.rows,C=L.cols;
+ const ok=(x,y)=>x>=0&&y>=0&&x<C&&y<R&&G[y][x]==='.';
+ // largest square of '.' via dp
+ const dp=[];let best=0;const cnts={};
+ for(let y=0;y<R;y++){dp.push(new Array(C).fill(0));for(let x=0;x<C;x++){if(!ok(x,y))continue;dp[y][x]=1+(x&&y?Math.min(dp[y-1][x],dp[y][x-1],dp[y-1][x-1]):0);best=Math.max(best,dp[y][x]);for(const s of [3,4,5,6,8])if(dp[y][x]>=s)cnts[s]=(cnts[s]||0)+1;}}
+ out.push(n+' best square '+best+' counts '+JSON.stringify(cnts));}
+document.getElementById('o').textContent=out.join(' || ');
+</script></body>

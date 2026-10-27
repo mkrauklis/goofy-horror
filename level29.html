@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Desolate Apes &mdash; Level 29</title>
+<title>Desolate Apes &mdash; Gutterwing</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -12,68 +12,44 @@
 </nav>
 
 <header class="hero">
-  <h1>Level 29 &mdash; Sunrise Escape</h1>
-  <p class="objective">Forty small rooftops in an 8x5 grid, the sky just starting to go pink at the edges instead of pitch dark. No boardwalks &mdash; just a maze of <strong>39</strong> ziplines threading every roof to its neighbors, each one ridden in either direction at <strong>2.2x</strong> your speed. Thread the maze to the elevator on the far corner roof and get everyone into it to escape. Fifteen tiny, very dark grey Grotesques with bloodshot red eyes and oversized wings patrol a random scatter of the rooftops &mdash; slow on their own at <strong>0.8x</strong> your speed, but a spotted intruder isn't safe just because there's open sky between you, since they actually fly the gap.</p>
+  <h1 id="level-title">Gutterwing</h1>
+  <p class="objective" id="level-objective"></p>
 </header>
 
 <div class="wrap">
   <div id="game-fullscreen-wrap">
     <div id="hud">
+      <span id="hud-obj">Boss HP</span>
+      <span id="hud-door">Door: locked</span>
       <span id="hud-timer">Time: 0:00.0</span>
       <span id="hud-best">Best: --:--</span>
-      <span id="hud-ziplines">Ziplines ridden: 0</span>
       <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
     </div>
     <div id="game-canvas-holder" class="panel">
       <canvas id="game-canvas" width="920" height="340"></canvas>
       <div id="game-message"></div>
-  </div>
+    </div>
   </div>
   <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
 </div>
 
 <div class="wrap">
-  <p class="level-description">
-    Same bare rooftop deco as the wing before this one &mdash; 2x2
-    maintenance crates and rooftop fans, no walls, no way inside &mdash;
-    but forty small roofs this time instead of four big ones, arranged in
-    an 8x5 grid and each one a real gap of open air from its neighbors.
-    Nothing bridges them. The sky's gone from black to a deep, warm pink
-    along the horizon; it's dim, not dark, your own flashlight filling in
-    the difference.
-  </p>
-  <p class="level-description">
-    Every pair of orthogonally neighboring roofs that's actually linked
-    has exactly one zipline strung between them, and the network as a
-    whole is a genuine maze &mdash; there's exactly one zipline route
-    between your starting roof and the elevator on the far corner roof,
-    no shortcuts. Walk up to either post and it fires automatically, no
-    button to press, carrying you straight across at <strong>2.2x</strong>
-    your own speed and leaving you briefly uncatchable mid-ride. Unlike
-    the last wing, these run both ways &mdash; the post you land on will
-    carry you right back the way you came if you walk up to it again.
-  </p>
-  <p class="level-description">
-    The Grotesques are the smallest things in this book &mdash; barely
-    half your size, dark grey all over with one bloodshot red eye and a
-    pair of wings way out of proportion with the rest of them &mdash; and
-    individually slower than you at <strong>0.8x</strong> your speed,
-    easy to outrun one at a time. Unlike everything else that's chased
-    you through this book, those wings actually work: spot one while
-    you're on a different roof and it'll fly straight at you across the
-    open gap, no zipline required. There are still only <strong>15</strong>
-    of them, now scattered thin across a random handful of the forty
-    roofs, patrolling independently. The real danger in this wing is the
-    maze itself, not any one chaser.
-  </p>
+  <p class="level-description" id="level-desc"></p>
+  <p class="level-description"><a href="editor.html#29">Open this level in the designer</a></p>
 </div>
 
+<script>window.CUSTOM_SLOT = 29;</script>
 <script src="js/hardmode.js"></script>
 <script src="js/screenfx.js"></script>
 <script src="js/footsteps.js"></script>
 <script src="js/story.js"></script>
-<script src="levels/level29/level.js"></script>
+<script src="js/playermodel.js"></script>
+<script src="js/bossmusic.js"></script>
+<script src="js/custommonster.js"></script>
+<script src="js/customdata.js"></script>
+<script src="js/customdefaults.js"></script>
+<script src="js/bosscutscene.js"></script>
 <script src="js/leveldetails.js"></script>
-<script src="js/game29.js"></script>
+<script src="js/customgame.js"></script>
 </body>
 </html>

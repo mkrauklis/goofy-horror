@@ -46,10 +46,13 @@
     floor() {}, above() {}, lights() {}, update() {}, ice() { return false; },
   };
 
-  function make(LEVEL, n) {
-    if (!LEVEL || !LEVEL.grid || n % 5 === 0 || n > 30) return NOOP;
+  // `chapterOverride` is for the designer levels (ids 32+), whose chapter
+  // isn't derivable from the id; they also skip the boss-arena exclusion.
+  function make(LEVEL, n, chapterOverride) {
+    if (!LEVEL || !LEVEL.grid) return NOOP;
+    if (!chapterOverride && (n % 5 === 0 || n > 30)) return NOOP;
     const T = LEVEL.tileSize, G = LEVEL.grid, cols = LEVEL.cols, rows = LEVEL.rows;
-    const chapter = Math.ceil(n / 5);
+    const chapter = chapterOverride || Math.ceil(n / 5);
     const S = n * 17 + 3;
 
     const at = (x, y) => (x < 0 || y < 0 || x >= cols || y >= rows) ? '#' : G[y][x];
@@ -226,28 +229,12 @@
     function mossAmount(x, y) {
       return vnoise(x * 0.21, y * 0.21, S) * 0.8 + wallAdj(x, y) * 0.14 + (hash(x, y, 9) - 0.5) * 0.2;
     }
-    const MOSS = ['#1c3a20', '#27492a', '#35633a', '#4d7f3f', '#6a9a4a'];
+    // Moss is just mossy floor tiles: whole tiles in a few greens, nothing growing on the walls.
+    const MOSS_TILES = ['#2c4a2a', '#315230', '#365a35', '#2a4527', '#3a5f38'];
     function drawMoss(g, x, y) {
-      const m = mossAmount(x, y);
-      if (m < 0.63) return;
-      const cnt = 3 + (m > 0.76 ? 3 : 0);
-      for (let i = 0; i < cnt; i++) {
-        const px = x * T + hash(x, y, 10 + i) * T, py = y * T + hash(x, y, 20 + i) * T;
-        const r = 3 + hash(x, y, 30 + i) * 5;
-        disc(g, px, py, r, 'rgba(24,52,28,0.6)');
-        disc(g, px - 0.8, py - 0.8, r * 0.72, `${pick(MOSS, hash(x, y, 50 + i))}cc`);
-        disc(g, px - r * 0.25, py - r * 0.3, r * 0.3, 'rgba(150,200,100,0.5)');
-      }
-      if (wallAdj(x, y) && hash(x, y, 60) < 0.7) {
-        g.fillStyle = 'rgba(45,92,45,0.8)';
-        for (let i = 0; i < 5; i++) {
-          const t = (i + hash(x, y, 70 + i) * 0.6) / 5;
-          if (isW(x, y - 1)) disc(g, x * T + t * T, y * T + 2, 2 + hash(x, y, 80 + i) * 2.5, g.fillStyle);
-          if (isW(x, y + 1)) disc(g, x * T + t * T, (y + 1) * T - 2, 2 + hash(x, y, 90 + i) * 2.5, g.fillStyle);
-          if (isW(x - 1, y)) disc(g, x * T + 2, y * T + t * T, 2 + hash(x, y, 100 + i) * 2.5, g.fillStyle);
-          if (isW(x + 1, y)) disc(g, (x + 1) * T - 2, y * T + t * T, 2 + hash(x, y, 110 + i) * 2.5, g.fillStyle);
-        }
-      }
+      if (mossAmount(x, y) < 0.63) return;
+      g.fillStyle = pick(MOSS_TILES, hash(x, y, 10));
+      g.fillRect(x * T, y * T, T, T);
     }
 
     // =========================================================================================
