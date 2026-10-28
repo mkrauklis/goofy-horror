@@ -72,6 +72,25 @@
   const NUKE_MS = 14000;
   const NUKE_IMPACT_MS = 2600;
   const VICTORY_REDIRECT_MS = 3500;
+  // After the Multipod falls its car is wrecked and the swarm splits into its
+  // individual monsters, each chasing at its own real speed (multiples of
+  // walking speed, from the monster's own level; the bosses lumber along at
+  // their idle pace). You get out and run -- at the double, no stamina -- down
+  // the road to a military roadblock, and passing through it plays the
+  // soldiers' film just before the ending.
+  const ESCAPE_RUN = PLAYER_SPEED * 2;
+  const ESCAPE_ROAD_TILES = 52;
+  const ESCAPE_HEAD = 520;         // nothing starts closer than this to a runner
+  const SPLIT_STUN_MS = 1600;      // the pieces are dazed for this long after the split
+  const ESCAPE_RAMP_MS = 500;
+  const MILITARY_MS = 10000;
+  // SWARM_DEFS order
+  const SWARM_SPEED = [
+    2.5, 1.4, 1.0, 2.2, 1.8, 0.35, 1.2, 1.6, 2.5, 1.5,
+    1.8, 0.35, 1.0, 1.5, 1.1, 2.0, 0.3, 0.6, 1.0, 1.0,
+    1.5, 0.55, 1.0, 1.1, 2.5, 0.935, 0.3, 1.0, 1.5, 3.0,
+    0.8, 0.3,
+  ];
   // The credits that roll once the bomb has gone off: scrolled up the
   // screen like movie credits, then "THE END..." and a sting for "FOR NOW...".
   // gap = extra blank space (px) above that line.
@@ -183,6 +202,17 @@
   function playDoorBurst() { sweep(90, 30, 0.9, 'sawtooth', 0.35); }
   function playBoard() { [440, 660].forEach((f, i) => playTone(f, 0.18, 'triangle', 0.2, i * 0.1)); }
   function playThrow() { sweep(520, 180, 0.25, 'square', 0.15); }
+  function playGun() {
+    if (!audioCtx || !noiseBuf) return;
+    const t = audioCtx.currentTime;
+    const src = audioCtx.createBufferSource(); src.buffer = noiseBuf;
+    const f = audioCtx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1100 + Math.random() * 1000;
+    const gn = audioCtx.createGain();
+    gn.gain.setValueAtTime(0.14, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    src.connect(f); f.connect(gn); gn.connect(audioCtx.destination);
+    src.start(t); src.stop(t + 0.09);
+  }
+  function playSplat() { sweep(190, 45, 0.2, 'sawtooth', 0.12); }
   function playNukeBoom() { sweep(110, 22, 2.4, 'sawtooth', 0.55); sweep(70, 18, 3.2, 'square', 0.3); }
 
   // ---- the boss theme: a driving minor-key track -- kick/snare/hat
@@ -321,7 +351,7 @@
   }
   function scheduleMusic() {
     if (!audioCtx) return;
-    const chasing = gameState === 'chase' || gameState === 'dying';
+    const chasing = gameState === 'chase' || gameState === 'dying' || gameState === 'escape';
     const rolling = gameState === 'credits' && performance.now() - creditsStartedAt < CREDITS_SCROLL_MS;
     if (creditsBusOn && !(musicEnabled && rolling)) {              // credits over or skipped: fade the theme out
       creditsBus.gain.cancelScheduledValues(audioCtx.currentTime);
@@ -381,7 +411,8 @@
     ensureAudio();
     if (TRACKED_KEYS.has(e.key)) { keys[e.key] = true; e.preventDefault(); }
     if (e.key === 'Enter') {
-      if (gameState === 'wiped') resetLevel();
+      if (gameState === 'wiped') { if (escape) retryEscape(performance.now()); else resetLevel(); }
+      else if (gameState === 'military' && performance.now() - militaryStartedAt > 1500) militaryStartedAt = performance.now() - MILITARY_MS;
       else if (gameState === 'nuke' && performance.now() - nukeStartedAt > 1500) nukeStartedAt = performance.now() - NUKE_MS;
       else if (gameState === 'credits' && performance.now() - creditsStartedAt > 1500 && performance.now() - creditsStartedAt < CREDITS_SCROLL_MS) creditsStartedAt = performance.now() - CREDITS_SCROLL_MS;
     }
@@ -507,7 +538,6 @@
       g.save();
       g.translate(cx + u * cs - w * sn, cy + u * sn + w * cs);
       g.rotate(heading + Math.sin(now * 0.003 + m.phase) * 0.25 + (scatter ? scatter * m.spin * 6 : 0));
-      if (scatter) g.globalAlpha = Math.max(0, 1 - scatter);
       drawSwarmMember(g, m.id, m.size, now, m.phase, flash);
       g.restore();
     });
@@ -529,7 +559,7 @@
   function fmtHp(v) { return Number.isInteger(v) ? String(v) : v.toFixed(1); }
   let runStartTime = performance.now();
   let elapsedMs = 0;
-  // 'foot' | 'chase' | 'dying' | 'nuke' | 'credits' | 'victory' | 'wiped'
+  // 'foot' | 'intro' | 'chase' | 'dying' | 'escape' | 'military' | 'nuke' | 'credits' | 'victory' | 'wiped'
   let gameState = 'foot';
   let chaseStartedAt = 0;
   let dyingStartedAt = 0;
@@ -538,10 +568,14 @@
   let stingPlayed = false;
   let shake = 0;
   let chaseZoom = CHASE_ZOOM_MAX;
+  let escape = null;            // set once the Multipod splits: { startedAt, endX, start }
+  let chasers = [];
+  let militaryStartedAt = 0;
+  let milKillIdx = 0;
 
   function makePlayer(spawn, color) {
     const c = tileCenter(spawn.x, spawn.y);
-    return { x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, isMoving: false, walkPhase: 0, shotgunAmmo: 0 };
+    return { x: c.x, y: c.y, color, facing: { x: 0, y: 1 }, isMoving: false, walkPhase: 0, shotgunAmmo: 0, down: false };
   }
   const players = PLAYER_MODE === 1
     ? [makePlayer(LEVEL.spawn1, '#ff8a3d')]
@@ -588,7 +622,7 @@
     knocked.clear();
     players.forEach((p, i) => {
       const sp = tileCenter(i === 0 ? LEVEL.spawn1.x : LEVEL.spawn2.x, i === 0 ? LEVEL.spawn1.y : LEVEL.spawn2.y);
-      p.x = sp.x; p.y = sp.y; p.facing = { x: 0, y: 1 }; p.walkPhase = 0; p.isMoving = false;
+      p.x = sp.x; p.y = sp.y; p.facing = { x: 0, y: 1 }; p.walkPhase = 0; p.isMoving = false; p.down = false;
     });
     cars.forEach((c, i) => {
       c.x = carStarts[i].x; c.y = carStarts[i].y; c.heading = carStarts[i].heading;
@@ -598,6 +632,7 @@
     boss.x = doorPos.x; boss.y = doorPos.y; boss.heading = 0;
     missiles = []; thrown = []; particles = []; explosions = []; floatingTexts = [];
     gameState = 'foot';
+    escape = null; chasers = [];
     shake = 0;
     runStartTime = performance.now();
     elapsedMs = 0;
@@ -611,25 +646,30 @@
   function solidForFoot(ch) { return ch === 'B' || ch === 'T' || ch === '#'; }
   function canStandAt(x, y) {
     const r = PLAYER_RADIUS;
+    if (escape && blockedByRoadblock(x, y)) return false;
     return [[x - r, y - r], [x + r, y - r], [x - r, y + r], [x + r, y + r]].every(([cx, cy]) => !solidForFoot(tileChar(Math.floor(cx / TILE), Math.floor(cy / TILE))));
   }
-  function updateFoot(now, dt) {
+  function movePlayers(dt, speed) {
     const inputs = PLAYER_MODE === 1
       ? [{ ix: (keys.d || keys.ArrowRight ? 1 : 0) - (keys.a || keys.ArrowLeft ? 1 : 0), iy: (keys.s || keys.ArrowDown ? 1 : 0) - (keys.w || keys.ArrowUp ? 1 : 0) }]
       : [{ ix: (keys.d ? 1 : 0) - (keys.a ? 1 : 0), iy: (keys.s ? 1 : 0) - (keys.w ? 1 : 0) },
          { ix: (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), iy: (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0) }];
     players.forEach((p, i) => {
       const { ix, iy } = inputs[i];
+      if (p.down) { p.isMoving = false; return; }
       p.isMoving = ix !== 0 || iy !== 0;
       if (!p.isMoving) return;
       const len = Math.hypot(ix, iy);
       const nx = ix / len, ny = iy / len;
       p.facing = { x: nx, y: ny };
-      const dx = nx * PLAYER_SPEED * dt, dy = ny * PLAYER_SPEED * dt;
+      const dx = nx * speed * dt, dy = ny * speed * dt;
       if (dx !== 0 && canStandAt(p.x + dx, p.y)) p.x += dx;
       if (dy !== 0 && canStandAt(p.x, p.y + dy)) p.y += dy;
-      window.Footsteps.advance(p, dt * WALK_CYCLE_SPEED, audioCtx, FOOT_SURFACE, 1);
+      window.Footsteps.advance(p, dt * WALK_CYCLE_SPEED * (speed / PLAYER_SPEED), audioCtx, FOOT_SURFACE, 1);
     });
+  }
+  function updateFoot(now, dt) {
+    movePlayers(dt, PLAYER_SPEED);
     if (players.every((p, i) => Math.hypot(p.x - cars[i].x, p.y - cars[i].y) < BOARD_RADIUS)) startChase(now);
   }
   function playerAtOwnCar(i) { return Math.hypot(players[i].x - cars[i].x, players[i].y - cars[i].y) < BOARD_RADIUS; }
@@ -886,7 +926,7 @@
     return t ? Math.max(0, Math.hypot(t.x - boss.x, t.y - boss.y)) : 0;
   }
 
-  function crash(car) {
+  function wreck(car) {
     if (!car.alive) return;
     car.alive = false;
     car.v = 0;
@@ -895,6 +935,10 @@
     spawnExplosion(car.x, car.y);
     spawnParticles(car.x, car.y, 40, '#ff8a2a', 400, 1.2, 5);
     spawnParticles(car.x, car.y, 30, '#333', 300, 1.5, 6);
+  }
+  function crash(car) {
+    if (!car.alive) return;
+    wreck(car);
     if (!aliveCars().length) { gameState = 'wiped'; updateEngineSound(0); }
   }
 
@@ -912,7 +956,115 @@
       spawnExplosion(boss.x + Math.cos(a) * r, boss.y + Math.sin(a) * r);
       playHit();
     }
-    if (t >= 1) startNuke(now);
+    if (t >= 1) startEscape(now);
+  }
+
+  // ---- the escape: the car is wrecked, the swarm comes apart into its
+  // monsters, and the road ends at a military roadblock ----
+  function blockedByRoadblock(x, y) {
+    const E = escape.endX;
+    if (x < E - PLAYER_RADIUS || x > E + 36 + PLAYER_RADIUS) return false;
+    const R = LEVEL.road, mid = (R.y0 + R.y1 + 1) / 2 * TILE;
+    return Math.abs(y - mid) > 2.5 * TILE - PLAYER_RADIUS;
+  }
+  function startEscape(now) {
+    cars.forEach(wreck);
+    players.forEach((p, i) => {
+      const c = cars[i] || cars[0];
+      const offs = i === 0 ? [[0, -26], [0, 26], [0, 0]] : [[0, 26], [0, -26], [0, 0]];
+      p.x = c.x; p.y = c.y;
+      for (const [ox, oy] of offs) { if (canStandAt(c.x + ox, c.y + oy)) { p.x = c.x + ox; p.y = c.y + oy; break; } }
+      p.down = false; p.facing = { x: 1, y: 0 }; p.isMoving = false;
+    });
+    const scatter = 0.45;                       // where drawBossWorld left the pieces at the end of the dying
+    const cs = Math.cos(boss.heading), sn = Math.sin(boss.heading), kk = 1 + scatter * 3.2;
+    chasers = members.map((m) => {
+      const a = m.ang + now * 0.0014 * m.spin;
+      const u = (Math.cos(a) * m.rad * 1.25 + Math.sin(now * 0.004 + m.phase) * BOSS_SPREAD * 0.03) * kk;
+      const w = (Math.sin(a) * m.rad * 0.8 + Math.cos(now * 0.0035 + m.phase) * BOSS_SPREAD * 0.03) * kk;
+      return {
+        id: m.id, size: m.size, phase: m.phase, spin: m.spin, kx: 0,
+        x: Math.max(48, boss.x + u * cs - w * sn), y: clamp(boss.y + u * sn + w * cs, 48, WORLD_H - 48),
+        heading: boss.heading, speed: HM.speed(PLAYER_SPEED * SWARM_SPEED[m.id]),
+      };
+    });
+    // the blast throws every piece back down the road until none starts within ESCAPE_HEAD of a runner
+    let need = 0;
+    chasers.forEach((c) => players.forEach((p) => {
+      const dx = p.x - c.x, dy = p.y - c.y;
+      if (Math.hypot(dx, dy) < ESCAPE_HEAD && Math.abs(dy) < ESCAPE_HEAD) need = Math.max(need, -dx + Math.sqrt(ESCAPE_HEAD * ESCAPE_HEAD - dy * dy));
+    }));
+    chasers.forEach((c) => { c.kx = need; });
+    escape = {
+      startedAt: now,
+      endX: Math.max(...players.map((p) => p.x)) + ESCAPE_ROAD_TILES * TILE,
+      start: { players: players.map((p) => ({ x: p.x, y: p.y })), chasers: chasers.map((c) => ({ x: c.x, y: c.y, kx: c.kx })) },
+    };
+    gameState = 'escape';
+    missiles = []; thrown = [];
+    shake = 20;
+    for (let i = 0; i < 5; i++) spawnExplosion(boss.x + (Math.random() - 0.5) * BOSS_SPREAD * 2, boss.y + (Math.random() - 0.5) * BOSS_SPREAD * 2);
+    spawnFloatingText(players[0].x, players[0].y - 44, 'RUN!');
+    updateEngineSound(0);
+  }
+  function retryEscape(now) {
+    players.forEach((p, i) => { const s0 = escape.start.players[i]; p.x = s0.x; p.y = s0.y; p.down = false; p.facing = { x: 1, y: 0 }; p.isMoving = false; });
+    chasers.forEach((c, i) => { const s0 = escape.start.chasers[i]; c.x = s0.x; c.y = s0.y; c.kx = s0.kx; });
+    escape.startedAt = now;
+    particles = []; explosions = []; floatingTexts = [];
+    gameState = 'escape';
+    shake = 8;
+  }
+  function nearestChaser() {
+    let best = null, bd = Infinity;
+    chasers.forEach((c) => players.forEach((p) => {
+      if (p.down) return;
+      const d = Math.hypot(c.x - p.x, c.y - p.y);
+      if (d < bd) { bd = d; best = c; }
+    }));
+    return best ? { c: best, d: bd } : null;
+  }
+  function catchPlayer(p) {
+    p.down = true; p.isMoving = false;
+    spawnParticles(p.x, p.y, 40, '#b0141c', 260, 0.9, 4);
+    spawnFloatingText(p.x, p.y - 30, 'CAUGHT');
+    playHit();
+    shake = Math.max(shake, 10);
+    if (players.every((q) => q.down)) { gameState = 'wiped'; updateEngineSound(0); }
+  }
+  function updateEscape(now, dt) {
+    const since = now - escape.startedAt;
+    movePlayers(dt, ESCAPE_RUN);
+    const ramp = clamp((since - SPLIT_STUN_MS) / ESCAPE_RAMP_MS, 0, 1);
+    for (const c of chasers) {
+      const e = c.kx * Math.min(1, dt * 5);
+      c.kx -= e; c.x -= e;
+      if (since < SPLIT_STUN_MS) { c.heading += c.spin * dt * 3; continue; }
+      let tgt = null, td = Infinity;
+      players.forEach((p) => { if (p.down) return; const d = Math.hypot(p.x - c.x, p.y - c.y); if (d < td) { td = d; tgt = p; } });
+      if (!tgt) break;
+      const dx = tgt.x - c.x, dy = tgt.y - c.y, d = td || 1;
+      const step = Math.min(c.speed * ramp * dt, d);
+      c.x += dx / d * step; c.y = clamp(c.y + dy / d * step, 48, WORLD_H - 48);
+      c.heading = Math.atan2(dy, dx);
+      if (d < PLAYER_RADIUS + c.size * 0.55) catchPlayer(tgt);
+      if (gameState !== 'escape') return;
+    }
+    const live = players.filter((p) => !p.down);
+    if (live.length && live.every((p) => p.x >= escape.endX + 52)) startMilitary(now);
+  }
+  function startMilitary(now) {
+    gameState = 'military';
+    militaryStartedAt = now;
+    milKillIdx = 0;
+    particles = []; explosions = []; floatingTexts = [];
+    updateEngineSound(0);
+  }
+  function updateMilitary(now, dt) {
+    const t = now - militaryStartedAt;
+    if (t > 500 && t < 9300 && Math.random() < dt * 16) playGun();
+    while (milKillIdx < milMonsters.length && milMonsters[milKillIdx].dieT <= t) { playSplat(); milKillIdx++; }
+    if (t >= MILITARY_MS) startNuke(now);
   }
 
   // After the Multipod falls, the facility is destroyed: a cutscene.
@@ -1146,6 +1298,10 @@
     players.forEach((p) => {
       g.save();
       g.translate(p.x, p.y);
+      if (p.down) {
+        g.fillStyle = 'rgba(120,10,16,0.75)'; g.beginPath(); g.ellipse(0, 2, R * 1.7, R * 1.1, 0, 0, Math.PI * 2); g.fill();
+        g.globalAlpha = 0.6; g.rotate(1.2);
+      }
       g.beginPath();
       g.ellipse(0, R * 1.05, R * 0.85, R * 0.26, 0, 0, Math.PI * 2);
       g.fillStyle = 'rgba(0,0,0,0.35)'; g.fill();
@@ -1207,14 +1363,14 @@
   }
 
   function drawBossWorld(g, now) {
-    if (gameState === 'foot') return;
+    if (gameState === 'foot' || gameState === 'escape' || gameState === 'military') return;
     const flash = clamp((boss.flashUntil - now) / 150, 0, 1);
     const dyingT = gameState === 'dying' ? clamp((now - dyingStartedAt) / DYING_MS, 0, 1) : 0;
     g.save();
     if (boss.emerge < 1) g.globalAlpha = boss.emerge;
     const scale = 0.4 + boss.emerge * 0.6;
     g.translate(boss.x, boss.y); g.scale(scale, scale); g.translate(-boss.x, -boss.y);
-    drawSwarm(g, boss.x, boss.y, boss.heading, now, members, BOSS_SPREAD, flash, dyingT);
+    drawSwarm(g, boss.x, boss.y, boss.heading, now, members, BOSS_SPREAD, flash, dyingT * 0.45);
     g.restore();
   }
 
@@ -1230,10 +1386,15 @@
     drawRoadMarkings(ctx, camX, vw, zoom);
     const doorsOpen = gameState === 'foot' ? 0 : clamp((performance.now() - chaseStartedAt) / 600, 0, 1);
     drawScenery(ctx, now, doorsOpen);
+    if (escape) drawRoadblock(ctx, now);
     drawParticlesWorld(ctx);
     if (gameState === 'foot') {
       cars.forEach((c, i) => drawCar(ctx, c, i, false));
       drawPlayers(ctx);
+    } else if (escape) {
+      cars.forEach((c, i) => drawCar(ctx, c, i, true));
+      drawPlayers(ctx);
+      drawChasers(ctx, now);
     } else {
       drawBossWorld(ctx, now);
       cars.forEach((c, i) => drawCar(ctx, c, i, true));
@@ -1315,7 +1476,12 @@
       const a2 = sp(car.x + Math.cos(car.heading + 0.34) * 540, car.y + Math.sin(car.heading + 0.34) * 540);
       darkCtx.beginPath(); darkCtx.moveTo(tip.x, tip.y); darkCtx.lineTo(a1.x, a1.y); darkCtx.lineTo(a2.x, a2.y); darkCtx.closePath(); darkCtx.fill();
     });
-    if (gameState !== 'foot') { const b = sp(boss.x, boss.y); punch(b.x, b.y, BOSS_SPREAD * 2.6 * z, 0.88); }
+    if (escape) {
+      players.forEach((p) => { if (p.down) return; const q = sp(p.x, p.y); punch(q.x, q.y, 210 * z, 0.95); });
+      chasers.forEach((c) => { const q = sp(c.x, c.y); punch(q.x, q.y, (c.size * 2.4 + 24) * z, 0.7); });
+      const R = LEVEL.road, q = sp(escape.endX + 30, (R.y0 + R.y1 + 1) / 2 * TILE);
+      punch(q.x, q.y, 620 * z, 0.97);                    // the roadblock's floodlights
+    } else if (gameState !== 'foot') { const b = sp(boss.x, boss.y); punch(b.x, b.y, BOSS_SPREAD * 2.6 * z, 0.88); }
     missiles.forEach((m) => { const q = sp(m.x, m.y); punch(q.x, q.y, 90 * z, 0.8); });
     thrown.forEach((m) => { const q = sp(m.x, m.y); punch(q.x, q.y, 110 * z, 0.9); });
     explosions.forEach((e) => { const q = sp(e.x, e.y); punch(q.x, q.y, 130 * z, 0.9); });
@@ -1385,8 +1551,8 @@
     });
   }
 
-  function drawBossPointer(camX, camY, z, now) {
-    const s = worldToScreen(0, FULL_W, camX, camY, z, boss.x, boss.y);
+  function drawBossPointer(camX, camY, z, now, tx = boss.x, ty = boss.y) {
+    const s = worldToScreen(0, FULL_W, camX, camY, z, tx, ty);
     const m = 26;
     if (s.x > m && s.x < FULL_W - m && s.y > m + 30 && s.y < VIEW_H - m) return;
     const cx = FULL_W / 2, cy = VIEW_H / 2;
@@ -1569,6 +1735,323 @@
     if (fade > 0) { g.fillStyle = `rgba(0,0,0,${fade})`; g.fillRect(0, 0, W, H); }
   }
 
+  // ---- the escape, drawn ----
+  function drawChasers(g, now) {
+    chasers.forEach((c) => {
+      g.save();
+      g.translate(c.x, c.y);
+      g.rotate(c.heading + Math.sin(now * 0.006 + c.phase) * 0.18);
+      drawSwarmMember(g, c.id, c.size, now, c.phase, 0);
+      g.restore();
+    });
+  }
+
+  // the military roadblock the road ends at: a sandbag wall with a gap just
+  // wide enough to run through, trucks, soldiers with rifles trained down the
+  // road, and floodlights
+  function drawRoadblock(g, now) {
+    const E = escape.endX, R = LEVEL.road;
+    const top = R.y0 * TILE, bot = (R.y1 + 1) * TILE, mid = (top + bot) / 2, GAP = 2.5 * TILE;
+    const y0 = top - 5 * TILE, y1 = bot + 5 * TILE;
+    g.save();
+    g.fillStyle = '#4b4e53'; g.fillRect(E - 30, y0, 300, y1 - y0);
+    g.fillStyle = '#585b61'; g.fillRect(E - 30, top, 300, bot - top);
+    g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(E - 24, top); g.lineTo(E - 24, bot); g.stroke();
+    g.save(); g.translate(E - 58, mid); g.rotate(-Math.PI / 2);
+    g.font = 'bold 22px monospace'; g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,0.75)'; g.fillText('HALT', 0, 8);
+    g.restore();
+    // sandbag walls either side of the gap
+    const bags = (ya, yb) => {
+      for (let y = ya; y < yb; y += 13) for (let c = 0; c < 2; c++) {
+        g.fillStyle = (Math.floor(y / 13) + c) % 2 ? '#9a8a62' : '#8a7a54';
+        g.beginPath(); g.ellipse(E + 8 + c * 15, y + 7 + (c ? 6 : 0), 10, 8, 0, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = 'rgba(40,30,10,0.55)'; g.lineWidth = 1; g.stroke();
+      }
+    };
+    bags(y0, mid - GAP); bags(mid + GAP, y1);
+    [mid - GAP, mid + GAP].forEach((py) => {                   // striped posts either side of the gap
+      for (let k = 0; k < 4; k++) { g.fillStyle = k % 2 ? '#f2f2f2' : '#d8281e'; g.fillRect(E - 2, py - 8 + k * 4, 40, 4); }
+    });
+    // trucks
+    const truck = (ty, up) => {
+      g.save(); g.translate(E + 80, ty);
+      g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(4, 6, 130, 50);
+      g.fillStyle = '#4a5530'; g.fillRect(0, 0, 130, 50);
+      g.fillStyle = '#5b6a3a'; g.fillRect(34, 4, 94, 42);
+      g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 2;
+      for (let x = 50; x < 128; x += 16) { g.beginPath(); g.moveTo(x, 4); g.lineTo(x, 46); g.stroke(); }
+      g.fillStyle = '#333c22'; g.fillRect(0, 0, 30, 50);
+      g.fillStyle = 'rgba(150,200,235,0.8)'; g.fillRect(2, 6, 7, 38);
+      g.fillStyle = '#ffe8a0'; g.fillRect(-2, 6, 3, 8); g.fillRect(-2, 36, 3, 8);
+      g.restore();
+    };
+    truck(mid - GAP - 70, true); truck(mid + GAP + 20, false);
+    // soldiers: along the wall, and a few at the gap, rifles pointing back down the road
+    const soldier = (sx, sy, k) => {
+      g.save(); g.translate(sx, sy);
+      g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.ellipse(2, 3, 9, 6, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#1a1a1a'; g.lineWidth = 3; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(-2, 4 * (k % 2 ? 1 : -1)); g.lineTo(-17, 2 * (k % 2 ? 1 : -1)); g.stroke();
+      g.fillStyle = '#3f4a26'; g.beginPath(); g.ellipse(0, 0, 6, 9, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#566632'; g.beginPath(); g.arc(1, 0, 5.4, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#262e14'; g.lineWidth = 1; g.stroke();
+      g.restore();
+    };
+    for (let y = y0 + 20, k = 0; y < y1 - 10; y += 26, k++) { if (Math.abs(y - mid) < GAP + 4) continue; soldier(E + 44, y, k); }
+    [-1, 1].forEach((s, k) => { soldier(E + 62, mid + s * (GAP - 14), k); soldier(E + 90, mid + s * (GAP + 8), k + 1); });
+    // floodlights, throwing long cones back down the road
+    g.globalCompositeOperation = 'lighter';
+    [y0 + 14, y1 - 14].forEach((ly) => {
+      const lg = g.createLinearGradient(E + 22, ly, E - 560, mid);
+      lg.addColorStop(0, 'rgba(255,244,200,0.34)'); lg.addColorStop(1, 'rgba(255,244,200,0)');
+      g.fillStyle = lg; g.beginPath(); g.moveTo(E + 22, ly); g.lineTo(E - 560, mid - 240); g.lineTo(E - 560, mid + 240); g.closePath(); g.fill();
+    });
+    g.globalCompositeOperation = 'source-over';
+    [y0 + 14, y1 - 14].forEach((ly) => {
+      g.fillStyle = '#2a2c30'; g.beginPath(); g.arc(E + 22, ly, 9, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#fff6d0'; g.beginPath(); g.arc(E + 18, ly, 5, 0, Math.PI * 2); g.fill();
+    });
+    g.restore();
+  }
+
+  function drawEscapeHud(now) {
+    const live = players.filter((p) => !p.down);
+    const lead = live.length ? Math.max(...live.map((p) => p.x)) : players[0].x;
+    const left = Math.max(0, Math.round((escape.endX + 52 - lead) / TILE * 2));
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,8,12,0.65)'; ctx.fillRect(6, 8, 188, 24);
+    ctx.font = 'bold 12px monospace'; ctx.textAlign = 'left'; ctx.fillStyle = '#ffe28a';
+    ctx.fillText(`${left} m TO THE ROADBLOCK`, 12, 24);
+    ctx.restore();
+  }
+  function renderEscape(now, dt) {
+    const since = now - escape.startedAt;
+    const live = players.filter((p) => !p.down);
+    const focus = live.length ? live : players;
+    const near = nearestChaser();
+    const lead = Math.max(...focus.map((p) => p.x));
+    let left = Math.min(...focus.map((p) => p.x));
+    if (near && near.c.x < left) left = Math.max(near.c.x, left - 900);
+    const right = lead + 240;
+    const wantZoom = clamp((FULL_W * 0.9) / Math.max(right - left, 200), 0.3, 0.8);
+    chaseZoom += (wantZoom - chaseZoom) * Math.min(1, dt * 5);
+    const halfH = VIEW_H / 2 / chaseZoom;
+    const camX = (left + right) / 2;
+    const avgY = focus.reduce((a, p) => a + p.y, 0) / focus.length;
+    const camY = clamp(avgY, halfH, WORLD_H - halfH);
+    cam.x = camX; cam.y = camY;
+    drawViewWorld(0, FULL_W, camX, camY, chaseZoom, now);
+    drawForestDarkness(camX, camY, chaseZoom);
+    if (near && gameState === 'escape') {
+      window.ScreenFx.proximity(ctx, 0, 0, FULL_W, VIEW_H, clamp(1 - (near.d - 90) / 200, 0, 1));
+      drawBossPointer(camX, camY, chaseZoom, now, near.c.x, near.c.y);
+    }
+    drawEscapeHud(now);
+    if (gameState === 'escape') {
+      if (since < 2600) drawBanner('IT\u2019S SPLITTING UP \u2014 RUN!', '#ff6a5a', clamp(1 - Math.max(0, since - 1900) / 700, 0, 1));
+      if (since > 600 && since < 6000 && live.length) {
+        ctx.save(); ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = `rgba(255,255,255,${0.75 * clamp((6000 - since) / 800, 0, 1)})`;
+        ctx.fillText(PLAYER_MODE === 1 ? 'W A S D / ARROWS: RUN' : 'P1: W A S D     P2: ARROWS', FULL_W / 2, VIEW_H - 14);
+        ctx.restore();
+      }
+    }
+  }
+
+  // ---- the military cutscene: ten seconds of soldiers behind a sandbag
+  // line shooting the monsters as they come up the road, blood everywhere.
+  // Pure canvas drawing, a pure function of t (deterministic).
+  const MIL_GY = 252, MIL_SOLDIERS = 11;
+  const milRng = swarmRng(4242);
+  const milBossIds = new Set([5, 11, 16, 21, 26, 31]);
+  const milMonsters = Array.from({ length: 44 }, (_, i) => {
+    const id = Math.floor(milRng() * SWARM_DEFS.length);
+    const dieT = 1000 + (i / 44) * 8300 + (milRng() - 0.5) * 120;
+    const dur = 1600 + milRng() * 1000, dieX = 140 + milRng() * 350;
+    const gore = Array.from({ length: 18 }, () => ({
+      a: -Math.PI / 2 + (milRng() - 0.5) * 3.2, sp: 90 + milRng() * 250, sz: 1.5 + milRng() * 3.2, gz: milRng() * 26, dark: milRng(),
+    }));
+    return {
+      id, dieT, dieX, x0: -90, spd: (dieX + 90) / dur * 1000, lane: milRng(),
+      s: (milBossIds.has(id) ? 46 : 20) + milRng() * 16, gore,
+      shots: [0, 1, 2].map((k) => ({ at: dieT - 330 + k * 110 + milRng() * 40, from: Math.floor(milRng() * MIL_SOLDIERS) })),
+    };
+  }).sort((a, b) => a.dieT - b.dieT);
+  const milSplats = Array.from({ length: 9 }, (_, i) => ({
+    at: 1900 + i * 800 + milRng() * 300, x: 60 + milRng() * 800, y: 50 + milRng() * 230, r: 24 + milRng() * 40, drip: 0.5 + milRng(), seed: milRng(),
+  }));
+  const milStars = Array.from({ length: 50 }, () => ({ x: milRng() * FULL_W, y: milRng() * 120, r: 0.5 + milRng() * 1.1 }));
+  const milTrees = Array.from({ length: 34 }, (_, i) => ({ x: i * 29 + milRng() * 16, h: 50 + milRng() * 60, w: 14 + milRng() * 12 }));
+  const milLaneY = (m) => MIL_GY - 30 + m.lane * 34;
+  const milSoldier = (i) => ({ x: 600 + i * 26 + (i % 2) * 8, y: MIL_GY + (i % 2) * 8, kneel: i % 3 === 0 });
+
+  function drawMilitaryScene(g, t) {
+    const W = FULL_W, H = VIEW_H, gy = MIL_GY;
+    const kills = milMonsters.filter((m) => m.dieT <= t).length;
+    g.save();
+    g.beginPath(); g.rect(0, 0, W, H); g.clip();
+    const jolt = (t > 800 && t < 9400) ? 1.6 + Math.sin(t * 0.07) * 0.8 : 0;
+    g.translate((Math.sin(t * 0.093) * jolt), (Math.cos(t * 0.081) * jolt));
+    // night sky, stars, moon
+    const sky = g.createLinearGradient(0, 0, 0, gy);
+    sky.addColorStop(0, '#04060c'); sky.addColorStop(1, '#16202a');
+    g.fillStyle = sky; g.fillRect(-20, -20, W + 40, H + 40);
+    milStars.forEach((s) => { g.fillStyle = `rgba(255,255,255,${0.5 + 0.4 * Math.sin(t * 0.003 + s.x)})`; g.fillRect(s.x, s.y, s.r, s.r); });
+    g.fillStyle = '#d8dce6'; g.beginPath(); g.arc(780, 62, 20, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#10161e'; g.beginPath(); g.arc(790, 56, 18, 0, Math.PI * 2); g.fill();
+    // forest wall on the far side
+    g.fillStyle = '#070b08';
+    milTrees.forEach((tr) => { g.beginPath(); g.moveTo(tr.x - tr.w, gy - 6); g.lineTo(tr.x, gy - 6 - tr.h); g.lineTo(tr.x + tr.w, gy - 6); g.closePath(); g.fill(); });
+    // the road
+    const rg = g.createLinearGradient(0, gy - 8, 0, H);
+    rg.addColorStop(0, '#2b2e34'); rg.addColorStop(1, '#16181c');
+    g.fillStyle = rg; g.fillRect(-20, gy - 8, W + 40, H);
+    g.strokeStyle = 'rgba(255,214,70,0.5)'; g.lineWidth = 3; g.setLineDash([34, 26]); g.beginPath(); g.moveTo(0, gy + 30); g.lineTo(W, gy + 30); g.stroke(); g.setLineDash([]);
+    // floodlight beams across the killing field
+    g.save(); g.globalCompositeOperation = 'lighter';
+    [[590, 70], [900, 60]].forEach(([lx, ly], k) => {
+      const bg = g.createLinearGradient(lx, ly, 120, gy);
+      bg.addColorStop(0, 'rgba(255,244,205,0.30)'); bg.addColorStop(1, 'rgba(255,244,205,0.02)');
+      g.fillStyle = bg; g.beginPath(); g.moveTo(lx, ly); g.lineTo(60 + k * 80, gy - 40); g.lineTo(380 + k * 80, gy + 36); g.closePath(); g.fill();
+    });
+    g.restore();
+    [[590, 70], [900, 60]].forEach(([lx, ly]) => {
+      g.fillStyle = '#1a1c20'; g.fillRect(lx - 2, ly, 4, gy - ly);
+      g.fillStyle = '#fff4d0'; g.beginPath(); g.arc(lx, ly, 6, 0, Math.PI * 2); g.fill();
+    });
+
+    // blood already on the ground, under everything that's still alive
+    milMonsters.forEach((m) => {
+      if (t < m.dieT) return;
+      const age = t - m.dieT, y = milLaneY(m) + 8, k = clamp(age / 260, 0, 1);
+      g.fillStyle = `rgba(110,6,12,${0.85 * k})`;
+      g.beginPath(); g.ellipse(m.dieX, y, (16 + m.s * 0.8) * k, (5 + m.s * 0.22) * k, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = `rgba(150,12,20,${0.7 * k})`;
+      g.beginPath(); g.ellipse(m.dieX + 4, y - 1, (9 + m.s * 0.4) * k, (3 + m.s * 0.1) * k, 0, 0, Math.PI * 2); g.fill();
+    });
+
+    // the monsters, back lanes first
+    milMonsters.slice().sort((a, b) => a.lane - b.lane).forEach((m) => {
+      const t0 = m.dieT - (m.dieX - m.x0) / m.spd * 1000;
+      if (t < t0 || t >= m.dieT) return;
+      const x = m.x0 + m.spd * (t - t0) / 1000, y = milLaneY(m);
+      const sc = 0.8 + m.lane * 0.35;
+      g.save(); g.translate(x, y - m.s * 0.35); g.scale(sc, sc * 0.9);
+      g.rotate(Math.sin(t * 0.012 + m.id) * 0.1);
+      drawSwarmMember(g, m.id, m.s, t, m.id, 0);
+      g.restore();
+      g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.ellipse(x, y + 8, m.s * 0.9 * sc, 5, 0, 0, Math.PI * 2); g.fill();
+    });
+
+    // blood in the air, then settling on the ground
+    milMonsters.forEach((m) => {
+      if (t < m.dieT) return;
+      const age = (t - m.dieT) / 1000, y0 = milLaneY(m) - m.s * 0.4;
+      if (age < 0.7) {                                          // the burst
+        const k = clamp(age / 0.7, 0, 1);
+        const bgr = g.createRadialGradient(m.dieX, y0, 0, m.dieX, y0, 20 + m.s * 1.6 * k);
+        bgr.addColorStop(0, `rgba(190,14,22,${0.85 * (1 - k)})`); bgr.addColorStop(1, 'rgba(120,4,10,0)');
+        g.fillStyle = bgr; g.beginPath(); g.arc(m.dieX, y0, 20 + m.s * 1.6 * k, 0, Math.PI * 2); g.fill();
+      }
+      m.gore.forEach((q) => {
+        const rest = MIL_GY + 2 + q.gz * 0.5;
+        let px = m.dieX + Math.cos(q.a) * q.sp * age, py = y0 + Math.sin(q.a) * q.sp * age + 520 * age * age;
+        const landed = py >= rest;
+        if (landed) {
+          const ta = (Math.sqrt(Math.max(0, (Math.sin(q.a) * q.sp) ** 2 + 2 * 520 * (rest - y0))) - Math.sin(q.a) * q.sp) / 520;
+          px = m.dieX + Math.cos(q.a) * q.sp * ta; py = rest;
+          g.fillStyle = q.dark > 0.5 ? 'rgba(120,6,12,0.9)' : 'rgba(160,14,22,0.85)';
+          g.beginPath(); g.ellipse(px, py, q.sz * 1.8, q.sz * 0.7, 0, 0, Math.PI * 2); g.fill();
+        } else {
+          g.fillStyle = q.dark > 0.5 ? '#8a0a12' : '#c4161e';
+          g.beginPath(); g.arc(px, py, q.sz, 0, Math.PI * 2); g.fill();
+        }
+      });
+    });
+
+    // the sandbag line and the soldiers behind it
+    for (let x = 540; x < W + 20; x += 20) for (let r = 0; r < 2; r++) {
+      g.fillStyle = (x / 20 + r) % 2 ? '#9a8a62' : '#8a7a54';
+      g.beginPath(); g.ellipse(x + r * 10, gy + 10 - r * 11, 11, 7, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(30,22,8,0.6)'; g.lineWidth = 1; g.stroke();
+    }
+    g.fillStyle = '#3c4a24';
+    for (let i = 0; i < MIL_SOLDIERS; i++) {
+      const s = milSoldier(i), by = s.y - 6, h = s.kneel ? 24 : 36;
+      g.fillStyle = '#2f3a1b'; g.fillRect(s.x - 5, by - h * 0.45, 4, h * 0.45); g.fillRect(s.x + 1, by - h * 0.45, 4, h * 0.45);   // legs
+      g.fillStyle = '#44532a'; g.fillRect(s.x - 7, by - h * 0.95, 14, h * 0.55);                                                       // torso
+      g.fillStyle = '#c69a78'; g.beginPath(); g.arc(s.x, by - h * 0.95 - 5, 5, 0, Math.PI * 2); g.fill();                              // face
+      g.fillStyle = '#566632'; g.beginPath(); g.arc(s.x, by - h * 0.95 - 7, 6.2, Math.PI, Math.PI * 2); g.fill();                       // helmet
+      g.fillRect(s.x - 7, by - h * 0.95 - 7, 14, 2);
+      g.strokeStyle = '#141414'; g.lineWidth = 3; g.lineCap = 'round';                                                                // rifle, aimed down the road
+      g.beginPath(); g.moveTo(s.x + 3, by - h * 0.7); g.lineTo(s.x - 25, by - h * 0.78); g.stroke();
+      const rate = 7 + (i % 4), f = ((t / 1000 * rate + i * 0.37) % 1);
+      if (t > 600 && t < 9300 && f < 0.28) {
+        const fx = s.x - 27, fy = by - h * 0.78, fr = 5 + (i % 3) * 2;
+        const fg = g.createRadialGradient(fx, fy, 0, fx, fy, fr * 2.2);
+        fg.addColorStop(0, 'rgba(255,255,230,0.95)'); fg.addColorStop(0.4, 'rgba(255,200,80,0.8)'); fg.addColorStop(1, 'rgba(255,120,20,0)');
+        g.fillStyle = fg; g.beginPath(); g.arc(fx, fy, fr * 2.2, 0, Math.PI * 2); g.fill();
+      }
+    }
+    // an armoured truck at the end of the line, and the two hazmat men crouched behind it
+    g.fillStyle = '#3a4526'; g.fillRect(840, gy - 52, 90, 56);
+    g.fillStyle = '#2b3419'; g.fillRect(810, gy - 40, 34, 44);
+    g.fillStyle = 'rgba(150,200,235,0.55)'; g.fillRect(814, gy - 36, 24, 14);
+    g.fillStyle = '#111'; g.beginPath(); g.arc(826, gy + 6, 9, 0, Math.PI * 2); g.arc(900, gy + 6, 9, 0, Math.PI * 2); g.fill();
+    if (window.BossCutscene && window.BossCutscene._hazmat) {
+      [[772, 0], [754, 1]].forEach(([hx, k]) => {
+        try { window.BossCutscene._hazmat(g, { x: hx, y: gy + 20, ang: Math.PI, u: 12, armsUp: 0, jitter: 0.12, time: t + k * 300, walk: 0, speed: 0 }); } catch (e) { /* the film goes on without them */ }
+      });
+    }
+
+    // tracers from the muzzles to whatever they hit
+    g.save(); g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
+    milMonsters.forEach((m) => {
+      m.shots.forEach((sh) => {
+        const age = t - sh.at;
+        if (age < 0 || age > 90) return;
+        const s = milSoldier(sh.from), sx = s.x - 27, sy = s.y - 6 - (s.kneel ? 24 : 36) * 0.78;
+        const tx = m.dieX + (m.dieT - sh.at) * 0, ty = milLaneY(m) - m.s * 0.4;
+        const k = age / 90, head = k, tail = Math.max(0, k - 0.35);
+        g.strokeStyle = 'rgba(255,230,150,0.9)'; g.lineWidth = 1.6;
+        g.beginPath(); g.moveTo(lerp(sx, tx, tail), lerp(sy, ty, tail)); g.lineTo(lerp(sx, tx, head), lerp(sy, ty, head)); g.stroke();
+      });
+    });
+    g.restore();
+
+    // a darkening red cast as the body count climbs
+    g.fillStyle = `rgba(90,0,6,${0.05 + 0.18 * (kills / milMonsters.length)})`; g.fillRect(-20, -20, W + 40, H + 40);
+    g.restore();
+
+    // blood on the lens
+    milSplats.forEach((sp) => {
+      const age = t - sp.at;
+      if (age < 0) return;
+      const k = easeOut(age / 220), a = clamp(1 - Math.max(0, age - 4200) / 3000, 0.55, 1);
+      g.save(); g.translate(sp.x, sp.y); g.globalAlpha = a;
+      g.fillStyle = '#7a0810';
+      g.beginPath(); g.arc(0, 0, sp.r * k, 0, Math.PI * 2); g.fill();
+      for (let j = 0; j < 9; j++) {
+        const aa = j * 0.7 + sp.seed * 6, rr = sp.r * (1.15 + ((j * 37 + sp.seed * 91) % 10) / 14) * k;
+        g.beginPath(); g.arc(Math.cos(aa) * rr, Math.sin(aa) * rr, sp.r * (0.1 + ((j * 53) % 7) / 30) * k, 0, Math.PI * 2); g.fill();
+      }
+      g.fillStyle = '#9c0e18'; g.beginPath(); g.arc(-sp.r * 0.15, -sp.r * 0.2, sp.r * 0.55 * k, 0, Math.PI * 2); g.fill();
+      g.fillRect(-sp.r * 0.12, 0, sp.r * 0.24, Math.min(age / 1000 * 14 * sp.drip, 70));          // it runs down the glass
+      g.restore();
+    });
+
+    // letterbox, captions, tally, fades
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, 22); g.fillRect(0, H - 22, W, 22);
+    g.textAlign = 'center';
+    const cap = t < 1800 ? 'SOMETHING IS COMING UP THE ROAD.' : (t < 6800 ? 'OPEN FIRE.' : 'NOTHING GETS PAST THIS LINE.');
+    const ca = t < 1800 ? clamp(t / 500, 0, 1) : (t < 6800 ? clamp((t - 1800) / 300, 0, 1) * clamp((2500 - (t - 1800)) / 400, 0, 1) : clamp((t - 6800) / 500, 0, 1));
+    g.font = 'bold 20px monospace'; g.fillStyle = `rgba(255,236,210,${ca})`; g.fillText(cap, W / 2, H - 38);
+    g.font = 'bold 11px monospace'; g.textAlign = 'left'; g.fillStyle = 'rgba(255,200,200,0.85)'; g.fillText(`HOSTILES DOWN: ${kills}`, 12, 40);
+    if (t > 1500 && t < MILITARY_MS - 1500) { g.font = '10px monospace'; g.textAlign = 'right'; g.fillStyle = 'rgba(255,255,255,0.4)'; g.fillText('ENTER: SKIP', W - 10, H - 28); }
+    const fin = 1 - clamp(t / 400, 0, 1), fout = clamp((t - (MILITARY_MS - 900)) / 800, 0, 1);
+    if (fin > 0 || fout > 0) { g.fillStyle = `rgba(0,0,0,${Math.max(fin, fout)})`; g.fillRect(0, 0, W, H); }
+  }
+
   function drawCredits(g, t) {
     g.fillStyle = '#000'; g.fillRect(0, 0, FULL_W, VIEW_H);
     g.textAlign = 'center';
@@ -1616,6 +2099,8 @@
     if (gameState === 'nuke') { drawNukeScene(ctx, now - nukeStartedAt); return; }
     if (gameState === 'credits') { drawCredits(ctx, now - creditsStartedAt); return; }
     if (gameState === 'victory') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, FULL_W, VIEW_H); return; }
+    if (gameState === 'military') { drawMilitaryScene(ctx, now - militaryStartedAt); return; }
+    if (escape && (gameState === 'escape' || gameState === 'wiped')) { renderEscape(now, dt); return; }
     if (gameState === 'foot') {
       players.forEach((p, i) => {
         const vx = i * FOOT_VIEW_W;
@@ -1663,7 +2148,7 @@
   function updateOverlay() {
     if (gameState === 'wiped') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'THE MULTIPOD RAN YOU DOWN &mdash; press Enter to try again, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
+      messageEl.innerHTML = (escape ? 'THEY CAUGHT YOU' : 'THE MULTIPOD RAN YOU DOWN') + ' &mdash; press Enter to try again, or <a href="index.html" style="color:var(--accent)">back to the menu</a>';
     } else if (gameState === 'dying') {
       messageEl.style.display = 'flex';
       messageEl.innerHTML = 'THE MULTIPOD IS COMING APART&hellip;';
@@ -1676,9 +2161,9 @@
   }
   function updateHud() {
     if (hudBossEl) hudBossEl.textContent = gameState === 'foot' ? 'Multipod: asleep' : (boss.hp > 0 ? `Multipod: ${fmtHp(boss.hp)}/${BOSS_MAX_HEALTH} HP` : 'Multipod: destroyed');
-    if (hudGapEl) hudGapEl.textContent = gameState === 'chase' ? `Gap: ${Math.round(gapNow() / TILE)} tiles` : 'Gap: --';
+    if (hudGapEl) hudGapEl.textContent = gameState === 'chase' ? `Gap: ${Math.round(gapNow() / TILE)} tiles` : (gameState === 'escape' && nearestChaser() ? `Nearest: ${Math.round(nearestChaser().d / TILE)} tiles` : 'Gap: --');
     if (hudSpeedEl) hudSpeedEl.textContent = `Speed: ${cars.map((c) => Math.round(Math.abs(c.v) / CAR_MAX * 180)).join(' / ')} mph`;
-    if (hudPhaseEl) hudPhaseEl.textContent = { foot: 'On foot', chase: 'Chase', dying: 'Chase', nuke: 'Escaped', credits: 'Escaped', victory: 'Escaped', wiped: 'Crashed' }[gameState];
+    if (hudPhaseEl) hudPhaseEl.textContent = { foot: 'On foot', chase: 'Chase', dying: 'Chase', escape: 'Escape', military: 'Escaped', nuke: 'Escaped', credits: 'Escaped', victory: 'Escaped', wiped: 'Crashed' }[gameState];
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
   }
@@ -1710,6 +2195,13 @@
         elapsedMs = now - runStartTime;
         updateDying(now, dt);
         updateMissiles(now, dt);
+      } else if (gameState === 'escape') {
+        elapsedMs = now - runStartTime;
+        updateEscape(now, dt);
+        updateEngineSound(0);
+      } else if (gameState === 'military') {
+        elapsedMs = now - runStartTime;
+        updateMilitary(now, dt);
       } else if (gameState === 'nuke') {
         updateNuke(now);
       } else if (gameState === 'credits') {
