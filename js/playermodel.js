@@ -1,215 +1,126 @@
-// The player: a chimp in a hazmat suit and a glass helmet, seen from above --
-// the same drawing every level uses for its players (copied from the level
-// scripts' drawPlayers, minus the held shotgun) so menus can show the real
-// thing. Usage: PlayerModel.draw(g, R, { x, y, color, facing: {x, y}, walkPhase }).
+// The player: a hazmat-suited chimp seen from above, drawn like the hazmat men in
+// the boss cutscenes (js/bosscutscene.js): a yellow suit with reflective tape, a
+// grey backpack with two tanks and a hose up to the helmet, black gloves, and a
+// yellow helmet with a dark teal visor. Every level script draws its players with
+// these shared pieces (the legs stay in each level, since the swimming levels swap
+// boots for flippers; held weapons are drawn between torso and head):
+//   PlayerModel.suit(p)                      -- the suit colour (the player's colour, pulled towards hazmat yellow)
+//   PlayerModel.drawTorso(g, R, p, bob, swing) -- backpack, torso and arms
+//   PlayerModel.drawHead(g, R, p, bob)        -- the helmet
+//   PlayerModel.draw(g, R, { x, y, color, facing: {x, y}, walkPhase })  -- the whole thing (menus)
 (function () {
+  const TAU = Math.PI * 2;
+  const HAZMAT_YELLOW = '#ffe24d';
+
+  function mix(a, b, v) {
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const ch = (s) => Math.round(((pa >> s) & 255) + (((pb >> s) & 255) - ((pa >> s) & 255)) * v);
+    return '#' + ((1 << 24) + (ch(16) << 16) + (ch(8) << 8) + ch(0)).toString(16).slice(1);
+  }
   function shade(hex, amt) {
     const n = parseInt(hex.slice(1), 16);
     const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
-    const r = clamp(((n >> 16) & 255) + 255 * amt);
-    const g2 = clamp(((n >> 8) & 255) + 255 * amt);
-    const b = clamp((n & 255) + 255 * amt);
-    return `rgb(${r},${g2},${b})`;
+    return `rgb(${clamp(((n >> 16) & 255) + 255 * amt)},${clamp(((n >> 8) & 255) + 255 * amt)},${clamp((n & 255) + 255 * amt)})`;
+  }
+  function rr(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r);
+    g.lineTo(x + w, y + h - r); g.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    g.lineTo(x + r, y + h); g.quadraticCurveTo(x, y + h, x, y + h - r);
+    g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); g.closePath();
+  }
+  // the player's colour, pulled towards hazmat yellow so both players read as the cutscene's suit
+  function suit(p) { return mix(p.color || '#ffa84d', HAZMAT_YELLOW, 0.62); }
+
+  // backpack with two tanks, torso with reflective tape, and the arms
+  function drawTorso(g, R, p, bob, swing) {
+    const u = R * 0.9;
+    const sw = swing / (R * 0.62);
+    const A = suit(p), B = mix(A, '#8a6400', 0.42), line = mix(A, '#3a2a00', 0.7);
+    g.save();
+    // backpack and tanks, with the hose running up to the helmet
+    g.fillStyle = '#59606b'; g.strokeStyle = '#22262c'; g.lineWidth = 1;
+    rr(g, -1.12 * u, -0.5 * u, 0.62 * u, 1.0 * u, 0.2 * u); g.fill(); g.stroke();
+    [-1, 1].forEach((s) => {
+      const tg = g.createRadialGradient(-0.86 * u, s * 0.26 * u - 0.05 * u, 0.5, -0.82 * u, s * 0.26 * u, 0.26 * u);
+      tg.addColorStop(0, '#f2f4f8'); tg.addColorStop(1, '#8d94a0');
+      g.fillStyle = tg; g.beginPath(); g.arc(-0.82 * u, s * 0.26 * u, 0.23 * u, 0, TAU); g.fill(); g.stroke();
+    });
+    g.strokeStyle = '#2a2e34'; g.lineWidth = 0.14 * u; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(-0.6 * u, 0); g.quadraticCurveTo(-0.45 * u, -0.5 * u, -0.1 * u, -0.3 * u); g.stroke();
+
+    // torso, bobbing with the stride
+    g.save();
+    g.translate(0, -bob);
+    const tg = g.createLinearGradient(0, -u, 0, u);
+    tg.addColorStop(0, B); tg.addColorStop(0.5, A); tg.addColorStop(1, B);
+    g.fillStyle = tg; g.strokeStyle = line; g.lineWidth = 1.1;
+    g.beginPath(); g.ellipse(0, 0, 0.66 * u, 1.0 * u, 0, 0, TAU); g.fill(); g.stroke();
+    g.fillStyle = 'rgba(228,230,234,0.78)';
+    [-0.2, 0.24].forEach((x) => { rr(g, (x - 0.04) * u, -0.84 * u, 0.09 * u, 1.68 * u, 0.04 * u); g.fill(); });
+    g.strokeStyle = 'rgba(60,45,0,0.5)'; g.lineWidth = 0.7;
+    g.beginPath(); g.moveTo(-0.55 * u, 0); g.lineTo(0.6 * u, 0); g.stroke();
+    g.restore();
+
+    // arms, swinging opposite their same-side leg, hands brought in towards the middle
+    // so a held weapon sits between them
+    [-1, 1].forEach((s) => {
+      const hx = (0.5 - sw * 0.34 * s) * u, hy = s * 0.74 * u;
+      const sx0 = 0.02 * u, sy0 = s * 0.84 * u;
+      const cx = (sx0 + hx) / 2 + 0.1 * u, cy = (sy0 + hy) / 2 + s * 0.2 * u;
+      g.lineCap = 'round';
+      g.strokeStyle = line; g.lineWidth = 0.5 * u;
+      g.beginPath(); g.moveTo(sx0, sy0); g.quadraticCurveTo(cx, cy, hx, hy); g.stroke();
+      g.strokeStyle = A; g.lineWidth = 0.37 * u;
+      g.beginPath(); g.moveTo(sx0, sy0); g.quadraticCurveTo(cx, cy, hx, hy); g.stroke();
+      g.fillStyle = '#25272b'; g.beginPath(); g.arc(hx, hy, 0.22 * u, 0, TAU); g.fill();
+    });
+    g.restore();
   }
 
-  function drawLimb(g, hipX, hipY, tipX, tipY, width, color, capColor, capR) {
-    // A slight elbow/knee bow instead of a dead-straight line, plus a
-    // lit hand/foot instead of a flat-filled circle -- more follow-up
-    // for a more expressive chimp body.
-    const mx = (hipX + tipX) / 2, my = (hipY + tipY) / 2;
-    const dx = tipX - hipX, dy = tipY - hipY;
-    const len = Math.hypot(dx, dy) || 1;
-    const bend = len * 0.14;
-    const bx = mx - (dy / len) * bend, by = my + (dx / len) * bend;
-    g.strokeStyle = color;
-    g.lineWidth = width;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(hipX, hipY);
-    g.quadraticCurveTo(bx, by, tipX, tipY);
-    g.stroke();
-    const capGrad = g.createRadialGradient(tipX - capR * 0.3, tipY - capR * 0.3, capR * 0.1, tipX, tipY, capR);
-    capGrad.addColorStop(0, capColor);
-    capGrad.addColorStop(1, 'rgba(0,0,0,0.3)');
-    g.beginPath();
-    g.arc(tipX, tipY, capR, 0, Math.PI * 2);
-    g.fillStyle = capGrad;
-    g.fill();
+  // the yellow helmet with its dark teal visor, a band across the crown in the player's colour
+  function drawHead(g, R, p, bob) {
+    const u = R * 0.9;
+    const A = suit(p), B = mix(A, '#8a6400', 0.42), line = mix(A, '#3a2a00', 0.7);
+    g.save();
+    g.translate(0.14 * u, -bob);
+    const hg = g.createRadialGradient(-0.2 * u, -0.25 * u, 0.5, 0, 0, 0.78 * u);
+    hg.addColorStop(0, mix(A, '#ffffff', 0.5)); hg.addColorStop(1, B);
+    g.fillStyle = hg; g.strokeStyle = line; g.lineWidth = 1.1;
+    g.beginPath(); g.arc(0, 0, 0.68 * u, 0, TAU); g.fill(); g.stroke();
+    // the colour band over the crown, and the filter on the back of the helmet
+    g.strokeStyle = p.color || '#ff8a3d'; g.lineWidth = 0.16 * u; g.lineCap = 'butt';
+    g.beginPath(); g.arc(0, 0, 0.5 * u, Math.PI * 0.62, Math.PI * 1.38); g.stroke();
+    g.fillStyle = '#3a3000'; g.beginPath(); g.arc(-0.28 * u, 0, 0.12 * u, 0, TAU); g.fill();
+    // visor
+    const vg = g.createLinearGradient(0.1 * u, -0.4 * u, 0.6 * u, 0.4 * u);
+    vg.addColorStop(0, '#2c6f7d'); vg.addColorStop(1, '#0b232a');
+    g.fillStyle = vg; g.strokeStyle = '#06161a'; g.lineWidth = 1;
+    g.beginPath(); g.ellipse(0.36 * u, 0, 0.36 * u, 0.5 * u, 0, 0, TAU); g.fill(); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.55)';
+    g.beginPath(); g.ellipse(0.28 * u, -0.2 * u, 0.13 * u, 0.05 * u, -0.5, 0, TAU); g.fill();
+    g.restore();
   }
 
   function drawPlayerModel(g, R, p) {
-  g.save();
-  g.translate(p.x, p.y);
-
-  // ground shadow, drawn before rotation so it never tilts with the player
-  g.beginPath();
-  g.ellipse(0, R * 1.05, R * 0.85, R * 0.26, 0, 0, Math.PI * 2);
-  g.fillStyle = 'rgba(0,0,0,0.35)';
-  g.fill();
-
-  g.rotate(Math.atan2(p.facing.y, p.facing.x));
-
-  // Legs swing fore/aft opposite each other; arms swing opposite their
-  // same-side leg (contralateral, like a real walking gait). Frozen in
-  // place while standing still rather than easing to neutral -- reads
-  // as a mid-step pause, which is fine at this scale.
-  const swing = Math.sin(p.walkPhase) * R * 0.62;
-  const bob = Math.abs(Math.cos(p.walkPhase)) * R * 0.05;
-  const suitDark = shade(p.color, -0.45);
-  const bootColor = '#2b2b28';
-
-  // legs -- drawn first so the torso overlaps their hip ends
-  drawLimb(g, 0, -R * 0.3, swing, -R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
-  drawLimb(g, 0, R * 0.3, -swing, R * 0.3, R * 0.34, suitDark, bootColor, R * 0.28);
-
-  // oxygen tank + hose up to the collar
-  g.strokeStyle = '#54544c';
-  g.lineWidth = 2.5;
-  g.beginPath();
-  g.moveTo(-R * 1.3, -3);
-  g.quadraticCurveTo(-R * 1.1, -R * 0.9, -R * 0.55, -R * 0.55);
-  g.stroke();
-  const tankGrad = g.createLinearGradient(-R * 1.5, -4.5, -R * 1.5, 4.5);
-  tankGrad.addColorStop(0, shade('#54544c', 0.25));
-  tankGrad.addColorStop(1, shade('#54544c', -0.25));
-  g.fillStyle = tankGrad;
-  g.fillRect(-R * 1.5, -4.5, 7, 9);
-
-  // torso, lit from the upper-left, bobbing slightly with the stride
-  g.save();
-  g.translate(0, -bob);
-  const bodyGrad = g.createRadialGradient(-R * 0.32, -R * 0.4, 1, 0, 0, R * 1.1);
-  bodyGrad.addColorStop(0, shade(p.color, 0.25));
-  bodyGrad.addColorStop(0.6, p.color);
-  bodyGrad.addColorStop(1, shade(p.color, -0.35));
-  g.beginPath();
-  g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
-  g.fillStyle = bodyGrad;
-  g.fill();
-  g.strokeStyle = 'rgba(0,0,0,0.4)';
-  g.lineWidth = 1.5;
-  g.stroke();
-
-  // hazard chevron stripe across the chest
-  g.save();
-  g.beginPath();
-  g.ellipse(0, 0, R * 0.85, R * 0.75, 0, 0, Math.PI * 2);
-  g.clip();
-  g.fillStyle = 'rgba(20,20,15,0.85)';
-  g.fillRect(-R * 1.1, -R * 0.24, R * 2.2, R * 0.17);
-  g.fillStyle = 'rgba(255,200,40,0.9)';
-  g.fillRect(-R * 1.1, -R * 0.08, R * 2.2, R * 0.09);
-  g.restore();
-  g.restore();
-
-  // arms -- on top of the torso, swinging opposite their same-side leg
-  drawLimb(g, 0, -R * 0.55, -swing * 0.8, -R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
-  drawLimb(g, 0, R * 0.55, swing * 0.8, R * 0.55, R * 0.24, p.color, '#e8d94a', R * 0.22);
-
-  // head group -- smaller than the torso and pushed out toward the
-  // front, so the silhouette reads as a body with a head on it rather
-  // than one circle sitting concentrically inside another (which, at
-  // this scale, just looked like an eyeball: white sclera, dark iris,
-  // catchlight).
-  g.save();
-  g.translate(R * 0.55, -bob);
-  const headR = R * 0.5;
-
-  // Chimp ears + muzzle, drawn first so the glass dome mostly
-  // covers them -- only the bits that poke out past its round rim
-  // show, same as a real head inside an open helmet. Direct
-  // request: "make the player model a chimp with a helmet on", with
-  // a later follow-up for more face/fur detail.
-  const furShade = shade(p.color, -0.2);
-  [-1, 1].forEach((side) => {
+    g.save();
+    g.translate(p.x, p.y);
     g.beginPath();
-    g.arc(-headR * 0.1, side * headR * 0.75, headR * 0.38, 0, Math.PI * 2);
-    g.fillStyle = furShade;
+    g.ellipse(0, R * 1.05, R * 0.85, R * 0.26, 0, 0, TAU);
+    g.fillStyle = 'rgba(0,0,0,0.35)';
     g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.3)';
-    g.lineWidth = 0.75;
-    g.stroke();
-    // a little inner-ear shading so the ears read as cupped, not flat
-    g.beginPath();
-    g.arc(-headR * 0.05, side * headR * 0.75, headR * 0.2, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(0,0,0,0.25)';
-    g.fill();
-  });
-  // a small tuft of fur at the back of the head, poking past the
-  // dome's rim the same way the ears do -- breaks up the dome's
-  // silhouette on the side with no muzzle to do that job instead.
-  g.beginPath();
-  g.moveTo(-headR * 0.85, -headR * 0.2);
-  g.quadraticCurveTo(-headR * 1.18, -headR * 0.06, -headR * 0.92, headR * 0.12);
-  g.quadraticCurveTo(-headR * 1.08, headR * 0.2, -headR * 0.8, headR * 0.3);
-  g.closePath();
-  g.fillStyle = furShade;
-  g.fill();
-  g.beginPath();
-  g.ellipse(headR * 0.65, headR * 0.1, headR * 0.5, headR * 0.38, 0, 0, Math.PI * 2);
-  g.fillStyle = '#4a3828';
-  g.fill();
-  g.strokeStyle = 'rgba(0,0,0,0.35)';
-  g.lineWidth = 0.75;
-  g.stroke();
-  g.beginPath();
-  g.arc(headR * 1.0, headR * 0.0, headR * 0.07, 0, Math.PI * 2);
-  g.arc(headR * 1.0, headR * 0.22, headR * 0.07, 0, Math.PI * 2);
-  g.fillStyle = '#1c130c';
-  g.fill();
-  // a small mouth line under the nostrils
-  g.beginPath();
-  g.moveTo(headR * 0.88, headR * 0.38);
-  g.quadraticCurveTo(headR * 1.02, headR * 0.46, headR * 1.16, headR * 0.36);
-  g.strokeStyle = 'rgba(15,8,6,0.65)';
-  g.lineWidth = headR * 0.08;
-  g.lineCap = 'round';
-  g.stroke();
-
-  // sealed collar ring
-  g.beginPath();
-  g.arc(0, 0, headR * 1.05, 0, Math.PI * 2);
-  g.strokeStyle = '#1c1c18';
-  g.lineWidth = 2.5;
-  g.stroke();
-
-  // glassy helmet dome
-  const helmetGrad = g.createRadialGradient(-headR * 0.3, -headR * 0.35, 1, 0, 0, headR * 1.05);
-  helmetGrad.addColorStop(0, '#ffffff');
-  helmetGrad.addColorStop(0.35, 'rgba(224,226,216,0.95)');
-  helmetGrad.addColorStop(1, 'rgba(150,155,146,0.92)');
-  g.beginPath();
-  g.arc(0, 0, headR, 0, Math.PI * 2);
-  g.fillStyle = helmetGrad;
-  g.fill();
-  g.strokeStyle = '#1c1c18';
-  g.lineWidth = 1.5;
-  g.stroke();
-
-  // a narrow faceplate slit, not a big round visor -- a flat band
-  // across the front of the helmet reads as a mask, not a pupil.
-  const visorGrad = g.createLinearGradient(0, -headR * 0.3, 0, headR * 0.3);
-  visorGrad.addColorStop(0, '#1c2a33');
-  visorGrad.addColorStop(1, '#03060a');
-  g.beginPath();
-  g.ellipse(headR * 0.32, 0, headR * 0.34, headR * 0.62, 0, 0, Math.PI * 2);
-  g.fillStyle = visorGrad;
-  g.fill();
-  g.strokeStyle = 'rgba(0,0,0,0.5)';
-  g.lineWidth = 1;
-  g.stroke();
-  g.beginPath();
-  g.moveTo(headR * 0.18, -headR * 0.4);
-  g.lineTo(headR * 0.42, -headR * 0.15);
-  g.strokeStyle = 'rgba(255,255,255,0.4)';
-  g.lineWidth = headR * 0.12;
-  g.lineCap = 'round';
-  g.stroke();
-
-  g.restore();
-
-  g.restore();
+    g.rotate(Math.atan2(p.facing.y, p.facing.x));
+    const swing = Math.sin(p.walkPhase) * R * 0.62;
+    const bob = Math.abs(Math.cos(p.walkPhase)) * R * 0.05;
+    const u = R * 0.9;
+    [-1, 1].forEach((s) => {
+      g.fillStyle = '#3b4047'; g.strokeStyle = '#16181b'; g.lineWidth = 1;
+      g.beginPath(); g.ellipse(s * swing * 0.9, s * 0.38 * u, 0.44 * u, 0.27 * u, 0, 0, TAU); g.fill(); g.stroke();
+    });
+    drawTorso(g, R, p, bob, swing);
+    drawHead(g, R, p, bob);
+    g.restore();
   }
 
-  window.PlayerModel = { draw: drawPlayerModel, ORANGE: '#ff8a3d', GREEN: '#3ddc84' };
+  window.PlayerModel = { draw: drawPlayerModel, drawTorso, drawHead, suit, ORANGE: '#ff8a3d', GREEN: '#3ddc84' };
 })();
