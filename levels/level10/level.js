@@ -5,13 +5,16 @@
   // vent safe-zones (a 'V' tile the boss couldn't enter); removed on
   // direct request, so they're now just plain floor.
   //
+  // The throne: a 5x2 block of wall (x13-17, y1-2) against the north wall, drawn as a giant
+  // throne at the head of a red carpet (see game10.js's drawArenaDecor).
+  //
   // A plain rectangular arena, a little bigger than Level 5's (40x22 vs
   // 34x20), with the whole thing visible on screen at once -- see game10.js's
   // ZOOM, chosen to fit the full arena rather than following the players.
   const grid = [
     '##########.#########.###################',
-    '#..............................#########',
-    '#.....T.............T...T......#########',
+    '#............#####.............#########',
+    '#.....T......#####..T...T......#########',
     '#.T.T.............T...T........#########',
     '#.T.....TT........T....T....TT.#########',
     '#...T..T..T.T....T.....T....T..#########',

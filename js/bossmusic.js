@@ -4,8 +4,10 @@
 //
 //   ashen    (Level 5,  the Ashen One)      -- Doom-style gallop: palm-muted distorted
 //                                              chugs, double kick, screaming lead
-//   knight   (Level 10, the Last Knight)    -- a marching power-chord dirge: snare rolls,
-//                                              brass fanfare, harmonic minor
+//   knight   (Level 10, the Last Knight)    -- Doom Eternal-style: tight, stuttering djent chugs
+//                                              on a drop-tuned low note, machine-gun double
+//                                              kick, industrial synth growls, atonal screech
+//                                              lead, a siren riser into every fourth bar
 //   mutation (Level 15, Frozen Mutation)    -- slow doom half-time, locrian, icy bells
 //                                              through a long echo
 //   cistern  (Level 20, the Cistern)        -- underwater: muffled swung sub-bass,
@@ -44,22 +46,30 @@
       drums: 'doom',
     },
     knight: {
-      root: 73.4, bpm: 138,
+      root: 41.2, bpm: 148,
       bars: [
-        [[0, 7], N, N, [0, 7], N, N, [0, 7], N, [7, 14], N, N, [7, 14], N, N, [5, 12], N],
-        [[0, 7], N, N, [0, 7], N, N, [3, 10], N, [5, 12], N, N, [5, 12], N, N, [7, 14], N],
-        [[5, 12], N, N, [5, 12], N, N, [3, 10], N, [2, 9], N, N, [2, 9], N, N, [0, 7], N],
-        [[0, 7], N, [0, 7], N, [7, 14], N, [7, 14], N, [8, 15], N, [11, 18], N, [12, 19], N, [12, 19], [12, 19]],
+        [0, 0, N, 0, 0, N, 0, 0, 1, N, 0, 0, N, 0, 0, N],
+        [0, 0, N, 0, 0, N, 0, 0, 6, N, 0, 0, 5, N, 3, N],
+        [0, 0, 0, N, 0, 0, N, 0, 0, 0, N, 0, 0, 0, 0, 0],
+        [0, N, 0, N, 0, N, 0, N, 0, 0, 0, 0, 6, 6, 5, 5],
       ],
       lead: [
-        [N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N],
-        [12, N, N, N, 15, N, N, N, 14, N, 12, N, 11, N, N, N],
-        [19, N, N, 19, 17, N, 15, N, 14, N, 12, N, 14, N, N, N],
-        [24, N, N, N, 23, N, 24, N, 26, N, N, N, 24, N, N, N],
+        [24, N, N, N, N, N, N, N, 25, N, N, N, N, N, N, N],
+        [N, N, N, N, 30, N, N, N, N, N, N, N, 29, N, N, N],
+        [36, N, N, 36, N, N, 35, N, N, N, 30, N, N, N, N, N],
+        [30, N, N, N, 31, N, N, N, 36, N, N, N, 35, N, 34, N],
       ],
-      leadBars: [1, 2, 3], leadInten: 0.3, leadTimbre: 'brass',
-      guitar: { k: 4, accentLP: 2200, chugLP: 1800, wave: 'sawtooth', accentLen: 2.6, chugLen: 2.6 },
-      drums: 'march',
+      leadBars: [3], leadInten: 0.35, leadTimbre: 'saw',
+      guitar: { k: 14, accentLP: 3200, chugLP: 1500, wave: 'sawtooth', accentLen: 1.6, chugLen: 0.7 },
+      // the industrial synth "bwaah" that stabs under the riff (semitones above the root)
+      growl: [
+        [0, N, N, N, N, N, N, N, 1, N, N, N, N, N, N, N],
+        [0, N, N, N, N, N, N, N, 6, N, N, N, 5, N, N, N],
+        [0, N, N, N, N, N, N, N, 0, N, N, N, N, N, N, N],
+        [0, N, N, N, N, N, N, N, 6, N, N, N, 5, N, 3, N],
+      ],
+      pad: { chords: [[0, 6, 7], [0, 6, 7], [1, 6, 8], [0, 5, 6]], wave: 'sawtooth', gain: 0.035, lp: 600, attack: 0.05 },
+      drums: 'eternal',
     },
     mutation: {
       root: 65.4, bpm: 78,
@@ -342,6 +352,31 @@
       });
     }
 
+    // an industrial synth growl: detuned saws through a resonant filter that snaps open
+    function growlNote(freq, t, dur) {
+      [-12, 12].forEach((det) => {
+        const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = freq; o.detune.value = det;
+        const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 9;
+        f.frequency.setValueAtTime(260, t); f.frequency.exponentialRampToValueAtTime(2400, t + dur * 0.25); f.frequency.exponentialRampToValueAtTime(220, t + dur);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.5, t + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(f); f.connect(g); g.connect(guitarDist);
+        o.start(t); o.stop(t + dur + 0.03);
+      });
+    }
+    // a rising siren of filtered noise
+    function riser(t, dur) {
+      const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 3;
+      f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(7000, t + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + dur); g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.04);
+      src.connect(f); f.connect(g); g.connect(out);
+      src.start(t); src.stop(t + dur + 0.06);
+    }
+
     // ---- drums
     function kick(t, vol) {
       const osc = ctx.createOscillator(), g = ctx.createGain();
@@ -420,6 +455,17 @@
         if ([2, 5, 8, 11, 13, 15].includes(s)) { if (s % 3 === 2 || inten > 0.5) clank(t); }
         if (s === 0 && bar === 0) crash(t);
       },
+      // machine-gun double kick locked to the chugs, a hard backbeat, a siren riser into the break
+      eternal(s, bar, inten, t, stepDur) {
+        if (s === 4 || s === 12) snare(t, 0.6);
+        const chugging = T.bars[bar][s] !== null;
+        if (bar === 3 && s >= 8) { if (s % 2 === 0 || inten > 0.5) kick(t, 0.6); }
+        else if (chugging && s !== 4 && s !== 12) kick(t, 0.62);
+        else if (s % 4 === 0) kick(t, 0.7);
+        if (s % 4 === 2) hat(t, 0.08);
+        if (s === 0 && bar === 0) crash(t);
+        if (bar === 3 && s === 8) riser(t, stepDur * 8);
+      },
       // blast beat: kick and snare trade 16ths once the fight's hot
       blast(s, bar, inten, t) {
         if (inten > 0.35) { if (s % 2 === 0) kick(t, 0.6); else snare(t, 0.32); }
@@ -449,7 +495,11 @@
         const len = stepDur * (accent ? T.guitar.accentLen : T.guitar.chugLen);
         semis.forEach((sm) => guitarNote(hz(sm, 2), t, len, accent));
       }
-      drumFn(s, bar, inten, t0);
+      drumFn(s, bar, inten, t0, stepDur);
+      if (T.growl) {
+        const gr = T.growl[bar][s];
+        if (gr !== null && gr !== undefined) growlNote(hz(gr, 2), t, stepDur * 3);
+      }
 
       if (T.pad && s === 0) padChord(T.pad.chords[bar], t0, stepDur * 16);
 

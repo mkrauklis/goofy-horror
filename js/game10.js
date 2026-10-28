@@ -1668,6 +1668,151 @@
     });
   }
 
+  // ---- the throne hall: giant statues carved into the east walls, a red carpet
+  // running down the middle of the arena to a giant throne against the north wall
+  // (its 5x2 tiles are real wall in LEVEL10.grid), and torches along every wall.
+  // The static parts are painted once into an offscreen canvas; the torch flames
+  // animate on top every frame and also punch light through the darkness mask.
+  const TORCHES = [];
+  [3, 6, 12, 18, 25, 28].forEach((x) => TORCHES.push({ x: x * TILE + TILE / 2, y: TILE / 2, fx: 0, fy: 1 }));
+  [3, 12, 17, 26, 29].forEach((x) => TORCHES.push({ x: x * TILE + TILE / 2, y: (ROWS - 1) * TILE + TILE / 2, fx: 0, fy: -1 }));
+  [3, 9, 12, 18].forEach((y) => TORCHES.push({ x: TILE / 2, y: y * TILE + TILE / 2, fx: 1, fy: 0 }));
+  [3, 6, 8, 13, 15, 18].forEach((y) => TORCHES.push({ x: 31 * TILE + TILE / 2, y: y * TILE + TILE / 2, fx: -1, fy: 0 }));
+  // between the statue niches, in the thick east walls
+  [4.5, 18].forEach((ty) => TORCHES.push({ x: 35 * TILE + TILE / 2 - 8, y: ty * TILE, fx: 0, fy: 0 }));
+  TORCHES.forEach((t, i) => { t.seed = i * 1.7; });
+
+  function torchFlicker(t, now) {
+    return 0.85 + 0.1 * Math.sin(now * 0.017 + t.seed * 3) + 0.06 * Math.sin(now * 0.043 + t.seed * 7);
+  }
+  function torchFlame(t) { return { x: t.x + t.fx * 9, y: t.y + t.fy * 9 }; }
+
+  function drawStatueNiche(g, x, y, w, h, winged) {
+    const cx = x + w / 2;
+    const arch = () => {
+      g.beginPath();
+      g.moveTo(x, y + h); g.lineTo(x, y + w / 2);
+      g.arc(cx, y + w / 2, w / 2, Math.PI, 0);
+      g.lineTo(x + w, y + h); g.closePath();
+    };
+    arch();
+    const rg = g.createLinearGradient(x, 0, x + w, 0);
+    rg.addColorStop(0, '#07070a'); rg.addColorStop(0.5, '#15151b'); rg.addColorStop(1, '#09090c');
+    g.fillStyle = rg; g.fill();
+    g.save();
+    arch(); g.clip();
+    g.translate(cx, y + h);                     // origin = bottom centre of the niche, up is negative
+    const stone = '#80828c', stoneDark = '#5b5d66', stoneLite = '#a2a4ae';
+    const part = (fill, draw) => { g.beginPath(); draw(); g.fillStyle = fill; g.fill(); g.strokeStyle = 'rgba(0,0,0,0.55)'; g.lineWidth = 1.2; g.stroke(); };
+    if (winged) {
+      [-1, 1].forEach((s) => part(stoneDark, () => {
+        g.moveTo(s * 20, -140); g.lineTo(s * 52, -196); g.lineTo(s * 44, -150); g.lineTo(s * 58, -156);
+        g.lineTo(s * 40, -110); g.lineTo(s * 46, -104); g.lineTo(s * 24, -88); g.closePath();
+      }));
+    }
+    part(stoneDark, () => g.rect(-40, -14, 80, 14));                         // plinth
+    part(stone, () => { g.rect(-22, -72, 18, 60); g.rect(4, -72, 18, 60); }); // legs
+    part(stoneLite, () => { g.arc(-13, -50, 5, 0, 7); g.moveTo(18, -50); g.arc(13, -50, 5, 0, 7); });
+    part(stoneDark, () => { g.moveTo(-26, -70); g.lineTo(26, -70); g.lineTo(20, -96); g.lineTo(-20, -96); g.closePath(); }); // tassets
+    part(stone, () => { g.moveTo(-22, -94); g.lineTo(22, -94); g.lineTo(28, -140); g.lineTo(-28, -140); g.closePath(); });   // breastplate
+    g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(0, -136); g.lineTo(0, -98); g.moveTo(-10, -122); g.lineTo(10, -122); g.stroke();                 // chest cross
+    part(stoneLite, () => { g.arc(-32, -138, 14, 0, 7); }); part(stoneLite, () => { g.arc(32, -138, 14, 0, 7); });           // pauldrons
+    part(stone, () => { g.moveTo(-40, -132); g.lineTo(-26, -132); g.lineTo(-10, -104); g.lineTo(-18, -100); g.closePath(); });
+    part(stone, () => { g.moveTo(40, -132); g.lineTo(26, -132); g.lineTo(10, -104); g.lineTo(18, -100); g.closePath(); });
+    part('#b6b9c6', () => { g.moveTo(-4.5, -104); g.lineTo(4.5, -104); g.lineTo(4.5, -26); g.lineTo(0, -14); g.lineTo(-4.5, -26); g.closePath(); }); // greatsword, point down
+    part('#8e7a3a', () => g.rect(-19, -108, 38, 6));                          // crossguard
+    part('#8e7a3a', () => g.arc(0, -114, 5, 0, 7));                           // pommel
+    part(stone, () => g.arc(0, -160, 17, 0, 7));                              // helm
+    part(stoneLite, () => { g.moveTo(-3, -176); g.lineTo(3, -176); g.lineTo(6, -202); g.lineTo(-6, -202); g.closePath(); });   // crest
+    g.fillStyle = '#05050a'; g.fillRect(-12, -164, 24, 5);                    // visor slit
+    g.fillStyle = '#d83a2a'; g.fillRect(-8, -163, 4, 3); g.fillRect(4, -163, 4, 3);
+    // shadow falling across the figure
+    const sg = g.createLinearGradient(-w / 2, 0, w / 2, 0);
+    sg.addColorStop(0, 'rgba(0,0,0,0.55)'); sg.addColorStop(0.45, 'rgba(0,0,0,0.05)'); sg.addColorStop(1, 'rgba(0,0,0,0.4)');
+    g.fillStyle = sg; g.fillRect(-w / 2, -h, w, h);
+    g.restore();
+    arch();
+    g.strokeStyle = '#3a3a43'; g.lineWidth = 5; g.stroke();
+    g.strokeStyle = 'rgba(190,190,205,0.22)'; g.lineWidth = 1.5; g.stroke();
+  }
+
+  function drawThrone(g, cx) {
+    const gold = '#c9a227', goldDark = '#7a5f12';
+    const finial = (x, y) => { g.fillStyle = gold; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); };
+    // spires
+    [-1, 1].forEach((s) => {
+      g.beginPath();
+      g.moveTo(cx + s * 76, 92); g.lineTo(cx + s * 76, 26); g.lineTo(cx + s * 66, 4); g.lineTo(cx + s * 56, 26); g.lineTo(cx + s * 56, 92); g.closePath();
+      g.fillStyle = '#1c1612'; g.fill(); g.strokeStyle = gold; g.lineWidth = 2; g.stroke();
+      finial(cx + s * 66, 4);
+    });
+    // the tall backrest
+    g.beginPath();
+    g.moveTo(cx - 56, 92); g.lineTo(cx - 56, 30); g.lineTo(cx - 32, 20); g.lineTo(cx, 0); g.lineTo(cx + 32, 20); g.lineTo(cx + 56, 30); g.lineTo(cx + 56, 92); g.closePath();
+    const bg = g.createLinearGradient(0, 0, 0, 92);
+    bg.addColorStop(0, '#3a2a1e'); bg.addColorStop(1, '#1a130e');
+    g.fillStyle = bg; g.fill(); g.strokeStyle = gold; g.lineWidth = 3; g.stroke();
+    // velvet inset with gold studs
+    g.beginPath();
+    g.moveTo(cx - 40, 86); g.lineTo(cx - 40, 38); g.lineTo(cx, 16); g.lineTo(cx + 40, 38); g.lineTo(cx + 40, 86); g.closePath();
+    g.fillStyle = '#7e1020'; g.fill(); g.strokeStyle = goldDark; g.lineWidth = 2; g.stroke();
+    for (let r = 0; r < 3; r++) for (let c = -2 + (r % 2 ? 0.5 : 0); c <= 2; c++) { g.fillStyle = gold; g.beginPath(); g.arc(cx + c * 16, 42 + r * 14, 2, 0, 7); g.fill(); }
+    // a skull at the peak
+    g.fillStyle = '#d9d4c4'; g.beginPath(); g.arc(cx, 9, 6, 0, 7); g.fill();
+    g.fillStyle = '#1a1010'; g.fillRect(cx - 4, 8, 3, 3); g.fillRect(cx + 1, 8, 3, 3);
+    // armrests and the seat
+    [-1, 1].forEach((s) => {
+      const ax = s < 0 ? cx - 76 : cx + 48;
+      g.fillStyle = '#241b15'; g.fillRect(ax, 58, 28, 34);
+      g.strokeStyle = gold; g.lineWidth = 2; g.strokeRect(ax, 58, 28, 34);
+      g.fillStyle = '#d9d4c4'; g.beginPath(); g.arc(cx + s * 62, 58, 6, 0, 7); g.fill();
+    });
+    g.fillStyle = '#8a1424'; g.fillRect(cx - 48, 68, 96, 22);
+    g.strokeStyle = gold; g.lineWidth = 2; g.strokeRect(cx - 48, 68, 96, 22);
+    g.fillStyle = '#2a2a32'; g.fillRect(cx - 80, 90, 160, 6);
+  }
+
+  let arenaDecor = null;
+  function buildArenaDecor() {
+    const c = document.createElement('canvas');
+    c.width = COLS * TILE; c.height = ROWS * TILE;
+    const g = c.getContext('2d');
+    const cx = 15.5 * TILE;                                    // throne and carpet centre line
+    // the statues carved into the thick east walls (one pair above the exit room, one below)
+    [[40, false], [472, true]].forEach(([y, winged]) => {
+      drawStatueNiche(g, 32 * TILE, y, 3 * TILE, 208, winged);
+      drawStatueNiche(g, 36 * TILE, y, 3 * TILE, 208, !winged);
+    });
+    // the dais, then the carpet over it all the way down
+    g.fillStyle = '#7a7a84'; g.fillRect(cx - 112, 3 * TILE, 224, 28);
+    g.fillStyle = '#8b8b95'; g.fillRect(cx - 96, 3 * TILE, 192, 18);
+    g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(cx - 112, 3 * TILE + 26, 224, 2); g.fillRect(cx - 96, 3 * TILE + 16, 192, 2);
+    const cy0 = 3 * TILE, cy1 = (ROWS - 1) * TILE;
+    g.fillStyle = '#74101a'; g.fillRect(cx - 48, cy0, 96, cy1 - cy0);
+    g.fillStyle = '#8c1822';
+    for (let y = cy0 + 16; y < cy1 - 8; y += 32) { g.beginPath(); g.moveTo(cx, y - 12); g.lineTo(cx + 22, y); g.lineTo(cx, y + 12); g.lineTo(cx - 22, y); g.closePath(); g.fill(); }
+    g.strokeStyle = '#c9a227'; g.lineWidth = 3;
+    g.strokeRect(cx - 44, cy0, 88, cy1 - cy0 - 2); g.strokeRect(cx - 38, cy0, 76, cy1 - cy0 - 2);
+    g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(cx - 48, cy0, 8, cy1 - cy0); g.fillRect(cx + 40, cy0, 8, cy1 - cy0);
+    drawThrone(g, cx);
+    return c;
+  }
+
+  function drawWallTorches(g, now) {
+    TORCHES.forEach((t) => {
+      const f = torchFlicker(t, now);
+      const p = torchFlame(t);
+      g.fillStyle = '#17120e'; g.fillRect(t.x - 3, t.y - 3, 6, 6);                          // sconce
+      g.strokeStyle = '#2b2118'; g.lineWidth = 3; g.beginPath(); g.moveTo(t.x, t.y); g.lineTo(p.x, p.y); g.stroke();
+      const glow = g.createRadialGradient(p.x, p.y, 1, p.x, p.y, 26 * f);
+      glow.addColorStop(0, 'rgba(255,170,60,0.55)'); glow.addColorStop(1, 'rgba(255,120,30,0)');
+      g.fillStyle = glow; g.beginPath(); g.arc(p.x, p.y, 26 * f, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#ff8a1e'; g.beginPath(); g.ellipse(p.x, p.y, 5.5 * f, 7 * f, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#ffd25a'; g.beginPath(); g.ellipse(p.x, p.y + 1, 3 * f, 4.5 * f, 0, 0, Math.PI * 2); g.fill();
+    });
+  }
+
   function drawTiles(g, camX, camY, now) {
     const minTX = Math.max(0, Math.floor((camX - VISIBLE_HALF_W) / TILE) - 1);
     const maxTX = Math.min(COLS - 1, Math.ceil((camX + VISIBLE_HALF_W) / TILE) + 1);
@@ -1694,6 +1839,10 @@
         }
       }
     }
+
+    if (!arenaDecor) arenaDecor = buildArenaDecor();
+    g.drawImage(arenaDecor, 0, 0);
+    drawWallTorches(g, now);
 
     let dx0 = Infinity, dy0 = Infinity, dx1 = -Infinity, dy1 = -Infinity;
     for (let y = minTY; y <= maxTY; y++) {
@@ -2524,6 +2673,12 @@
 
     const bs = worldToScreen(boss.x, boss.y);
     punchLight(maskCtx, bs.x, bs.y, boss.radius * 2.4 * ZOOM, 0.5);
+
+    TORCHES.forEach((t) => {
+      const f = torchFlicker(t, now), p = torchFlame(t), ts = worldToScreen(p.x, p.y);
+      punchLight(maskCtx, ts.x, ts.y, 200 * ZOOM * f, 0.6);
+      punchLight(maskCtx, ts.x, ts.y, 80 * ZOOM * f, 0.5);
+    });
   }
 
   function renderViewport(index, now) {
