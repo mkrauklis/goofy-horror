@@ -82,6 +82,8 @@
     creak(c, a) { tone(c, a, 0.6, 210, 120, 0.07, 'sawtooth'); noise(c, a, 0.5, 800, 300, 0.05, 'bandpass', 4); },
     squelch(c, a) { noise(c, a, 0.25, 700, 250, 0.3, 'bandpass', 3); tone(c, a, 0.2, 200, 90, 0.15, 'sine'); },
     scream(c, a) { tone(c, a, 0.55, 640, 380, 0.07, 'sawtooth'); tone(c, a + 0.1, 0.4, 900, 420, 0.05, 'square'); },
+    clang(c, a) { noise(c, a, 0.12, 5000, 2500, 0.3, 'highpass'); tone(c, a, 0.5, 1180, 1160, 0.1, 'square'); tone(c, a, 0.4, 2310, 2290, 0.06, 'triangle'); tone(c, a + 0.02, 0.3, 110, 55, 0.35, 'sine'); },
+    rattle(c, a) { for (let i = 0; i < 5; i++) { noise(c, a + i * 0.07, 0.05, 4200, 2500, 0.14, 'highpass'); tone(c, a + i * 0.07, 0.08, 900 + (i % 2) * 300, 700, 0.04, 'square'); } },
     heart(c, a) { tone(c, a, 0.2, 70, 40, 0.5, 'sine'); tone(c, a + 0.22, 0.2, 65, 36, 0.4, 'sine'); },
   };
   let lastSfxT = -1;
@@ -632,49 +634,189 @@
     };
   })();
 
-  // ============ THE LAST KNIGHT: run through with its sword ============
+  // ============ THE LAST KNIGHT: grabs him, cages him, and throws the cage aside ============
   (function () {
     const DUR = 8500, U = 15;
-    const GX = -118, GY = 8;
-    const KS = 1.5, BLADE = 150 * KS;
-    const K0 = 270, K1 = 108;                     // the knight's x at rest, and at the end of its lunge
+    const GX = -118, GY = 8;                      // where the man stops and sweeps his torch
+    const KS = 1.5;
+    const K0 = 270, K1 = 140;                     // the knight's x at rest, and after it lunges at him
+    const TILT = Math.PI - 0.55;                  // it faces him with its sword angled down and away
+    const CARRY = { x: -30, y: 0 };               // where he is held, and where the cage drops over him
+    const LAND = { x: -50, y: -112 };             // where the thrown cage hits the wall
+    const T_REACH = 3550, T_GRAB = 3850, T_DROP = 4950, T_SLAM = 5150, T_THROW = 5650, T_HIT = 6130;
+
     function knightX(t) {
       let x = K0;
-      if (t > 3550) x = lerp(K0, K1, inQuad(seg(t, 3550, 3720)));
-      if (t > 5500) x = lerp(K1, K0 - 30, outCubic(seg(t, 5500, 6100)));
+      if (t > T_REACH) x = lerp(K0, K1, inQuad(seg(t, T_REACH, 3800)));
+      if (t > 5400) x += 16 * smooth(seg(t, 5400, 5650));                 // wind back...
+      if (t > T_THROW) x -= 30 * outQuad(seg(t, T_THROW, 5750));          // ...and heave
+      if (t > 5800) x = lerp(x, K0 - 30, outCubic(seg(t, 5800, 6700)));   // then back to its post
       return x;
     }
-    function knightRot(t) { return Math.PI * smooth(seg(t, 2300, 3200)) + 0.04 * Math.sin(t * 0.02) * seg(t, 3720, 5500); }
+    function knightRot(t) { return TILT * smooth(seg(t, 2300, 3200)) + 0.03 * Math.sin(t * 0.02) * seg(t, 3800, 5600); }
+    function shoulder(t) { return { x: knightX(t) - 62, y: -30 }; }
+    const stowed = (t) => { const s = shoulder(t); return { x: s.x - 34, y: s.y + 6 }; };
+
+    // the cage, once it exists: where it sits on the ground, how high it is, how it spins
+    function cageAt(t) {
+      if (t < T_DROP) return null;
+      const c = { x: CARRY.x, y: CARRY.y, air: 0, rot: 0, scale: 1, alpha: 1, thrown: false };
+      if (t < T_SLAM) {                                                    // lowered over him from above
+        const p = seg(t, T_DROP, T_SLAM);
+        c.air = 1 - inQuad(p); c.alpha = smooth(seg(t, T_DROP, T_DROP + 90));
+        return c;
+      }
+      const grab = smooth(seg(t, 5450, T_THROW));
+      c.air = 0.45 * grab;
+      if (t >= T_THROW) {                                                  // the throw: up and over, spinning
+        const p = seg(t, T_THROW, T_HIT);
+        c.thrown = true;
+        c.x = lerp(CARRY.x, LAND.x, p); c.y = lerp(CARRY.y, LAND.y, p);
+        c.air = 0.45 * (1 - p) + 0.6 * Math.sin(Math.PI * p);
+        c.rot = 2.7 * Math.PI * p;
+        if (t >= T_HIT) {                                                  // bounces off the wall and skids to rest
+          const b = seg(t, T_HIT, 6600);
+          c.x = LAND.x - 14 * outCubic(b); c.y = LAND.y + 16 * outCubic(b);
+          c.air = 0.16 * Math.abs(Math.sin(b * 8)) * (1 - b) * (1 - b);
+          c.rot = 2.7 * Math.PI + 0.9 * outCubic(b) * (1 + 0.45 * Math.sin(b * 11) * (1 - b));
+        }
+      }
+      return c;
+    }
+    // the man: walks in, is grabbed, carried, then rides in the cage
     function guy(t) {
       const w = walk(t, 400, 2100, -420, 12, GX, GY);
-      const o = { x: w.x, y: w.y, ang: 0, u: U, walk: w.walk, speed: w.speed, flashlight: t < 3750 };
+      const o = { x: w.x, y: w.y, ang: 0, u: U, walk: w.walk, speed: w.speed, flashlight: t < T_GRAB, lift: 0 };
       if (t > 2100) { o.speed = 0; o.ang = Math.sin((t - 2100) * 0.005) * 0.3 * (1 - seg(t, 2500, 3000)); }
       if (t > 3100) o.armsUp = smooth(seg(t, 3100, 3500)) * 0.7;
-      if (t > 3720) {                                // run through: he doubles over the blade, hands on it
-        o.armsUp = 0; o.reach = { x: 1.1, y: 0.5, k: smooth(seg(t, 3720, 3900)), sym: true };
-        o.jitter = 0.32 * (1 - seg(t, 4900, 5500));
-        o.flashlight = false;
+      if (t >= T_GRAB) {
+        const h = hand(t);
+        o.x = t < 4900 ? h.x - 16 : CARRY.x;
+        o.y = t < 4900 ? h.y : CARRY.y;
+        o.lift = smooth(seg(t, T_GRAB, 4300)) * (1 - smooth(seg(t, 4500, 4900)));
+        o.ang = Math.sin(t * 0.03) * 0.45 * (1 - seg(t, 4500, 4900));
+        o.armsUp = 0; o.flashlight = false;
+        o.flail = t < 4900 ? 1 : 0.5;
+        if (t > 4900) { o.flail = 0.8 * (1 - seg(t, 4900, 5150)) + 0.5 * seg(t, 5150, 5650) * (t < T_THROW ? 1 : 0); }
       }
-      if (t > 5500) { o.reach = null; o.jitter = 0; }
+      const c = cageAt(t);
+      if (c && t > 6600) {                                                 // in the cage, rattling the bars
+        o.flail = 0.35 * (0.5 + 0.5 * Math.sin(t * 0.004));
+      }
       return o;
     }
+    function hand(t) {
+      const sh = shoulder(t), st = stowed(t);
+      const gx = GX + 16, gy = GY;
+      let h;
+      if (t < T_REACH) h = st;
+      else if (t < T_GRAB) { const p = outCubic(seg(t, T_REACH, T_GRAB)); h = { x: lerp(st.x, gx, p), y: lerp(st.y, gy, p) }; }
+      else if (t < 4900) { const p = smooth(seg(t, T_GRAB, 4600)); h = { x: lerp(gx, CARRY.x + 16, p), y: lerp(gy, CARRY.y, p) }; }
+      else if (t < 5250) { const p = smooth(seg(t, 4900, 5250)); h = { x: lerp(CARRY.x + 16, CARRY.x + 70, p), y: lerp(CARRY.y, CARRY.y - 46, p) }; }
+      else if (t < T_THROW) {
+        const p = smooth(seg(t, 5250, 5450));
+        const c = cageAt(t);
+        h = { x: lerp(CARRY.x + 70, c.x + 20, p), y: lerp(CARRY.y - 46, c.y - c.air * 18, p) };
+      } else if (t < 5750) {
+        const c = cageAt(t);
+        h = { x: c.x + 20, y: c.y - c.air * 18 };
+      } else {
+        const c0 = cageAt(5750), from = { x: c0.x + 20, y: c0.y - c0.air * 18 };
+        const p = outCubic(seg(t, 5750, 6500));
+        h = { x: lerp(from.x, st.x, p), y: lerp(from.y, st.y, p) };
+      }
+      // the arm only reaches so far
+      const dx = h.x - sh.x, dy = h.y - sh.y, d = Math.hypot(dx, dy), max = 250;
+      if (d > max) { h = { x: sh.x + dx / d * max, y: sh.y + dy / d * max }; }
+      return h;
+    }
+    function grip(t) {
+      if (t < 3720) return 0.1;                                            // reaching, open...
+      if (t < T_GRAB) return 0.1 + 0.9 * smooth(seg(t, 3720, T_GRAB));     // ...and closing as it arrives
+      if (t < 4800) return 1;
+      if (t < 5000) return 1 - smooth(seg(t, 4800, 5000));
+      if (t < 5300) return 0.1;
+      if (t < 5450) return 0.1 + 0.9 * smooth(seg(t, 5300, 5450));
+      if (t < T_THROW) return 1;
+      return 1 - smooth(seg(t, T_THROW, 5740));
+    }
+
+    // a telescoping steel arm from the knight's shoulder to its gauntlet
+    function drawArm(g, t) {
+      const s = shoulder(t), h = hand(t), gp = grip(t);
+      const dx = h.x - s.x, dy = h.y - s.y, len = Math.hypot(dx, dy) || 1, a = Math.atan2(dy, dx);
+      g.save(); g.translate(s.x, s.y); g.rotate(a);
+      g.lineCap = 'round';
+      const parts = [[0, 0.46, 15], [0.4, 0.78, 11.5], [0.72, 1, 8.5]];
+      parts.forEach(([a0, a1, w]) => {
+        g.strokeStyle = '#17181b'; g.lineWidth = w + 3; g.beginPath(); g.moveTo(len * a0, 0); g.lineTo(len * a1, 0); g.stroke();
+        g.strokeStyle = '#6d7179'; g.lineWidth = w; g.beginPath(); g.moveTo(len * a0, 0); g.lineTo(len * a1, 0); g.stroke();
+        g.strokeStyle = 'rgba(210,214,224,0.5)'; g.lineWidth = w * 0.25; g.beginPath(); g.moveTo(len * a0, -w * 0.25); g.lineTo(len * a1, -w * 0.25); g.stroke();
+        g.fillStyle = '#2b2d33'; g.beginPath(); g.arc(len * a1, 0, w * 0.62, 0, TAU); g.fill();
+      });
+      g.fillStyle = '#2b2d33'; g.beginPath(); g.arc(0, 0, 13, 0, TAU); g.fill();
+      g.fillStyle = '#8a8f99'; g.beginPath(); g.arc(0, 0, 8, 0, TAU); g.fill();
+      // the gauntlet: a palm and three claws that curl shut
+      g.translate(len, 0);
+      g.fillStyle = '#1b1c20'; g.beginPath(); g.arc(0, 0, 11.5, 0, TAU); g.fill();
+      g.fillStyle = '#7b8089'; g.beginPath(); g.arc(0, 0, 9, 0, TAU); g.fill();
+      const open = 0.95 * (1 - gp) + 0.1;
+      [-1, 0, 1].forEach((k) => {
+        const fa = k * open, fl = 21 - 8 * gp;
+        g.strokeStyle = '#17181b'; g.lineWidth = 8.5; g.beginPath(); g.moveTo(Math.cos(fa) * 6, Math.sin(fa) * 6); g.lineTo(Math.cos(fa) * fl, Math.sin(fa) * fl); g.stroke();
+        g.strokeStyle = '#8d929c'; g.lineWidth = 5.5; g.beginPath(); g.moveTo(Math.cos(fa) * 6, Math.sin(fa) * 6); g.lineTo(Math.cos(fa) * fl, Math.sin(fa) * fl); g.stroke();
+      });
+      g.restore();
+    }
+
+    // an iron cage seen from above: a lattice of bars over a dark base, with a padlock
+    function drawCage(g, w, h, hot) {
+      g.fillStyle = 'rgba(8,8,12,0.16)'; rr(g, -w / 2, -h / 2, w, h, 5); g.fill();
+      g.strokeStyle = '#17181b'; g.lineWidth = 7; rr(g, -w / 2, -h / 2, w, h, 5); g.stroke();
+      g.strokeStyle = '#5b5f68'; g.lineWidth = 4; rr(g, -w / 2, -h / 2, w, h, 5); g.stroke();
+      g.lineWidth = 2.6;
+      for (let i = 1; i < 5; i++) {
+        const x = -w / 2 + (w / 5) * i;
+        g.strokeStyle = '#15161a'; g.lineWidth = 3.8; g.beginPath(); g.moveTo(x, -h / 2); g.lineTo(x, h / 2); g.stroke();
+        g.strokeStyle = '#7a7f89'; g.lineWidth = 1.8; g.beginPath(); g.moveTo(x, -h / 2); g.lineTo(x, h / 2); g.stroke();
+      }
+      for (let j = 1; j < 4; j++) {
+        const y = -h / 2 + (h / 4) * j;
+        g.strokeStyle = '#15161a'; g.lineWidth = 3.4; g.beginPath(); g.moveTo(-w / 2, y); g.lineTo(w / 2, y); g.stroke();
+        g.strokeStyle = '#6a6f78'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(-w / 2, y); g.lineTo(w / 2, y); g.stroke();
+      }
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => {
+        g.fillStyle = '#2b2d33'; g.beginPath(); g.arc(sx * w / 2, sy * h / 2, 5, 0, TAU); g.fill();
+        g.fillStyle = '#8a8f99'; g.beginPath(); g.arc(sx * w / 2 - sx, sy * h / 2 - sy, 2.2, 0, TAU); g.fill();
+      });
+      g.fillStyle = '#b8902c'; rr(g, w / 2 - 6, -5, 12, 10, 2); g.fill();      // the padlock
+      g.strokeStyle = '#6a5014'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = '#17120a'; g.beginPath(); g.arc(w / 2, 0, 1.6, 0, TAU); g.fill();
+      g.strokeStyle = '#b8902c'; g.lineWidth = 2.2; g.beginPath(); g.arc(w / 2, -5, 3.6, Math.PI, 0); g.stroke();
+      if (hot) { g.fillStyle = `rgba(255,255,255,${hot})`; rr(g, -w / 2, -h / 2, w, h, 5); g.fill(); }
+    }
+
     SCENES.knight = {
       name: 'THE LAST KNIGHT', color: '#dc3c3c', dur: DUR, dark: 0.85, shade: '6,5,10',
-      shakes: [[3720, 11, 190], [4400, 3, 100], [5500, 5, 150], [6300, 4, 140]],
-      sfx: [[2300, 'creak'], [2700, 'thud'], [3550, 'whoosh'], [3730, 'stab'], [5500, 'whoosh'], [5650, 'squelch'], [5800, 'thud']],
+      shakes: [[T_GRAB, 8, 160], [T_SLAM, 10, 190], [T_THROW, 4, 120], [T_HIT, 14, 220], [6360, 4, 120]],
+      sfx: [[2300, 'creak'], [2700, 'thud'], [T_REACH, 'whoosh'], [T_GRAB, 'clang'], [T_DROP, 'whoosh'], [T_SLAM, 'clang'], [5460, 'creak'],
+        [T_THROW, 'whoosh'], [T_HIT, 'clang'], [T_HIT + 30, 'thud'], [6350, 'clang'], [6900, 'rattle'], [7250, 'rattle']],
       camera(t) {
-        const a = smooth(seg(t, 0, 3600)), b = smooth(seg(t, 3600, 6500));
-        return { x: lerp(-180, lerp(-10, 20, b), a), y: lerp(10, 2, a), z: lerp(1.1, 1.5, a) + 0.1 * smooth(seg(t, 3600, 3900)) - 0.08 * b };
+        const a = smooth(seg(t, 0, 3600)), b = smooth(seg(t, 3600, 5400)), c = smooth(seg(t, 5400, 6500));
+        const x = lerp(lerp(-180, -10, a), 20, b), y = lerp(lerp(10, 2, a), -18, b);
+        const z = lerp(lerp(1.1, 1.45, a), 1.25, b);
+        return { x: lerp(x, -20, c), y: lerp(y, -56, c), z: lerp(z, 1.3, c) };
       },
       lights(t) {
         const o = guy(t), L = [];
-        const torchOn = t < 3750 ? 1 : (t < 6200 ? 0.5 * (1 - seg(t, 5600, 6200)) + 0.0 : 0);
-        if (t < 3750) torchLights(o.x, o.y, o.ang, t, U, 1).forEach((l) => L.push(l));
-        else if (t < 6300) {                          // the dropped torch, lying on the floor, still shining
-          const f = (t > 5800 && (t % 190) < 70) ? 0.3 : 0.9;
-          L.push({ x: o.x - 40, y: o.y + 40, r: 200, a: 0.7 * f * (1 - seg(t, 6000, 6300)), cone: true, ang: -0.5, half: 0.4 });
+        if (t < T_GRAB) torchLights(o.x, o.y, o.ang, t, U, 1).forEach((l) => L.push(l));
+        else if (t < 7800) {                          // the dropped torch, lying on the floor, still shining
+          const f = (t > 6000 && (t % 190) < 70) ? 0.45 : 0.9;
+          L.push({ x: GX - 36, y: GY + 38, r: 190, a: 0.6 * f * (1 - seg(t, 7300, 7800)), cone: true, ang: -0.5, half: 0.4 });
         }
-        L.push({ x: o.x, y: o.y, r: 80, a: 0.6 });
+        const c = cageAt(t);
+        if (c) L.push({ x: c.x, y: c.y - c.air * 40, r: 100, a: 0.6 });
+        else L.push({ x: o.x, y: o.y, r: 80, a: 0.6 });
         [[-330, -125], [-110, -128], [110, -126], [330, -125]].forEach(([x, y], i) => L.push(sconceLight(x, y, t, i, 170)));
         L.push({ x: knightX(t), y: 0, r: 120, a: 0.12 + 0.5 * seg(t, 2300, 3300) });
         return L;
@@ -693,51 +835,56 @@
           f.fillStyle = '#7a1620'; for (let i = -22; i < 23; i++) f.fillRect(i * 32, -30, 16, 60);
         }));
         [[-330, -125], [-110, -128], [110, -126], [330, -125]].forEach(([x, y], i) => sconce(g, x, y, t, i * 3));
-        const o = guy(t);
+        const o = guy(t), c = cageAt(t);
         const kx = knightX(t), rot = knightRot(t);
-        const hit = t >= 3720;
-        const gone = seg(t, 5500, 6000);
-        // blood on the floor: sprayed out behind him, then a growing pool
-        if (hit) {
-          drawBloodPool(g, o.x - 14, o.y + 6, 4 + 34 * outQuad(seg(t, 3800, 7600)), 3, 0.95);
-          spray(g, o.x - 20, o.y, t, 3730, { n: 26, r: 85, seed: 5, dir: Math.PI, spread: 1.4, size: 3.2, dur: 600, streak: true });
-          spray(g, o.x + 14, o.y, t, 3730, { n: 12, r: 40, seed: 9, dir: 0, spread: 1.6, size: 2.4, dur: 400 });
-        }
+
         // the dropped flashlight
-        if (t > 3750) {
-          const p = outCubic(seg(t, 3750, 4300));
-          droppedTorch(g, lerp(o.x + 14, o.x - 36, p), lerp(o.y + 16, o.y + 38, p), lerp(0, -0.5, p), t < 6000 && !(t > 5800 && (t % 190) < 70));
+        if (t > T_GRAB) {
+          const p = outCubic(seg(t, T_GRAB, 4400));
+          droppedTorch(g, lerp(GX + 14, GX - 36, p), lerp(GY + 16, GY + 38, p), lerp(0, -0.5, p), t < 7500 && !(t > 6000 && (t % 190) < 70));
         }
-        // the man
-        let lie = 0;
-        if (t > 5500) lie = outQuad(seg(t, 5500, 6300));
-        const slump = t > 3720 ? 0.45 * smooth(seg(t, 3720, 4400)) : 0;
-        drawHazmat(g, Object.assign({}, o, { lie: Math.max(lie, slump * (t < 5500 ? 1 : 0)), lieSide: 1, sx: 1 - slump * 0.1, flashlight: false, visorCrack: 0 }));
-        // the knight, over him: his sword is the thing through his chest
+
+        // the man, with his shadow left on the floor while he is held up or caged
+        const air = c ? c.air : o.lift;
+        const shX = c ? c.x : o.x, shY = c ? c.y : o.y;
+        if (air > 0.02 || c) {
+          g.fillStyle = `rgba(0,0,0,${0.38 - 0.14 * Math.min(1, air)})`;
+          g.beginPath(); g.ellipse(shX + 3, shY + 4, U * (c ? 1.7 : 1.25) * (1 + 0.1 * air), U * (c ? 1.45 : 1.3) * (1 + 0.1 * air), 0, 0, TAU); g.fill();
+        }
+        if (!c) {
+          const s = 1 + 0.4 * o.lift;
+          g.save(); g.translate(o.x, o.y - 14 * o.lift); g.scale(s, s);
+          drawHazmat(g, Object.assign({}, o, { x: 0, y: 0, shadow: o.lift > 0.02 ? 0 : undefined, sx: 1 - 0.12 * smooth(seg(t, T_GRAB, T_GRAB + 200)) }));
+          g.restore();
+        } else {
+          const sc = 1 + 0.4 * c.air;
+          g.save(); g.translate(c.x, c.y - 18 * c.air); g.rotate(c.rot); g.scale(sc, sc);
+          g.globalAlpha *= c.alpha;
+          const rattle = t > 6600 ? 1.1 * Math.sin(t * 0.09) * Math.max(0, Math.sin(t * 0.0017)) : 0;
+          g.translate(rattle, 0);
+          const dropS = t < T_SLAM ? 1 + c.air * 0.9 : 1;
+          g.save(); g.scale(dropS, dropS);
+          drawHazmat(g, Object.assign({}, o, { x: 0, y: 0, shadow: 0, lift: 0, ang: o.ang }));
+          drawCage(g, 60, 52, t >= T_SLAM && t < T_SLAM + 80 ? 0.35 : 0);
+          g.restore();
+          g.restore();
+        }
+
+        // the knight, and the arm it grabbed him with
         model(g, 11, kx, 0, KS, rot, 5226 + Math.sin(t * 0.01) * 30);
-        // blood running up the blade from the tip
-        if (hit && rot > Math.PI - 0.1) {
-          const tipX = kx - BLADE, entry = o.x + 15;
-          const upto = lerp(entry, kx - 40, 0.6 * smooth(seg(t, 4200, 7000)) * (t < 5500 ? 1 : 0.6));
-          if (upto > tipX) {
-            const gr = g.createLinearGradient(tipX, 0, upto, 0);
-            gr.addColorStop(0, 'rgba(120,6,14,0.95)'); gr.addColorStop(0.15, 'rgba(150,10,20,0.9)'); gr.addColorStop(1, 'rgba(110,6,12,0.85)');
-            g.fillStyle = gr;
-            g.beginPath(); g.moveTo(tipX, 0); g.lineTo(tipX + 12, -3.4 * 1.2); g.lineTo(upto, -9); g.lineTo(upto, 9); g.lineTo(tipX + 12, 3.4 * 1.2); g.closePath(); g.fill();
-          }
-          if (t > 5500) {                                  // drips falling off the lifted blade
-            for (let i = 0; i < 4; i++) {
-              const fx = lerp(kx - BLADE * 0.9, kx - 60, hash(i + 4)), ph = ((t * 0.0008 + hash(i)) % 1);
-              g.fillStyle = '#8a0f1a'; g.beginPath(); g.ellipse(fx, 6 + ph * 20, 1.6, 2.4, 0, 0, TAU); g.fill();
-            }
-          }
-        }
+        drawArm(g, t);
       },
       after(g, t) {
         g.save(); g.globalCompositeOperation = 'lighter';
-        const flash = Math.max(0, 1 - (t - 3730) / 160) * (t >= 3730 ? 1 : 0);
-        if (flash > 0) glow(g, GX + 5, GY, 120, '255,255,255', 0.8 * flash);       // the spark where steel meets suit
+        const f1 = Math.max(0, 1 - (t - T_GRAB) / 170) * (t >= T_GRAB ? 1 : 0);
+        if (f1 > 0) glow(g, GX + 14, GY, 90, '255,255,255', 0.6 * f1);              // the clang of the gauntlet closing
+        const f2 = Math.max(0, 1 - (t - T_SLAM) / 200) * (t >= T_SLAM ? 1 : 0);
+        if (f2 > 0) glow(g, CARRY.x, CARRY.y, 90, '255,240,200', 0.7 * f2);         // the cage slamming shut
+        const f3 = Math.max(0, 1 - (t - T_HIT) / 220) * (t >= T_HIT ? 1 : 0);
+        if (f3 > 0) glow(g, LAND.x, LAND.y + 8, 110, '255,235,190', 0.85 * f3);     // sparks where it hits the wall
         g.restore();
+        spray(g, LAND.x, LAND.y + 10, t, T_HIT, { n: 22, r: 70, seed: 3, dir: Math.PI / 2, spread: 2.2, size: 1.8, dur: 420, streak: true, color: '#ffd88a' });
+        spray(g, CARRY.x, CARRY.y, t, T_SLAM, { n: 12, r: 34, seed: 8, size: 1.5, dur: 300, color: '#ffe6a8' });
       },
     };
   })();
