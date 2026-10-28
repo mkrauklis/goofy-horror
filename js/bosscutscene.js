@@ -833,6 +833,32 @@
           f.fillStyle = '#5a0f16'; f.fillRect(-FW / 2, -48, FW, 96);
           f.fillStyle = '#b8902c'; f.fillRect(-FW / 2, -48, FW, 3); f.fillRect(-FW / 2, 45, FW, 3);
           f.fillStyle = '#7a1620'; for (let i = -22; i < 23; i++) f.fillRect(i * 32, -30, 16, 60);
+          // the hall's north wall, with a giant statue carved into it between each pair of torches
+          f.fillStyle = '#202026'; f.fillRect(-FW / 2, -FH / 2, FW, FH / 2 - 118);
+          for (let j = 0; j < 6; j++) for (let i = -10; i < 11; i++) {
+            f.fillStyle = lerpHex('#25252c', '#2f2f37', hash(i * 7 + j * 19));
+            f.fillRect(i * 70 + (j % 2) * 35, -118 - (j + 1) * 46, 68, 44);
+          }
+          f.fillStyle = '#4a4a56'; f.fillRect(-FW / 2, -120, FW, 5);
+          f.fillStyle = '#0d0d11'; f.fillRect(-FW / 2, -115, FW, 3);
+          [-440, -220, 0, 220, 440].forEach((cx, k) => {
+            const by = -124, h = 118, w = 54;
+            f.beginPath(); f.moveTo(cx - w / 2, by); f.lineTo(cx - w / 2, by - h + w / 2); f.arc(cx, by - h + w / 2, w / 2, Math.PI, 0); f.lineTo(cx + w / 2, by); f.closePath();
+            f.fillStyle = '#09090c'; f.fill();
+            f.strokeStyle = '#4c4c58'; f.lineWidth = 3; f.stroke();
+            const st = '#7d808b', sd = '#575a64';
+            const blob = (fill, fn) => { f.beginPath(); fn(); f.fillStyle = fill; f.fill(); f.strokeStyle = 'rgba(0,0,0,0.5)'; f.lineWidth = 1; f.stroke(); };
+            if (k % 2) [-1, 1].forEach((s) => blob(sd, () => { f.moveTo(cx + s * 9, by - 80); f.lineTo(cx + s * 26, by - 112); f.lineTo(cx + s * 24, by - 76); f.lineTo(cx + s * 12, by - 60); f.closePath(); }));
+            blob(sd, () => f.rect(cx - 22, by - 8, 44, 8));
+            blob(st, () => { f.rect(cx - 11, by - 42, 9, 34); f.rect(cx + 2, by - 42, 9, 34); });
+            blob(st, () => { f.moveTo(cx - 13, by - 40); f.lineTo(cx + 13, by - 40); f.lineTo(cx + 15, by - 80); f.lineTo(cx - 15, by - 80); f.closePath(); });
+            blob('#a2a5b0', () => { f.arc(cx - 18, by - 78, 8, 0, TAU); f.moveTo(cx + 26, by - 78); f.arc(cx + 18, by - 78, 8, 0, TAU); });
+            blob('#b6b9c6', () => { f.rect(cx - 2.5, by - 66, 5, 54); });
+            blob('#8e7a3a', () => f.rect(cx - 11, by - 68, 22, 4));
+            blob(st, () => f.arc(cx, by - 92, 10, 0, TAU));
+            f.fillStyle = '#05050a'; f.fillRect(cx - 7, by - 94, 14, 3);
+            f.fillStyle = '#d83a2a'; f.fillRect(cx - 5, by - 93.5, 3, 2); f.fillRect(cx + 2, by - 93.5, 3, 2);
+          });
         }));
         [[-330, -125], [-110, -128], [110, -126], [330, -125]].forEach(([x, y], i) => sconce(g, x, y, t, i * 3));
         const o = guy(t), c = cageAt(t);

@@ -157,7 +157,6 @@
   maskCanvas.height = VIEW_H;
   const maskCtx = maskCanvas.getContext('2d');
   const hudBossEl = document.getElementById('hud-boss');
-  const hudDoorEl = document.getElementById('hud-door');
   const hudTimerEl = document.getElementById('hud-timer');
   const hudBestEl = document.getElementById('hud-best');
 
@@ -651,7 +650,6 @@
   const DYNAMITE_MIN_PLAYER_DIST_LOW = 55;
   let dynamiteSticks = []; // DYNAMITE_LIVE_COUNT live at once: [{x, y, seed}]
   let bossHealth = BOSS_MAX_HEALTH;
-  let doorUnlocked = false;
   let gameState = 'intro'; // 'intro' | 'playing' | 'phase2intro' | 'freezing' | 'wiped'
   let introStartedAt = 0;
   // A second, shorter name-card cutscene replays the instant phase 2
@@ -795,7 +793,6 @@
     bossHealth = BOSS_MAX_HEALTH;
     dynamiteSticks = [];
     for (let i = 0; i < DYNAMITE_LIVE_COUNT; i++) spawnDynamite();
-    doorUnlocked = false;
 
     crates = (LEVEL.crateSpawns || []).map((c) => ({
       x: c.x, y: c.y, item: CRATE_ITEMS[Math.floor(Math.random() * CRATE_ITEMS.length)],
@@ -821,7 +818,6 @@
   function isWallForPlayer(tx, ty) {
     const ch = tileChar(tx, ty);
     if (ch === '#') return true;
-    if (ch === 'D') return !doorUnlocked;
     return false;
   }
 
@@ -1196,7 +1192,6 @@
 
         if (bossHealth <= 0) {
           boss.defeated = true;
-          doorUnlocked = true;
           gameState = 'freezing';
           freezeStartedAt = now;
           spawnSnow();
@@ -1674,18 +1669,26 @@
   // The static parts are painted once into an offscreen canvas; the torch flames
   // animate on top every frame and also punch light through the darkness mask.
   const TORCHES = [];
-  [3, 6, 12, 18, 25, 28].forEach((x) => TORCHES.push({ x: x * TILE + TILE / 2, y: TILE / 2, fx: 0, fy: 1 }));
-  [3, 12, 17, 26, 29].forEach((x) => TORCHES.push({ x: x * TILE + TILE / 2, y: (ROWS - 1) * TILE + TILE / 2, fx: 0, fy: -1 }));
-  [3, 9, 12, 18].forEach((y) => TORCHES.push({ x: TILE / 2, y: y * TILE + TILE / 2, fx: 1, fy: 0 }));
-  [3, 6, 8, 13, 15, 18].forEach((y) => TORCHES.push({ x: 31 * TILE + TILE / 2, y: y * TILE + TILE / 2, fx: -1, fy: 0 }));
-  // between the statue niches, in the thick east walls
-  [4.5, 18].forEach((ty) => TORCHES.push({ x: 35 * TILE + TILE / 2 - 8, y: ty * TILE, fx: 0, fy: 0 }));
+  const torchAt = (x, y, fx, fy) => TORCHES.push({ x, y, fx, fy });
+  // along the north and south walls, either side of the throne and between the statues
+  [6, 10, 12, 18, 22, 26, 30].forEach((x) => torchAt(x * TILE + TILE / 2, 2 * TILE + TILE / 2, 0, 1));
+  [6, 10, 16, 22, 26, 30].forEach((x) => torchAt(x * TILE + TILE / 2, (ROWS - 3) * TILE + TILE / 2, 0, -1));
+  [7, 11, 15].forEach((y) => torchAt(2 * TILE + TILE / 2, y * TILE + TILE / 2, 1, 0));
+  [7, 11, 15].forEach((y) => torchAt((COLS - 9) * TILE + TILE / 2, y * TILE + TILE / 2, -1, 0));
   TORCHES.forEach((t, i) => { t.seed = i * 1.7; });
 
   function torchFlicker(t, now) {
     return 0.85 + 0.1 * Math.sin(now * 0.017 + t.seed * 3) + 0.06 * Math.sin(now * 0.043 + t.seed * 7);
   }
   function torchFlame(t) { return { x: t.x + t.fx * 9, y: t.y + t.fy * 9 }; }
+
+  // a statue niche in its own 96x208 design space, scaled to fit and centred on cx
+  function statueInWall(g, cx, bottomY, height, winged) {
+    const sc = height / 208;
+    g.save(); g.translate(cx, bottomY); g.scale(sc, sc);
+    drawStatueNiche(g, -48, -208, 96, 208, winged);
+    g.restore();
+  }
 
   function drawStatueNiche(g, x, y, w, h, winged) {
     const cx = x + w / 2;
@@ -1773,22 +1776,31 @@
     g.fillStyle = '#2a2a32'; g.fillRect(cx - 80, 90, 160, 6);
   }
 
+  // painted at twice the world's resolution and drawn with smoothing on: the arena is
+  // shown zoomed out, and a 1x copy of the throne and statues aliased into blocks
+  const DECOR_SCALE = 2;
   let arenaDecor = null;
   function buildArenaDecor() {
     const c = document.createElement('canvas');
-    c.width = COLS * TILE; c.height = ROWS * TILE;
+    c.width = COLS * TILE * DECOR_SCALE; c.height = ROWS * TILE * DECOR_SCALE;
     const g = c.getContext('2d');
+    g.scale(DECOR_SCALE, DECOR_SCALE);
     const cx = 15.5 * TILE;                                    // throne and carpet centre line
-    // the statues carved into the thick east walls (one pair above the exit room, one below)
-    [[40, false], [472, true]].forEach(([y, winged]) => {
-      drawStatueNiche(g, 32 * TILE, y, 3 * TILE, 208, winged);
-      drawStatueNiche(g, 36 * TILE, y, 3 * TILE, 208, !winged);
+    // giant statues carved into the walls on every side, between the torches
+    const NICHE_H = 84;
+    [4, 8, 20, 24, 28].forEach((tx, i) => {
+      statueInWall(g, tx * TILE + TILE / 2, 3 * TILE - 6, NICHE_H, i % 2 === 1);
+      statueInWall(g, tx * TILE + TILE / 2, ROWS * TILE - 6, NICHE_H, i % 2 === 0);
+    });
+    [5, 9, 13, 17].forEach((ty, i) => {
+      statueInWall(g, 1.5 * TILE, ty * TILE + TILE / 2 + NICHE_H / 2, NICHE_H, i % 2 === 0);
+      statueInWall(g, (COLS - 7.5) * TILE, ty * TILE + TILE / 2 + NICHE_H / 2, NICHE_H, i % 2 === 1);
     });
     // the dais, then the carpet over it all the way down
     g.fillStyle = '#7a7a84'; g.fillRect(cx - 112, 3 * TILE, 224, 28);
     g.fillStyle = '#8b8b95'; g.fillRect(cx - 96, 3 * TILE, 192, 18);
     g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(cx - 112, 3 * TILE + 26, 224, 2); g.fillRect(cx - 96, 3 * TILE + 16, 192, 2);
-    const cy0 = 3 * TILE, cy1 = (ROWS - 1) * TILE;
+    const cy0 = 3 * TILE, cy1 = (ROWS - 3) * TILE;
     g.fillStyle = '#74101a'; g.fillRect(cx - 48, cy0, 96, cy1 - cy0);
     g.fillStyle = '#8c1822';
     for (let y = cy0 + 16; y < cy1 - 8; y += 32) { g.beginPath(); g.moveTo(cx, y - 12); g.lineTo(cx + 22, y); g.lineTo(cx, y + 12); g.lineTo(cx - 22, y); g.closePath(); g.fill(); }
@@ -1826,8 +1838,6 @@
         switch (ch) {
           case '#': color = '#262629'; break;
           case 'T': color = dirtShade(x, y); break;
-          case 'E': color = '#3a301f'; break;
-          case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
         g.fillStyle = color;
@@ -1841,40 +1851,11 @@
     }
 
     if (!arenaDecor) arenaDecor = buildArenaDecor();
-    g.drawImage(arenaDecor, 0, 0);
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(arenaDecor, 0, 0, COLS * TILE, ROWS * TILE);
+    g.imageSmoothingEnabled = false;
     drawWallTorches(g, now);
-
-    let dx0 = Infinity, dy0 = Infinity, dx1 = -Infinity, dy1 = -Infinity;
-    for (let y = minTY; y <= maxTY; y++) {
-      for (let x = minTX; x <= maxTX; x++) {
-        if (LEVEL.grid[y][x] === 'D') {
-          dx0 = Math.min(dx0, x); dy0 = Math.min(dy0, y);
-          dx1 = Math.max(dx1, x); dy1 = Math.max(dy1, y);
-        }
-      }
-    }
-    if (dx0 !== Infinity) {
-      const wx0 = dx0 * TILE, wy0 = dy0 * TILE;
-      const dw = (dx1 - dx0 + 1) * TILE, dh = (dy1 - dy0 + 1) * TILE;
-      if (!doorUnlocked) {
-        g.strokeStyle = '#0d1114';
-        g.lineWidth = 4;
-        g.strokeRect(wx0 + 3, wy0 + 3, dw - 6, dh - 6);
-        g.strokeStyle = 'rgba(255,190,60,0.5)';
-        g.lineWidth = 3;
-        g.strokeRect(wx0 + 9, wy0 + 9, Math.max(dw - 18, 2), Math.max(dh - 18, 2));
-      } else {
-        g.strokeStyle = 'rgba(255,255,255,0.18)';
-        g.lineWidth = 3;
-        g.strokeRect(wx0 + 2, wy0 + 2, dw - 4, dh - 4);
-      }
-    }
-
-    const ex = tileCenter(LEVEL.exitTrigger.x, LEVEL.exitTrigger.y);
-    g.beginPath();
-    g.arc(ex.x, ex.y, doorUnlocked ? 12 : 6, 0, Math.PI * 2);
-    g.fillStyle = doorUnlocked ? '#ffd27a' : '#5a4a30';
-    g.fill();
 
     drawCorpses(g);
     drawBloodSplatters(g);
@@ -2958,8 +2939,6 @@
     const hp = `${bossHealth}/${BOSS_MAX_HEALTH}`;
     hudBossEl.textContent = boss.defeated ? 'Boss: defeated' : boss.phase === 'stunned' ? `Boss: ${hp} HP (stunned)` : `Boss: ${hp} HP${boss.phase2 ? ' — phase 2' : ''}`;
     hudBossEl.classList.toggle('done', boss.defeated);
-    hudDoorEl.textContent = `Door: ${doorUnlocked ? 'open' : 'locked'}`;
-    hudDoorEl.classList.toggle('done', doorUnlocked);
 
     if (hudTimerEl) hudTimerEl.textContent = `Time: ${formatTime(elapsedMs)}`;
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
