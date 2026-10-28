@@ -12,6 +12,14 @@
     return;
   }
 
+  // Hard mode swaps the whole level for the Being of Pure Chaos (level31hard.html);
+  // once it's dead that page sends you back here just for the ending.
+  let endingOnly = false;
+  try {
+    endingOnly = sessionStorage.getItem('goofy-chaos-ending') === '1';
+    if (endingOnly) sessionStorage.removeItem('goofy-chaos-ending');
+  } catch (e) { /* no sessionStorage: play the level */ }
+
   const LEVEL = window.LEVEL31;
   const TILE = LEVEL.tileSize;
   const COLS = LEVEL.cols;
@@ -641,6 +649,7 @@
     musicStep = 0;
   }
   resetLevel();
+  if (endingOnly) { setMusicEnabled(true); startNuke(performance.now()); }
 
   // ---- on foot ----
   function solidForFoot(ch) { return ch === 'B' || ch === 'T' || ch === '#'; }
@@ -1071,7 +1080,7 @@
   function startNuke(now) {
     gameState = 'nuke';
     nukeStartedAt = now;
-    if (bestMs === null || elapsedMs < bestMs) { bestMs = elapsedMs; localStorage.setItem(BEST_TIME_KEY, String(bestMs)); }
+    if (!endingOnly && (bestMs === null || elapsedMs < bestMs)) { bestMs = elapsedMs; localStorage.setItem(BEST_TIME_KEY, String(bestMs)); }
     if (window.GoofyStory) window.GoofyStory.completeLevel(31);
     setTimeout(() => { if (gameState === 'nuke') playNukeBoom(); }, NUKE_IMPACT_MS);
     updateEngineSound(0);

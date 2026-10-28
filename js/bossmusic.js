@@ -16,6 +16,9 @@
 //                                              metal clanks, a stuttering plucked arp
 //   gargoyle (Level 30, the Garguantuagoyle)-- gothic blast-beat metal: tremolo
 //                                              picking under a choir/organ pad
+//   chaos    (Level 31, hard mode, the Being of Pure Chaos) -- a blast-beat frenzy over
+//                                              clashing tritone riffs and a lead that runs
+//                                              chromatic scales the wrong way
 //   pumpkin  (Halloween 5, the Pumpkin King)-- spooky doom: slow half-time, a creeping
 //                                              chromatic riff, a music-box bell lead in
 //                                              harmonic minor, a dissonant organ pad
@@ -147,6 +150,25 @@
       guitar: { k: 7, accentLP: 3400, chugLP: 3200, wave: 'sawtooth', accentLen: 0.9, chugLen: 0.9 },
       drums: 'blast',
       pad: { chords: [[24, 27, 31], [29, 32, 36], [31, 34, 38], [27, 30, 34]], wave: 'sawtooth', gain: 0.05, lp: 900, attack: 0.35 },
+    },
+    chaos: {
+      root: 87.3, bpm: 190,
+      bars: [
+        [0, 0, 6, 6, 0, 0, 1, 1, 0, 0, 11, 11, 0, 0, 5, 5],
+        [0, N, 0, 6, 0, N, 0, 1, 0, 6, 0, N, 10, 10, 11, 11],
+        [7, 7, 6, 6, 1, 1, 0, 0, 11, 11, 5, 5, 6, 6, 0, 0],
+        [0, 12, 0, 11, 0, 13, 0, 10, 0, 6, 0, 1, 0, 7, 6, 5],
+      ],
+      lead: [
+        [N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N],
+        [30, N, 33, N, 31, N, 36, N, 29, N, 35, N, 30, N, 32, N],
+        [36, N, N, 35, N, 33, N, 30, 37, N, 34, N, 31, 29, N, N],
+        [42, 30, 41, 31, 40, 32, 39, 33, 38, 34, 37, 35, 36, N, 30, N],
+      ],
+      leadBars: [1, 2, 3], leadInten: 0.3, leadTimbre: 'saw',
+      guitar: { k: 9, accentLP: 3600, chugLP: 2600, wave: 'sawtooth', accentLen: 0.8, chugLen: 0.8 },
+      drums: 'blast',
+      pad: { chords: [[30, 33, 36], [31, 36, 37], [29, 35, 38], [30, 34, 39]], wave: 'sawtooth', gain: 0.05, lp: 1100, attack: 0.3 },
     },
     pumpkin: {
       root: 55, bpm: 88,

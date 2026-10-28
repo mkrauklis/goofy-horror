@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; Level 31 (Hard Mode)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+</nav>
+
+<header class="hero">
+  <h1>Level 31 &mdash; The Way Out</h1>
+  <p class="objective">Hard mode. The road is gone &mdash; there's no car, no forest, no Multipod. The way out of the facility runs across its roof, and <strong>the Being of Pure Chaos</strong> is sitting on it: a flying creature covered in <strong>hundreds of eyes</strong>, its skin and wings stitched together from the textures of every place you've been. It has <strong>1000 HP</strong>, and the only thing that hurts it is an <strong>antimatter missile</strong>: one lands somewhere on the pad every <strong>20 seconds</strong>, never more than <strong>3</strong> at a time. Walk into one and it fires itself, homing in for <strong>25</strong> damage.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-boss">Boss: 1000/1000 HP</span>
+      <span id="hud-missiles">Antimatter missiles: 0/3 on the pad</span>
+      <span id="hud-phase">Phase: 1</span>
+      <span id="hud-timer">Time: 0:00.0</span>
+      <span id="hud-best">Best: --:--</span>
+      <button id="music-toggle" class="music-toggle muted" type="button">&#9834; Music: Off</button>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    The same rooftop landing pad as Level 30, the whole thing visible on
+    screen at once &mdash; but the floor is patched with random textures
+    now (grass, brick, ice, lava, circuit board, carpet, static&hellip;),
+    and past the pad's edge there's nothing but open sunrise sky. Nothing
+    on the pad can hurt the boss except the antimatter missiles: the first
+    touches down the moment the fight starts, then one more every
+    <strong>20 seconds</strong>, with no more than <strong>3</strong> waiting
+    on the pad at a time. Walk into one and it fires on its own, homing in on
+    the boss at <strong>5x</strong> your speed for <strong>25 damage</strong>
+    &mdash; forty hits in all.
+  </p>
+  <p class="level-description">
+    It attacks the way a flying thing would. <strong>Charge</strong>:
+    wings folded back, it points a random way and barrels off at
+    <strong>2.5x</strong> your speed until it hits the pad's edge.
+    <strong>Reposition &amp; spin</strong>: it glides to a new spot, then
+    spends 5 seconds spinning and caroming around the pad.
+    <strong>Shard fling</strong>: it tears shards out of its own skin and
+    flings them at whoever's closest at <strong>6x</strong> your speed.
+    <strong>Dive bomb</strong>: it launches off screen, a shadow appears,
+    and it drops onto that spot &mdash; the blast sweeps out
+    <strong>8.5 tiles</strong>. Every eye on it watches whoever's nearest.
+  </p>
+  <p class="level-description">
+    At <strong>500 HP</strong> it comes apart. <strong>Chaos unbound</strong>:
+    random textures start flashing across the sky, its wings swell to
+    <strong>1.5x</strong>, every attack gets <strong>1.2x</strong> faster,
+    and <strong>every second</strong> every texture on its skin and wings
+    changes to a new random one. It also gains two attacks:
+    an <strong>antimatter barrage</strong> (a bolt at whoever's closest
+    once a second for 5 seconds) and a <strong>shockwave</strong> (it curls
+    into a ball, then snaps open and sends a ring out to 5 tiles). Beat it
+    and the way out opens.
+  </p>
+</div>
+
+<script src="js/hardmode.js"></script>
+<script src="js/screenfx.js"></script>
+<script src="js/footsteps.js"></script>
+<script src="js/story.js"></script>
+<script src="levels/level30/level.js"></script>
+<script src="js/bossmusic.js"></script>
+<script src="js/monsterpedia.js"></script>
+<script src="js/bosscutscene.js"></script>
+<script src="js/playermodel.js"></script>
+<script src="js/game31hard.js"></script>
+</body>
+</html>
