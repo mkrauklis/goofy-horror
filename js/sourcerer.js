@@ -30,6 +30,14 @@
       say: 'Hard Mode is open to you now. It is the same house, but the house has noticed you.',
       run() { story().unlockHard(); },
     },
+    lilleperchaun: {
+      say: 'The little ones. Harmless, quite harmless. They only want you to come close. If your head starts to feel warm, that is just the sun.',
+      warp: 'leprechaunfield.html',
+    },
+    lilleprechaun: {
+      say: 'The little ones. Harmless, quite harmless. They only want you to come close. If your head starts to feel warm, that is just the sun.',
+      warp: 'leprechaunfield.html',
+    },
     mokey: {
       say: 'Shh. Listen. They heard you say it. Do not move, and do not laugh, and whatever you do, do not look up.',
       run() { startMonkeys(); },

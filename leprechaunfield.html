@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; The Green Field</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html#achievements">Menu</a>
+</nav>
+
+<header class="hero">
+  <h1>The Green Field</h1>
+  <p class="objective">A field with nothing in it but grass, flowers and <strong>25 little green men</strong>. They won't hurt you. Go and say hello.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-buttons">Leprechauns: 0 / 25</span>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    Nobody is hunting you here. There is no door, no button and no timer: just a
+    very large, very green field, and twenty-five leprechauns standing about in it
+    the way they have always stood. They hop a little. They don't chase.
+  </p>
+  <p class="level-description">
+    They do seem to notice you, though.
+  </p>
+</div>
+
+<script src="js/hardmode.js"></script>
+<script src="js/footsteps.js"></script>
+<script src="js/achievements.js"></script>
+<script src="js/story.js"></script>
+<script src="js/playermodel.js"></script>
+<script src="js/leprechaun.js"></script>
+<script src="js/sourcererreturn.js"></script>
+</body>
+</html>

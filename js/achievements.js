@@ -23,6 +23,14 @@
     },
     { id: 'pumpkinking', kind: 'boss', name: 'Pumpkin Smasher', desc: 'Beat the Pumpkin King (Halloween 5).', model: 32 },
     {
+      id: 'gold',
+      kind: 'secret',
+      name: 'Gold',
+      desc: 'Met all 25 of them. Nobody asked why.',
+      hint: 'There is gold at the end of this one, for anyone who will walk all the way up to it.',
+      icon: 'gold',
+    },
+    {
       id: 'greatape',
       kind: 'secret',
       name: 'Great Ape',
@@ -127,6 +135,31 @@
         g.fillRect(Math.floor(x * W / n), Math.floor(y * H / n), Math.ceil(W / n), Math.ceil(H / n));
       }
     }
+  }
+
+  // A black pot heaped with gold coins on a green hill.
+  function drawGoldIcon(c) {
+    const W = c.width, H = c.height, g = c.getContext('2d');
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#7fc4ee'); sky.addColorStop(1, '#bfe6a0');
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#3f8a34';
+    g.beginPath(); g.ellipse(W * 0.5, H * 1.02, W * 0.75, H * 0.32, 0, 0, Math.PI * 2); g.fill();
+    ['#e0342c', '#f08a24', '#f2d824', '#46b34a', '#3a82e0'].forEach((col, i) => {      // a rainbow behind
+      g.strokeStyle = col; g.lineWidth = W * 0.045;
+      g.beginPath(); g.arc(W * 0.5, H * 0.95, W * (0.52 - i * 0.05), Math.PI * 1.1, Math.PI * 1.9); g.stroke();
+    });
+    g.fillStyle = '#16161a';
+    g.beginPath(); g.ellipse(W * 0.5, H * 0.72, W * 0.25, H * 0.19, 0, 0, Math.PI); g.fill();
+    g.fillRect(W * 0.22, H * 0.56, W * 0.56, H * 0.1);
+    for (let i = 0; i < 16; i++) {
+      const x = W * (0.27 + 0.46 * ((i * 0.618) % 1)), y = H * (0.52 - 0.09 * Math.sin(i * 1.7) - 0.05 * ((i * 7) % 3) / 2);
+      const gr = g.createRadialGradient(x - 2, y - 2, 1, x, y, W * 0.07);
+      gr.addColorStop(0, '#fff6a8'); gr.addColorStop(0.6, '#f0c020'); gr.addColorStop(1, '#a87a08');
+      g.fillStyle = gr; g.beginPath(); g.ellipse(x, y, W * 0.07, W * 0.055, 0, 0, Math.PI * 2); g.fill();
+    }
+    g.fillStyle = '#16161a';
+    g.fillRect(W * 0.2, H * 0.6, W * 0.6, H * 0.05);
   }
 
   // A bunch of apes crowded together, back row to front: round brown heads, tan faces, big ears.
@@ -252,7 +285,10 @@
       canvas.style.filter = '';
       return;
     }
-    if (d.icon === 'apes') {
+    if (d.icon === 'gold') {
+      drawGoldIcon(canvas);
+      canvas.style.filter = '';
+    } else if (d.icon === 'apes') {
       drawApesIcon(canvas);
       canvas.style.filter = '';
     } else if (d.icon === 'pumpkin') {
