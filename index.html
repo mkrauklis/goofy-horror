@@ -25,6 +25,7 @@
 
 <nav class="side-tabs" aria-label="Level selector sections">
   <button type="button" class="side-tab" data-goto="story">&#128214; Story</button>
+  <button type="button" class="side-tab" data-goto="season-2">&#127794; Season 2</button>
   <button type="button" class="side-tab" data-goto="holidays">&#127881; Holidays</button>
 </nav>
 
@@ -406,6 +407,22 @@
     </a>
   </div>
   </section>
+  <section class="chapter chapter-season2" data-view="season-2" hidden>
+  <h2 class="chapter-divider">&#127794; Season 2</h2>
+  <p class="holidays-sub">What happens after the fall. Each level opens once the one before it is done.</p>
+  <div class="menu-list">
+    <a class="menu-item panel" href="season2level1.html" data-season2="1">
+      <h2>Season 2 &mdash; Level 1: The Overgrown Facility <span class="best-time" data-level="season2-level1"></span></h2>
+      <p>The floor gives way and you land in a facility the forest has been
+        eating for years: dirt underfoot, fallen logs, roots through the
+        walls, and now and then a small animal that bolts the moment your
+        light finds it. Find all 3 buttons and get out &mdash; and stay away
+        from the yellow, scarred tentacle thing with the grass growing out
+        of its back.</p>
+      <p class="lock-note"></p>
+    </a>
+  </div>
+  </section>
   <section class="holidays" data-view="holidays" hidden>
     <h2 class="holidays-title">Holidays</h2>
     <p class="holidays-sub">Pick a holiday to see its levels. Each one is its own set of bonus levels, separate from the main story.</p>
@@ -521,7 +538,7 @@
   // The level selector has a side rail: Story (the main chapters) and Holidays
   // (bonus level sets per holiday). The view is kept in the URL hash so Back and
   // links straight into a holiday (the Halloween levels' "Menu" link) both work.
-  const VIEWS = ['story', 'chapter-1', 'chapter-2', 'chapter-3', 'chapter-4', 'chapter-5', 'chapter-6', 'chapter-7', 'holidays', 'halloween-2026'];
+  const VIEWS = ['story', 'chapter-1', 'chapter-2', 'chapter-3', 'chapter-4', 'chapter-5', 'chapter-6', 'chapter-7', 'season-2', 'holidays', 'halloween-2026'];
   function showView(name) {
     if (!VIEWS.includes(name)) name = 'story';
     document.querySelectorAll('[data-view]').forEach((el) => { el.hidden = el.dataset.view !== name; });

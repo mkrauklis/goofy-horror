@@ -80,6 +80,26 @@
     try { localStorage.setItem(HALLOWEEN_KEY, JSON.stringify(halloween)); } catch (e) { /* ignore */ }
   }
 
+  // Season 2: the story after the fall. Its own tiny save, like the Halloween levels', so it
+  // never touches the first season's progress.
+  const SEASON2_KEY = 'goofy-horror-season2';
+  function loadSeason2() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(SEASON2_KEY));
+      if (parsed && Array.isArray(parsed.completed)) return parsed;
+    } catch (e) {
+      // corrupt or blocked storage -- starts fresh
+    }
+    return { completed: [] };
+  }
+  let season2 = loadSeason2();
+  function isSeason2Completed(n) { return season2.completed.indexOf(n) !== -1; }
+  function isSeason2Unlocked(n) { return n === 1 || isSeason2Completed(n - 1); }
+  function completeSeason2(n) {
+    if (!isSeason2Completed(n)) season2.completed.push(n);
+    try { localStorage.setItem(SEASON2_KEY, JSON.stringify(season2)); } catch (e) { /* ignore */ }
+  }
+
   // True once the game has been beaten (in a normal run -- a save from before
   // hard mode existed that already has the finale counts too).
   function isHardUnlocked() {
@@ -294,6 +314,9 @@
     isHalloweenCompleted,
     isHalloweenUnlocked,
     completeHalloween,
+    isSeason2Completed,
+    isSeason2Unlocked,
+    completeSeason2,
     resetProgress,
     getPlayerMode,
     setPlayerMode,
@@ -315,6 +338,12 @@
   function injectChapterLabel() {
     const match = window.location.pathname.match(/\/level(\d+)\.html$/);
     const hallo = window.location.pathname.match(/\/halloween(\d+)\.html$/);
+    const seas2 = /\/season2level\d+\.html$/.test(window.location.pathname);
+    if (seas2) {
+      const link = document.querySelector('nav.level-nav a[href="index.html"]');
+      if (link) link.setAttribute('href', 'index.html#season-2');
+      return;
+    }
     if (!match && !hallo) return;
     const n = match ? parseInt(match[1], 10) : 0;
     const nav = document.querySelector('nav.level-nav');
