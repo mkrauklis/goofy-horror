@@ -84,6 +84,16 @@
     scream(c, a) { tone(c, a, 0.55, 640, 380, 0.07, 'sawtooth'); tone(c, a + 0.1, 0.4, 900, 420, 0.05, 'square'); },
     clang(c, a) { noise(c, a, 0.12, 5000, 2500, 0.3, 'highpass'); tone(c, a, 0.5, 1180, 1160, 0.1, 'square'); tone(c, a, 0.4, 2310, 2290, 0.06, 'triangle'); tone(c, a + 0.02, 0.3, 110, 55, 0.35, 'sine'); },
     rattle(c, a) { for (let i = 0; i < 5; i++) { noise(c, a + i * 0.07, 0.05, 4200, 2500, 0.14, 'highpass'); tone(c, a + i * 0.07, 0.08, 900 + (i % 2) * 300, 700, 0.04, 'square'); } },
+    step(c, a) { noise(c, a, 0.07, 1500, 600, 0.1, 'bandpass', 1.5); tone(c, a, 0.06, 120, 70, 0.05, 'sine'); },
+    chirp(c, a) { tone(c, a, 0.09, 3300, 4300, 0.05, 'sine'); tone(c, a + 0.13, 0.08, 3700, 4700, 0.04, 'sine'); tone(c, a + 0.25, 0.1, 3100, 4100, 0.04, 'sine'); },
+    wind(c, a) { noise(c, a, 5, 300, 900, 0.07, 'bandpass', 0.8); },
+    drip(c, a) { tone(c, a, 0.09, 1900, 800, 0.08, 'sine'); noise(c, a, 0.05, 3000, 1500, 0.04, 'highpass'); },
+    spark(c, a) { noise(c, a, 0.3, 5000, 1500, 0.3, 'highpass'); tone(c, a, 0.15, 1400, 300, 0.07, 'square'); },
+    knock(c, a) { tone(c, a, 0.25, 160, 80, 0.4, 'sine'); noise(c, a, 0.1, 2200, 900, 0.15, 'bandpass', 3); },
+    rumble(c, a) { tone(c, a, 3.6, 42, 28, 0.5, 'sine'); noise(c, a, 3.6, 220, 60, 0.4, 'lowpass'); },
+    tremor(c, a) { tone(c, a, 1.2, 48, 36, 0.25, 'sine'); noise(c, a, 1.2, 160, 80, 0.16, 'lowpass'); },
+    crack(c, a) { noise(c, a, 0.3, 4000, 700, 0.5, 'highpass'); tone(c, a, 0.3, 110, 40, 0.4, 'sine'); },
+    fall(c, a) { tone(c, a, 1.7, 900, 70, 0.12, 'triangle'); noise(c, a, 1.2, 2200, 200, 0.18, 'bandpass', 1); },
     heart(c, a) { tone(c, a, 0.2, 70, 40, 0.5, 'sine'); tone(c, a + 0.22, 0.2, 65, 36, 0.4, 'sine'); },
   };
   let lastSfxT = -1;
@@ -184,6 +194,34 @@
       g.fillStyle = '#fff6c4'; g.beginPath(); g.ellipse(hx + 0.64 * u, hy, 0.09 * u, 0.15 * u, 0, 0, TAU); g.fill();
     }
 
+    if (o.bare) {
+      // helmet off: a chimp's head (fur, ears, a pale muzzle) and the helmet clipped to the pack
+      const bx = 0.16 * u;
+      g.fillStyle = suitB; g.strokeStyle = suitLine; g.lineWidth = 1.3;
+      g.beginPath(); g.ellipse(bx - 0.04 * u, 0, 0.5 * u, 0.62 * u, 0, 0, TAU); g.fill(); g.stroke();
+      [-1, 1].forEach((s) => {
+        g.fillStyle = '#7a5636'; g.strokeStyle = '#2a1a10'; g.lineWidth = 1;
+        g.beginPath(); g.arc(bx - 0.05 * u, s * 0.5 * u, 0.2 * u, 0, TAU); g.fill(); g.stroke();
+        g.fillStyle = '#d9a58a'; g.beginPath(); g.arc(bx - 0.04 * u, s * 0.5 * u, 0.11 * u, 0, TAU); g.fill();
+      });
+      const fg = g.createRadialGradient(bx - 0.15 * u, -0.15 * u, 1, bx, 0, 0.55 * u);
+      fg.addColorStop(0, '#8a6540'); fg.addColorStop(1, '#4a3220');
+      g.fillStyle = fg; g.strokeStyle = '#2a1a10'; g.lineWidth = 1.2;
+      g.beginPath(); g.arc(bx, 0, 0.5 * u, 0, TAU); g.fill(); g.stroke();
+      g.fillStyle = '#3a2616'; g.beginPath(); g.ellipse(bx - 0.18 * u, 0, 0.2 * u, 0.3 * u, 0, 0, TAU); g.fill();
+      g.fillStyle = '#d6ac86'; g.strokeStyle = '#3a2616'; g.lineWidth = 1;
+      g.beginPath(); g.ellipse(bx + 0.4 * u, 0, 0.24 * u, 0.3 * u, 0, 0, TAU); g.fill(); g.stroke();
+      g.fillStyle = '#2a1a14'; [-1, 1].forEach((s) => { g.beginPath(); g.ellipse(bx + 0.54 * u, s * 0.1 * u, 0.04 * u, 0.06 * u, 0, 0, TAU); g.fill(); });
+      [-1, 1].forEach((s) => {
+        g.fillStyle = '#14100c'; g.beginPath(); g.ellipse(bx + 0.24 * u, s * 0.24 * u, 0.07 * u, 0.09 * u, 0, 0, TAU); g.fill();
+        g.fillStyle = 'rgba(255,255,255,0.8)'; g.beginPath(); g.arc(bx + 0.26 * u, s * 0.22 * u, 0.025 * u, 0, TAU); g.fill();
+      });
+      g.strokeStyle = '#2a1a10'; g.lineWidth = 1.3; g.beginPath(); g.moveTo(bx + 0.2 * u, -0.36 * u); g.quadraticCurveTo(bx + 0.3 * u, 0, bx + 0.2 * u, 0.36 * u); g.stroke();
+      const hc = o.helmetCol || '#ffe24d';
+      g.fillStyle = hc; g.strokeStyle = suitLine; g.lineWidth = 1.2;
+      g.beginPath(); g.arc(-0.92 * u, 0, 0.36 * u, 0, TAU); g.fill(); g.stroke();
+      g.fillStyle = '#12363e'; g.beginPath(); g.ellipse(-0.78 * u, 0, 0.17 * u, 0.25 * u, 0, 0, TAU); g.fill();
+    } else {
     // helmet and visor
     const hx0 = (0.14 - lie * 0.25) * u, hy0 = lie * 0.6 * u * (o.lieSide || 1);
     const hg = g.createRadialGradient(hx0 - 0.2 * u, hy0 - 0.25 * u, 1, hx0, hy0, 0.78 * u);
@@ -205,6 +243,7 @@
       [[0.2, -0.3, 0.55, 0.05], [0.4, -0.4, 0.45, 0.35], [0.3, 0.3, 0.65, -0.1]].forEach(([a, b, c, d]) => {
         g.beginPath(); g.moveTo(hx0 + a * u, hy0 + b * u); g.lineTo(hx0 + (a + c) * 0.5 * u, hy0 + (b + d) * 0.5 * u + 0.05 * u); g.lineTo(hx0 + c * u, hy0 + d * u); g.stroke();
       });
+    }
     }
     g.restore();
   }
@@ -393,7 +432,9 @@
     // darkness, with the lights punched through it
     const mc = maskFor(w, h), m = mc.getContext('2d');
     m.globalCompositeOperation = 'source-over'; m.clearRect(0, 0, w, h);
-    m.fillStyle = `rgba(${sc.shade || '2,2,6'},${sc.dark})`; m.fillRect(0, 0, w, h);
+    const shade = typeof sc.shade === 'function' ? sc.shade(t) : (sc.shade || '2,2,6');
+    const dark = typeof sc.dark === 'function' ? sc.dark(t) : sc.dark;
+    m.fillStyle = `rgba(${shade},${dark})`; m.fillRect(0, 0, w, h);
     m.globalCompositeOperation = 'destination-out';
     (sc.lights ? sc.lights(t, c) : []).forEach((L) => punch(m, L, c));
     g.drawImage(mc, 0, 0);
@@ -405,6 +446,7 @@
     g.fillStyle = vg; g.fillRect(0, 0, w, h);
     const bar = h * 0.075;
     g.fillStyle = '#000'; g.fillRect(0, 0, w, bar); g.fillRect(0, h - bar, w, bar);
+    if (sc.dip) { const d = sc.dip(t); if (d > 0.003) { g.fillStyle = `rgba(0,0,0,${Math.min(1, d)})`; g.fillRect(0, 0, w, h); } }
     drawTitle(g, w, h, t, sc);
     const fade = Math.min(t / 500, 1) * Math.min((sc.dur - t) / 300, 1);
     if (fade < 1) { g.fillStyle = `rgba(0,0,0,${1 - fade})`; g.fillRect(0, 0, w, h); }
@@ -1680,6 +1722,660 @@
       },
     };
   })();
+  // ============ SEASON 2: the woods, the ruin, and the floor giving way ============
+  // Two helmet-less hazmat men walk a forest trail at dusk; the trees part on a
+  // collapsed, vine-choked facility; they go in (15 seconds of exploring in the
+  // dark with torches); the ground starts to shake, cracks spread across the
+  // floor round a sealed hatch, and the floor falls away beneath them.
+  (function () {
+    const DUR = 34500, U = 15;
+    const T_REVEAL = 9000, T_CUT = 13500, T_QUAKE = 28500, T_PIT = 29700, T_PIT_END = 32400, T_BLACK = 32600;
+    const TRAIL_END = 892;                         // the door of the ruin
+    const trailY = (x) => 40 * Math.sin(x * 0.0035 + 0.5) + 10 * Math.sin(x * 0.011);
+
+    // cached backdrops, drawn once in world coordinates (ox, oy = where the origin sits on the canvas)
+    const cache = {};
+    function cached(key, w, h, ox, oy, build) {
+      if (!cache[key]) {
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const g = c.getContext('2d'); g.translate(ox, oy); build(g); cache[key] = c;
+      }
+      return cache[key];
+    }
+    const OX = 1300, OY = 450, OW = 3400, OH = 900;            // outdoors: world x -1300..2100, y -450..450
+    const IX = 1300, IY = 380, IW = 2700, IH = 760;            // inside:   world x -1300..1400, y -380..380
+    const blit = (g, c, ox, oy, dx, dy) => g.drawImage(c, -ox + (dx || 0), -oy + (dy || 0));
+
+    // ---------- the forest ----------
+    let treeList = null;
+    function trees() {
+      if (treeList) return treeList;
+      treeList = [];
+      for (let i = 0; i < 230; i++) {
+        const x = -1250 + hash(i * 3.7) * 2050, y = -440 + hash(i * 6.1 + 2) * 880;
+        if (Math.abs(y - trailY(x)) < 105 + hash(i * 8.3) * 25) continue;
+        if (x > 760 && Math.abs(y) < 330) continue;
+        treeList.push({ x, y, r: 62 + hash(i * 2.3 + 9) * 68, seed: i });
+      }
+      return treeList;
+    }
+    function fern(g, x, y, s, seed) {
+      for (let k = 0; k < 9; k++) {
+        const a = (k / 9) * TAU + seed;
+        g.fillStyle = lerpHex('#1d4a1a', '#47922c', hash(seed + k * 1.3));
+        g.beginPath(); g.ellipse(x + Math.cos(a) * s * 0.55, y + Math.sin(a) * s * 0.55, s * 0.62, s * 0.17, a, 0, TAU); g.fill();
+      }
+    }
+    function buildGround(g) {
+      g.fillStyle = '#14240e'; g.fillRect(-OX, -OY, OW, OH);
+      for (let i = 0; i < 260; i++) {
+        const lit = hash(i * 9.1) > 0.5;
+        glow(g, -OX + hash(i * 1.7) * OW, -OY + hash(i * 2.9 + 4) * OH, 50 + hash(i * 5.3) * 130, lit ? '56,98,32' : '6,16,6', lit ? 0.32 : 0.5);
+      }
+      // the clearing in front of the ruin
+      for (let i = 0; i < 90; i++) glow(g, 760 + hash(i * 3.1) * 300, (hash(i * 4.7) - 0.5) * 760, 60 + hash(i) * 70, '84,124,46', 0.3);
+      // tree shadows
+      trees().forEach((t) => glow(g, t.x + 16, t.y + 18, t.r * 1.25, '2,6,2', 0.6));
+      // the trail: a dirt track worn through the undergrowth
+      const stroke = (w, col) => {
+        g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round'; g.lineJoin = 'round';
+        g.beginPath(); for (let x = -1250; x <= 900; x += 20) { if (x === -1250) g.moveTo(x, trailY(x)); else g.lineTo(x, trailY(x)); } g.stroke();
+      };
+      stroke(92, '#1b2a10'); stroke(74, '#3a2c1a'); stroke(56, '#5a4528'); stroke(32, '#6d5733');
+      [-13, 13].forEach((d) => { g.save(); g.translate(0, d); stroke(5, 'rgba(30,20,10,0.55)'); g.restore(); });
+      for (let i = 0; i < 700; i++) {          // pebbles and leaf litter, thickest on the trail
+        const x = -1250 + hash(i * 1.9) * 2150, y = trailY(x) + (hash(i * 7.7) - 0.5) * 120;
+        g.fillStyle = hash(i * 3.3) > 0.6 ? '#8a7a62' : lerpHex('#8a4a1a', '#c9842a', hash(i));
+        g.beginPath(); g.ellipse(x, y, 2 + hash(i * 5.1) * 3, 1.4 + hash(i * 6.1) * 2, hash(i) * 3, 0, TAU); g.fill();
+      }
+      // undergrowth and little things
+      for (let i = 0; i < 520; i++) {
+        const x = -1250 + hash(i * 2.3 + 11) * 2100, y = -440 + hash(i * 4.1 + 5) * 880;
+        if (Math.abs(y - trailY(x)) < 34) continue;
+        fern(g, x, y, 14 + hash(i * 9.7) * 16, i);
+      }
+      for (let i = 0; i < 900; i++) {
+        const x = -1250 + hash(i * 5.9 + 3) * 2150, y = -440 + hash(i * 3.3 + 8) * 880;
+        if (Math.abs(y - trailY(x)) < 30) continue;
+        g.strokeStyle = lerpHex('#2a5a1e', '#6aa83a', hash(i)); g.lineWidth = 1.5;
+        for (let k = -1; k <= 1; k++) { g.beginPath(); g.moveTo(x + k * 2, y); g.lineTo(x + k * 5, y - 8 - hash(i + k) * 6); g.stroke(); }
+      }
+      for (let i = 0; i < 70; i++) {                                  // mossy rocks
+        const x = -1250 + hash(i * 6.7) * 2100, y = -430 + hash(i * 8.9 + 1) * 860, r = 8 + hash(i * 3.1) * 18;
+        if (Math.abs(y - trailY(x)) < r + 40) continue;
+        const rg = g.createRadialGradient(x - r * 0.3, y - r * 0.3, 1, x, y, r);
+        rg.addColorStop(0, '#8b8f88'); rg.addColorStop(1, '#3d413d');
+        g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(x + 4, y + 5, r * 1.1, r * 0.8, 0, 0, TAU); g.fill();
+        g.fillStyle = rg; g.beginPath(); g.ellipse(x, y, r, r * 0.8, hash(i) * 3, 0, TAU); g.fill();
+        g.fillStyle = 'rgba(70,120,40,0.7)'; g.beginPath(); g.ellipse(x - r * 0.2, y - r * 0.25, r * 0.7, r * 0.4, 0.4, 0, TAU); g.fill();
+      }
+      for (let i = 0; i < 16; i++) {                                  // fallen logs
+        const x = -1200 + hash(i * 4.4) * 2000, y = -420 + hash(i * 7.3 + 2) * 840;
+        if (Math.abs(y - trailY(x)) < 60) continue;
+        g.save(); g.translate(x, y); g.rotate(hash(i * 2.2) * 3);
+        const L = 60 + hash(i) * 70;
+        g.fillStyle = 'rgba(0,0,0,0.35)'; rr(g, -L / 2 + 4, -7, L, 18, 8); g.fill();
+        g.fillStyle = '#4a3320'; rr(g, -L / 2, -9, L, 18, 8); g.fill();
+        g.fillStyle = '#6a4a2e'; rr(g, -L / 2, -9, L, 6, 3); g.fill();
+        g.fillStyle = 'rgba(80,130,44,0.8)'; g.beginPath(); g.ellipse(-L * 0.1, -4, L * 0.28, 5, 0, 0, TAU); g.fill();
+        g.fillStyle = '#9a7a52'; g.beginPath(); g.ellipse(L / 2, 0, 5, 9, 0, 0, TAU); g.fill();
+        g.restore();
+      }
+      for (let i = 0; i < 90; i++) {                                  // mushrooms and flowers
+        const x = -1250 + hash(i * 9.3 + 6) * 2100, y = -420 + hash(i * 2.7 + 9) * 840;
+        if (Math.abs(y - trailY(x)) < 40) continue;
+        if (i % 3 === 0) { g.fillStyle = '#d8d0b0'; g.fillRect(x - 1, y, 2, 4); g.fillStyle = i % 2 ? '#c8402a' : '#d8a040'; g.beginPath(); g.ellipse(x, y, 5, 3.4, 0, 0, TAU); g.fill(); }
+        else { g.fillStyle = ['#e8d86a', '#d890c8', '#f0f0f0'][i % 3]; for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(x + Math.cos(k * 1.6) * 2.6, y + Math.sin(k * 1.6) * 2.6, 1.6, 0, TAU); g.fill(); } }
+      }
+      buildRuin(g);
+    }
+
+    // ---------- the ruined facility, seen from above ----------
+    const X0 = 920, X1 = 1900, Y0 = -250, Y1 = 250;
+    const HOLES = [{ x: 1260, y: 70, rx: 150, ry: 100 }, { x: 1570, y: -110, rx: 120, ry: 90 }, { x: 1750, y: 130, rx: 160, ry: 105 }, { x: 1020, y: -135, rx: 78, ry: 58 }];
+    function buildRuin(g) {
+      // the cracked apron round it
+      g.fillStyle = '#4d534f'; g.fillRect(840, -300, 1100, 600);
+      g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 2;
+      for (let x = 840; x < 1940; x += 110) { g.beginPath(); g.moveTo(x, -300); g.lineTo(x, 300); g.stroke(); }
+      for (let y = -300; y < 300; y += 100) { g.beginPath(); g.moveTo(840, y); g.lineTo(1940, y); g.stroke(); }
+      for (let i = 0; i < 70; i++) glow(g, 840 + hash(i * 3.3) * 1100, -300 + hash(i * 5.9) * 600, 30 + hash(i) * 70, '60,102,36', 0.5);
+      for (let i = 0; i < 26; i++) {                                  // cracks and weeds through them
+        let x = 840 + hash(i * 7.1) * 1100, y = -300 + hash(i * 2.9) * 600, a = hash(i) * TAU;
+        g.strokeStyle = 'rgba(10,12,10,0.7)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < 7; k++) { a += (hash(i * 9 + k) - 0.5) * 1.3; x += Math.cos(a) * 20; y += Math.sin(a) * 20; g.lineTo(x, y); if (k % 2) fern(g, x, y, 9, i + k); }
+        g.stroke();
+      }
+      // the building: shadow, outer wall, roof
+      g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(X0 - 4, Y0 + 6, X1 - X0 + 36, Y1 - Y0 + 38);
+      g.fillStyle = '#2b2f2d'; g.fillRect(X0 - 16, Y0 - 16, X1 - X0 + 32, Y1 - Y0 + 32);
+      const rg = g.createLinearGradient(X0, Y0, X1, Y1);
+      rg.addColorStop(0, '#6b716d'); rg.addColorStop(0.5, '#5c625e'); rg.addColorStop(1, '#4d534f');
+      g.fillStyle = rg; g.fillRect(X0, Y0, X1 - X0, Y1 - Y0);
+      g.strokeStyle = 'rgba(0,0,0,0.38)'; g.lineWidth = 2;
+      for (let x = X0; x < X1; x += 98) { g.beginPath(); g.moveTo(x, Y0); g.lineTo(x, Y1); g.stroke(); }
+      for (let y = Y0; y < Y1; y += 83) { g.beginPath(); g.moveTo(X0, y); g.lineTo(X1, y); g.stroke(); }
+      for (let i = 0; i < 46; i++) glow(g, X0 + hash(i * 4.9) * (X1 - X0), Y0 + hash(i * 6.7) * (Y1 - Y0), 30 + hash(i) * 80, '14,20,14', 0.38);   // rain stains
+      g.strokeStyle = '#3a3f3c'; g.lineWidth = 6; g.strokeRect(X0 + 16, Y0 + 16, X1 - X0 - 32, Y1 - Y0 - 32);
+      // rooftop machinery
+      [[1110, -175, 130, 80], [1480, 150, 160, 70], [1380, -200, 90, 46]].forEach(([x, y, w, h], k) => {
+        g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(x + 6, y + 8, w, h);
+        g.fillStyle = '#7a6a54'; g.fillRect(x, y, w, h); g.fillStyle = '#9a8666'; g.fillRect(x, y, w, 8);
+        g.strokeStyle = '#3a2e20'; g.lineWidth = 2; g.strokeRect(x, y, w, h);
+        for (let f = 0; f < Math.floor(w / 60); f++) {
+          g.fillStyle = '#1c1c1a'; g.beginPath(); g.arc(x + 30 + f * 60, y + h / 2, 22, 0, TAU); g.fill();
+          g.strokeStyle = '#6a6458'; g.lineWidth = 2; for (let b = 0; b < 4; b++) { g.beginPath(); g.moveTo(x + 30 + f * 60, y + h / 2); g.lineTo(x + 30 + f * 60 + Math.cos(b * 1.57 + k) * 20, y + h / 2 + Math.sin(b * 1.57 + k) * 20); g.stroke(); }
+        }
+      });
+      const tg = g.createRadialGradient(1735, -138, 4, 1740, -130, 62);
+      tg.addColorStop(0, '#8a7a62'); tg.addColorStop(0.7, '#5a4a38'); tg.addColorStop(1, '#2a2218');
+      g.fillStyle = 'rgba(0,0,0,0.4)'; g.beginPath(); g.arc(1746, -122, 62, 0, TAU); g.fill();
+      g.fillStyle = tg; g.beginPath(); g.arc(1740, -130, 62, 0, TAU); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 3; [18, 38, 56].forEach((r) => { g.beginPath(); g.arc(1740, -130, r, 0, TAU); g.stroke(); });
+      // a faded hazard mark painted on the roof
+      g.save(); g.translate(1390, 8); g.globalAlpha = 0.34;
+      g.strokeStyle = '#c9a227'; g.lineWidth = 12; g.beginPath(); g.arc(0, 0, 92, 0, TAU); g.stroke();
+      for (let k = 0; k < 3; k++) { g.save(); g.rotate(k * TAU / 3); g.fillStyle = '#c9a227'; g.beginPath(); g.arc(0, -42, 30, 0, TAU); g.fill(); g.fillStyle = '#5c625e'; g.beginPath(); g.arc(0, -42, 17, 0, TAU); g.fill(); g.restore(); }
+      g.fillStyle = '#c9a227'; g.beginPath(); g.arc(0, 0, 11, 0, TAU); g.fill();
+      g.restore();
+      // moss eating in from the edges
+      for (let i = 0; i < 110; i++) {
+        const edge = hash(i * 3.7), x = X0 + hash(i * 5.3) * (X1 - X0), y = edge > 0.5 ? Y0 + hash(i * 2.1) * 70 : Y1 - hash(i * 2.1) * 70;
+        glow(g, x, y, 40 + hash(i) * 70, '64,112,36', 0.55);
+      }
+      // the collapsed parts of the roof
+      HOLES.forEach((h, k) => {
+        g.beginPath();
+        for (let i = 0; i <= 18; i++) {
+          const a = (i / 18) * TAU, r = 0.78 + 0.34 * hash(k * 31 + (i % 18) * 2.3);
+          const px = h.x + Math.cos(a) * h.rx * r, py = h.y + Math.sin(a) * h.ry * r;
+          if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+        }
+        g.closePath();
+        const hg = g.createRadialGradient(h.x, h.y, 4, h.x, h.y, h.rx);
+        hg.addColorStop(0, '#000'); hg.addColorStop(0.75, '#060807'); hg.addColorStop(1, '#161a17');
+        g.fillStyle = hg; g.fill(); g.strokeStyle = '#8a908a'; g.lineWidth = 4; g.stroke();
+        g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 3; g.stroke();
+        g.strokeStyle = '#7a4a2a'; g.lineWidth = 2;                      // bent rebar
+        for (let b = 0; b < 5; b++) { const a = hash(k * 7 + b) * TAU; g.beginPath(); g.moveTo(h.x + Math.cos(a) * h.rx * 0.9, h.y + Math.sin(a) * h.ry * 0.9); g.quadraticCurveTo(h.x + Math.cos(a) * h.rx * 0.4, h.y + Math.sin(a) * h.ry * 0.4 - 10, h.x + Math.cos(a + 0.5) * h.rx * 0.2, h.y + Math.sin(a + 0.5) * h.ry * 0.2); g.stroke(); }
+        for (let i = 0; i < 12; i++) {                                   // slabs that fell in
+          const a = hash(k * 13 + i) * TAU, d = hash(k * 17 + i * 3) * 0.7;
+          g.fillStyle = lerpHex('#3a3f3c', '#5a605c', hash(i + k)); g.save(); g.translate(h.x + Math.cos(a) * h.rx * d, h.y + Math.sin(a) * h.ry * d); g.rotate(hash(i * 5 + k) * 3);
+          g.fillRect(-9, -6, 18, 12); g.restore();
+        }
+      });
+      // trees that have grown up through two of the holes
+      [[1750, 130, 96], [1260, 70, 90]].forEach(([x, y, r], k) => {
+        for (let j = 0; j < 8; j++) {
+          const a = hash(k * 9 + j) * TAU, d = hash(k * 4 + j * 2) * r * 0.5, cr = r * (0.42 + 0.22 * hash(k + j * 3));
+          const cg = g.createRadialGradient(x + Math.cos(a) * d - cr * 0.3, y + Math.sin(a) * d - cr * 0.3, 2, x + Math.cos(a) * d, y + Math.sin(a) * d, cr);
+          cg.addColorStop(0, '#5aa83c'); cg.addColorStop(0.6, '#2c6a26'); cg.addColorStop(1, '#14380f');
+          g.fillStyle = cg; g.beginPath(); g.arc(x + Math.cos(a) * d, y + Math.sin(a) * d, cr, 0, TAU); g.fill();
+        }
+      });
+      // the antenna mast that came down across the roof
+      g.save(); g.translate(1530, 30); g.rotate(-0.42);
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(-250 + 6, -4 + 8, 500, 8);
+      for (let i = 0; i < 10; i++) { g.fillStyle = i % 2 ? '#8a5a3a' : '#9a6a44'; g.fillRect(-250 + i * 50, -5, 50, 8); }
+      g.strokeStyle = '#6a4a30'; g.lineWidth = 1.5; for (let i = 0; i < 10; i++) { g.beginPath(); g.moveTo(-250 + i * 50, -5); g.lineTo(-225 + i * 50, 3); g.lineTo(-200 + i * 50, -5); g.stroke(); }
+      g.restore();
+      // vines over everything
+      for (let v = 0; v < 34; v++) {
+        let x = hash(v * 3.1) > 0.5 ? X0 + hash(v * 5.7) * (X1 - X0) : (hash(v * 2.3) > 0.5 ? X0 - 20 : X1 + 20);
+        let y = hash(v * 6.3) > 0.5 ? Y0 - 18 : Y1 + 18, a = hash(v * 7.7) * TAU;
+        if (x < X0 || x > X1) y = Y0 + hash(v * 8.1) * (Y1 - Y0);
+        const pts = [[x, y]];
+        for (let s = 0; s < 11; s++) { a += (hash(v * 11 + s) - 0.5) * 1.2; x += Math.cos(a) * 30; y += Math.sin(a) * 30; pts.push([x, y]); }
+        drawVine(g, pts, 7, 2.5, '#122a0e', '#3f8a24');
+        g.fillStyle = '#58b034';
+        pts.forEach(([px, py], s) => { if (s % 2) { g.beginPath(); g.ellipse(px + 4, py - 3, 7, 3.5, hash(v + s) * 3, 0, TAU); g.fill(); } });
+      }
+      // the doorway: the wall is broken open here and a door hangs off its frame
+      g.fillStyle = '#7a7a72'; g.beginPath(); g.moveTo(868, -8); g.lineTo(X0 - 16, -2); g.lineTo(X0 - 16, 70); g.lineTo(862, 82); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 2; for (let k = 1; k < 4; k++) { g.beginPath(); g.moveTo(868 + k * 12, -6); g.lineTo(868 + k * 12, 80); g.stroke(); }
+      g.fillStyle = '#030403'; g.fillRect(X0 - 16, 2, 20, 62);
+      g.save(); g.translate(872, 90); g.rotate(0.5); g.fillStyle = '#5a3a24'; g.fillRect(-4, -26, 8, 52); g.fillStyle = '#7a5a40'; g.fillRect(-4, -26, 3, 52); g.restore();
+    }
+
+    // the canopy drawn over the trail
+    function buildCanopy(g) {
+      trees().slice().sort((a, b) => a.r - b.r).forEach((t) => {
+        g.save(); g.translate(t.x, t.y);
+        for (let k = 0; k < 7; k++) {
+          const a = hash(t.seed * 7 + k) * TAU, d = hash(t.seed * 3 + k + 1) * t.r * 0.45, cr = t.r * (0.46 + 0.26 * hash(t.seed + k * 5));
+          const cx = Math.cos(a) * d, cy = Math.sin(a) * d;
+          const gr = g.createRadialGradient(cx - cr * 0.3, cy - cr * 0.35, 2, cx, cy, cr);
+          gr.addColorStop(0, lerpHex('#4f9a3a', '#78c050', hash(t.seed + k))); gr.addColorStop(0.6, '#2c6a26'); gr.addColorStop(1, '#13350f');
+          g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, cr, 0, TAU); g.fill();
+        }
+        for (let j = 0; j < 16; j++) {
+          g.fillStyle = `rgba(190,235,120,${0.25 + 0.3 * hash(t.seed + j * 2)})`;
+          g.beginPath(); g.ellipse((hash(t.seed * 5 + j) - 0.5) * t.r * 1.3, (hash(t.seed * 9 + j) - 0.5) * t.r * 1.3, 4, 2, hash(j) * 3, 0, TAU); g.fill();
+        }
+        g.restore();
+      });
+    }
+
+    // ---------- inside ----------
+    const HATCH = { x: 700, y: 0, r: 150 };
+    const SHAFTS = [[-120, -70], [250, 150], [520, -150], [930, 110]];       // holes in the ceiling
+    function tiles(g, x0, y0, x1, y1, size, c0, c1, seed) {
+      for (let x = x0, i = 0; x < x1; x += size, i++) for (let y = y0, j = 0; y < y1; y += size, j++) {
+        g.fillStyle = lerpHex(c0, c1, hash(i * 17 + j * 5 + seed));
+        g.fillRect(x, y, Math.min(size, x1 - x) - 2, Math.min(size, y1 - y) - 2);
+      }
+    }
+    function crackLine(g, x, y, a, n, step, seed) {
+      g.beginPath(); g.moveTo(x, y);
+      for (let k = 0; k < n; k++) { a += (hash(seed + k * 3.1) - 0.5) * 1.1; x += Math.cos(a) * step; y += Math.sin(a) * step; g.lineTo(x, y); }
+      g.stroke();
+    }
+    function buildInterior(g) {
+      g.fillStyle = '#0a0c0c'; g.fillRect(-IX, -IY, IW, IH);
+      // corridor
+      tiles(g, -1180, -70, -300, 70, 56, '#283131', '#364141', 1);
+      g.fillStyle = '#161a1a'; g.fillRect(-1180, -130, 880, 60); g.fillRect(-1180, 70, 880, 60);
+      g.strokeStyle = '#2c3434'; g.lineWidth = 6;
+      [[-110], [112]].forEach(([y]) => { g.beginPath(); g.moveTo(-1180, y); g.lineTo(-300, y); g.stroke(); });
+      for (let x = -1100; x < -300; x += 150) { g.fillStyle = '#10100f'; g.fillRect(x, -128, 74, 56); g.fillStyle = '#403a2a'; g.fillRect(x + 4, -124, 66, 6); g.fillStyle = '#10100f'; g.fillRect(x + 40, 72, 74, 56); }
+      // the side rooms off the junction
+      [[-1, -70, -270], [1, 70, 270]].forEach(([s, ya, yb]) => {
+        g.fillStyle = '#0d1010'; g.fillRect(-540, Math.min(ya, yb), 250, Math.abs(yb - ya));
+        tiles(g, -520, Math.min(ya, yb), -310, Math.min(ya, yb) + Math.abs(yb - ya), 52, '#2a3232', '#364040', s * 9);
+        for (let b = 0; b < 3; b++) {                                    // bed frames, one flung on its side
+          const bx = -500 + b * 66, by = s * 150 + (b === 1 ? 20 : 0);
+          g.save(); g.translate(bx + 22, by); g.rotate(b === 1 ? 0.5 : 0);
+          g.fillStyle = '#3a3a3c'; g.fillRect(-22, -38, 44, 76); g.fillStyle = '#6a6458'; g.fillRect(-18, -34, 36, 68); g.fillStyle = '#4a4438'; g.fillRect(-18, -34, 36, 18);
+          g.restore();
+        }
+      });
+      g.fillStyle = '#10100f'; g.fillRect(-300, -70, 12, 140);
+      // the great hall
+      g.fillStyle = '#10130f'; g.fillRect(-306, -306, 1426, 612);
+      tiles(g, -290, -290, 1110, 290, 70, '#2a3333', '#3a4747', 3);
+      for (let i = 0; i < 70; i++) glow(g, -290 + hash(i * 3.3) * 1400, -290 + hash(i * 5.7) * 580, 40 + hash(i) * 90, '8,12,10', 0.5);
+      g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = 2;
+      for (let i = 0; i < 22; i++) crackLine(g, -280 + hash(i * 2.1) * 1380, -280 + hash(i * 4.3) * 560, hash(i) * TAU, 7, 22, i * 11);
+      // consoles along the north wall, lockers along the south
+      for (let k = 0; k < 10; k++) {
+        const x = -250 + k * 128, y = -290;
+        g.fillStyle = '#1b1f20'; g.fillRect(x, y, 96, 44); g.fillStyle = '#2f3a3c'; g.fillRect(x, y, 96, 8);
+        g.fillStyle = k % 3 === 0 ? '#16363a' : '#0c1618'; g.fillRect(x + 8, y + 14, 36, 22); g.fillRect(x + 52, y + 14, 36, 22);
+        g.strokeStyle = 'rgba(200,230,235,0.5)'; g.lineWidth = 1; crackLine(g, x + 14, y + 16, 0.7, 4, 7, k * 5);
+        g.fillStyle = '#6a4a2a'; g.fillRect(x + 4 + k * 4, y + 40, 12, 3);
+      }
+      for (let k = 0; k < 16; k++) {
+        const x = -250 + k * 84, y = 246;
+        g.fillStyle = '#5a3a24'; g.fillRect(x, y, 38, 44); g.fillStyle = '#7a5434'; g.fillRect(x, y, 38, 7);
+        g.fillStyle = '#1a120c'; g.fillRect(x + 4, y + 10, 30, 30);
+        if (k % 4 === 1) { g.save(); g.translate(x + 38, y + 4); g.rotate(-0.8); g.fillStyle = '#6a4630'; g.fillRect(0, 0, 32, 38); g.restore(); }
+      }
+      // pillars
+      [-60, 280, 620, 960].forEach((x) => [-175, 175].forEach((y) => {
+        g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(x - 24, y - 22, 56, 56);
+        g.fillStyle = '#4a504d'; g.fillRect(x - 28, y - 28, 56, 56); g.fillStyle = '#6a706c'; g.fillRect(x - 28, y - 28, 56, 7);
+        g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 2; crackLine(g, x - 20, y - 20, 0.6, 4, 12, x);
+      }));
+      // wreckage: desks, gurneys, drums, paper
+      for (let i = 0; i < 16; i++) {
+        const x = -230 + hash(i * 6.1) * 1250, y = -210 + hash(i * 3.7 + 2) * 420;
+        if (Math.hypot(x - HATCH.x, y - HATCH.y) < 215) continue;
+        g.save(); g.translate(x, y); g.rotate(hash(i * 8.3) * 3);
+        g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(-26, -15, 56, 36);
+        if (i % 3 === 0) { g.fillStyle = '#7a7a76'; g.fillRect(-32, -13, 64, 26); g.fillStyle = '#9a9a96'; g.fillRect(-32, -13, 64, 6); g.fillStyle = '#222'; [-22, 22].forEach((wx) => { g.beginPath(); g.arc(wx, 16, 5, 0, TAU); g.fill(); }); }
+        else if (i % 3 === 1) { g.fillStyle = '#4a3a28'; g.fillRect(-28, -17, 56, 34); g.fillStyle = '#6a5438'; g.fillRect(-28, -17, 56, 6); }
+        else { g.fillStyle = '#5a2a22'; g.beginPath(); g.arc(0, 0, 15, 0, TAU); g.fill(); g.strokeStyle = '#2a1410'; g.lineWidth = 3; g.stroke(); g.fillStyle = '#7a4636'; g.beginPath(); g.arc(0, 0, 9, 0, TAU); g.fill(); }
+        g.restore();
+      }
+      for (let i = 0; i < 90; i++) { g.save(); g.translate(-280 + hash(i * 2.9) * 1380, -280 + hash(i * 4.7) * 560); g.rotate(hash(i) * 3); g.fillStyle = `rgba(210,205,190,${0.2 + 0.35 * hash(i + 3)})`; g.fillRect(-6, -4, 12, 8); g.restore(); }
+      // puddles under the leaks
+      [[150, 130, 70, 36], [-150, -20, 54, 28], [540, 120, 86, 40], [860, -60, 60, 30]].forEach(([x, y, rx, ry]) => {
+        g.fillStyle = '#122c32'; g.beginPath(); g.ellipse(x, y, rx, ry, 0.2, 0, TAU); g.fill();
+        g.strokeStyle = 'rgba(150,200,210,0.35)'; g.lineWidth = 2; g.beginPath(); g.ellipse(x - rx * 0.1, y - ry * 0.2, rx * 0.7, ry * 0.5, 0.2, 3.4, 5.4); g.stroke();
+      });
+      // the ceiling has come down in four places: rubble, roots and vines hanging through
+      SHAFTS.forEach(([x, y], k) => {
+        glow(g, x, y, 130, '150,190,200', 0.14);
+        for (let i = 0; i < 14; i++) {
+          const a = hash(k * 21 + i) * TAU, d = hash(k * 7 + i * 3) * 60;
+          g.fillStyle = lerpHex('#3a3f3c', '#5a605c', hash(i + k * 9)); g.save(); g.translate(x + Math.cos(a) * d, y + Math.sin(a) * d); g.rotate(hash(i * 5 + k) * 3);
+          g.fillRect(-9, -6, 18, 12); g.restore();
+        }
+        for (let v = 0; v < 5; v++) {
+          let vx = x + (hash(k * 5 + v) - 0.5) * 70, vy = y + (hash(k * 3 + v * 2) - 0.5) * 50, a = hash(k * 11 + v) * TAU;
+          const pts = [[vx, vy]]; for (let s = 0; s < 6; s++) { a += (hash(k * 13 + v * 7 + s) - 0.5) * 1.1; vx += Math.cos(a) * 24; vy += Math.sin(a) * 24; pts.push([vx, vy]); }
+          drawVine(g, pts, 6, 2, '#0f240c', '#2f6a1e');
+        }
+      });
+      for (let i = 0; i < 40; i++) glow(g, -290 + hash(i * 7.3) * 1400, -290 + hash(i * 3.1) * 580, 24 + hash(i) * 40, '44,90,28', 0.42);   // moss
+      // the sealed hatch
+      const H = HATCH;
+      g.fillStyle = '#1a1d1e'; g.beginPath(); g.arc(H.x, H.y, H.r + 38, 0, TAU); g.fill();
+      for (let k = 0; k < 28; k++) {
+        const a0 = (k / 28) * TAU, a1 = ((k + 1) / 28) * TAU;
+        g.fillStyle = k % 2 ? '#c9a227' : '#15130a';
+        g.beginPath(); g.arc(H.x, H.y, H.r + 34, a0, a1); g.arc(H.x, H.y, H.r + 8, a1, a0, true); g.closePath(); g.fill();
+      }
+      const dg = g.createRadialGradient(H.x - 40, H.y - 40, 10, H.x, H.y, H.r);
+      dg.addColorStop(0, '#5a6268'); dg.addColorStop(1, '#2a3034');
+      g.fillStyle = dg; g.beginPath(); g.arc(H.x, H.y, H.r, 0, TAU); g.fill();
+      g.strokeStyle = '#14181a'; g.lineWidth = 4; g.stroke();
+      g.strokeStyle = 'rgba(0,0,0,0.65)'; g.lineWidth = 3;
+      for (let k = 0; k < 8; k++) { const a = (k / 8) * TAU + 0.2; g.beginPath(); g.moveTo(H.x + Math.cos(a) * 44, H.y + Math.sin(a) * 44); g.lineTo(H.x + Math.cos(a) * H.r, H.y + Math.sin(a) * H.r); g.stroke(); }
+      [60, 104].forEach((r) => { g.beginPath(); g.arc(H.x, H.y, r, 0, TAU); g.stroke(); });
+      g.fillStyle = '#9aa2a8';
+      for (let k = 0; k < 24; k++) { const a = (k / 24) * TAU; g.beginPath(); g.arc(H.x + Math.cos(a) * (H.r - 10), H.y + Math.sin(a) * (H.r - 10), 3.2, 0, TAU); g.fill(); }
+      g.fillStyle = '#23282b'; g.beginPath(); g.arc(H.x, H.y, 40, 0, TAU); g.fill(); g.strokeStyle = '#7a828a'; g.lineWidth = 6;
+      g.beginPath(); g.arc(H.x, H.y, 32, 0, TAU); g.stroke();
+      for (let k = 0; k < 6; k++) { const a = (k / 6) * TAU; g.beginPath(); g.moveTo(H.x, H.y); g.lineTo(H.x + Math.cos(a) * 32, H.y + Math.sin(a) * 32); g.stroke(); }
+      g.fillStyle = '#9a6a3a'; g.beginPath(); g.arc(H.x, H.y, 9, 0, TAU); g.fill();
+      for (let i = 0; i < 18; i++) glow(g, H.x + (hash(i * 3.1) - 0.5) * 220, H.y + (hash(i * 5.3) - 0.5) * 220, 14 + hash(i) * 22, '120,64,30', 0.4);   // rust
+    }
+
+    // ---------- the two men ----------
+    //   A (orange) leads, B (green) walks behind him
+    const COL = { A: '#f08a24', B: '#4ac26a' };
+    const stride = (x) => x * 0.085;
+    function leadX(t) {                                                   // outdoors, then up to the door
+      if (t < T_REVEAL) { const p = seg(t, 300, T_REVEAL); return lerp(-820, 700, 0.5 * p + 0.5 * outQuad(p)); }
+      if (t < 10700) return 700;
+      return lerp(700, TRAIL_END, smooth(seg(t, 10700, T_CUT)));
+    }
+    function outdoorMan(t, who) {
+      const lx = leadX(t), isA = who === 'A';
+      const x = isA ? lx : lx - 72 - 6 * Math.sin(t * 0.0018);
+      const toDoor = smooth(seg(t, 10700, T_CUT));
+      const y0 = trailY(x) + (isA ? -16 : 22), y = lerp(y0, isA ? 22 : 44, toDoor);
+      const slope = (trailY(x + 8) - trailY(x - 8)) / 16;
+      let ang = Math.atan(slope);
+      const moving = t < T_REVEAL ? seg(t, 300, 700) * (1 - seg(t, 8700, T_REVEAL)) : seg(t, 10700, 11100);
+      const o = { x, y, ang, u: U, bare: true, helmetCol: COL[who], walk: stride(x) + (isA ? 0 : 1.6), speed: Math.min(1, moving * 1.1), shadow: 1 };
+      if (t > 600 && t < T_REVEAL - 900) ang += (isA ? 0.12 : 0.4) * Math.sin(t * (isA ? 0.0011 : 0.0016) + (isA ? 0 : 2)) * seg(t, 1500, 3000);   // glancing around
+      if (t >= T_REVEAL - 600 && t < 10700) {                              // they stop and take in the ruin
+        const k = smooth(seg(t, T_REVEAL - 600, T_REVEAL + 500));
+        if (isA) { ang = lerp(ang, -0.12, k); o.reach = { x: 1.35, y: -0.55, k: k * smooth(seg(t, T_REVEAL + 300, T_REVEAL + 900)) * (1 - seg(t, 10200, 10700)), sym: false }; }
+        else { ang = lerp(ang, 0.15 + 0.1 * Math.sin(t * 0.002), k); o.armsUp = 0.5 * smooth(seg(t, T_REVEAL + 700, T_REVEAL + 1300)) * (1 - seg(t, 10200, 10700)); }
+      }
+      o.ang = ang;
+      return o;
+    }
+
+    // inside, in absolute ms; the corridor runs along y ~ 0, the hall opens at x = -300
+    function insideMan(t, who) {
+      const isA = who === 'A', back = isA ? 0 : 74;
+      let x, y = isA ? -14 : 16, ang = 0, walking = false, lean = 0;
+      const o = { u: U, bare: true, helmetCol: COL[who], flashlight: true, shadow: 1 };
+      if (t < 17900) { x = lerp(-1150, -430, smooth(seg(t, 13700, 17900) * 0.9 + 0.1 * seg(t, 13700, 17900))) - back; walking = t > 13750; ang = 0.05 * Math.sin(t * 0.002); }
+      else if (t < 20700) {                                                // at the junction, torches into the side rooms
+        x = -430 - back; ang = isA ? lerp(0, -1.5, smooth(seg(t, 17900, 18900))) : lerp(0, 1.55, smooth(seg(t, 18200, 19200)));
+        if (isA) ang += 0.28 * Math.sin((t - 18900) * 0.004) * seg(t, 18900, 19300) * (1 - seg(t, 19900, 20700));
+        if (!isA && t > 19300) ang += 0.22 * Math.sin((t - 19300) * 0.0045);
+        const back0 = smooth(seg(t, 20000, 20700));
+        ang = lerp(ang, 0.05, back0);
+        if (isA) y += -22 * smooth(seg(t, 18200, 18800)) * (1 - back0);
+        if (!isA) y += 22 * smooth(seg(t, 18500, 19100)) * (1 - back0);
+        if (t > 19000 && t < 19250 && isA) o.jitter = 0.34;                  // the rat
+      } else if (t < 24300) {
+        x = lerp(-430, 400, smooth(seg(t, 20700, 24300) * 0.85 + 0.15 * seg(t, 20700, 24300))) - back; walking = true;
+        y = (isA ? -14 : 16) + (isA ? 22 : -22) * smooth(seg(t, 21400, 23000)) * (1 - seg(t, 23200, 24300));
+        ang = 0.4 * Math.sin(t * 0.0029 + (isA ? 0 : 1.3));
+        if (t > 22200 && t < 23000) { ang = lerp(ang, -1.25, smooth(seg(t, 22200, 22350)) * (1 - smooth(seg(t, 22600, 23000)))); }
+        if (t > 22200 && t < 22420) o.jitter = 0.3;
+      } else if (t < T_QUAKE) {                                            // to the hatch, where they stop and look down at it
+        const aX = 548, bX = 552;
+        x = lerp(400 - back, isA ? aX : bX, smooth(seg(t, 24300, 26400)));
+        y = lerp(isA ? 8 : 34, isA ? -26 : 52, smooth(seg(t, 24300, 26400)));
+        walking = t < 26300;
+        const aim = Math.atan2(HATCH.y - y, HATCH.x - x);
+        ang = lerp(0.3 * Math.sin(t * 0.003), aim + 0.12 * Math.sin(t * 0.002 + (isA ? 0 : 2)), smooth(seg(t, 25400, 26400)));
+        lean = smooth(seg(t, 26400, 27000)) * 0.1;
+        if (t > 27600 && t < 27900 && !isA) o.jitter = 0.3;
+        if (t > 27000) o.sy = 1 - 0.0;
+      } else {
+        const aim = Math.atan2(HATCH.y - (isA ? -26 : 52), HATCH.x - (isA ? 548 : 552));
+        const tr = smooth(seg(t, T_QUAKE + 300, T_QUAKE + 1000)), run = smooth(seg(t, T_QUAKE + 900, T_QUAKE + 1100));
+        const dir = Math.PI + (isA ? -0.1 : 0.12);
+        ang = lerp(aim, dir, tr);
+        const rs = smooth(seg(t, 29300, 29600));
+        const runDist = 150 * smooth(seg(t, 29300, 30700) * 0.6 + 0.4 * seg(t, 29300, 30700)) * rs;
+        x = (isA ? 548 : 552) - runDist; y = (isA ? -26 : 52) + (isA ? -10 : 6) * smooth(seg(t, 29300, 30700)); walking = rs > 0.2 && run > 0;
+        o.jitter = 0.2 * seg(t, T_QUAKE, T_QUAKE + 500);
+        o.armsUp = 0.8 * smooth(seg(t, T_QUAKE + 300, T_QUAKE + 900)) * (1 - rs);
+      }
+      o.x = x; o.y = y; o.ang = ang;
+      o.walk = stride(x) + (isA ? 0 : 1.6) + t * 0.0001; o.speed = walking ? 1 : 0;
+      if (lean) o.sx = 1 - lean;
+      return o;
+    }
+
+    // when the pit's edge reaches each man (found once, by stepping through the collapse)
+    const pitR = (t) => 600 * Math.pow(seg(t, T_PIT, T_PIT_END), 0.75);
+    const fallAt = {};
+    function fallTime(who) {
+      if (fallAt[who] === undefined) {
+        fallAt[who] = T_PIT_END;
+        for (let t = T_PIT; t < T_PIT_END; t += 20) {
+          const m = insideMan(t, who);
+          if (Math.hypot(m.x - HATCH.x, m.y - HATCH.y) < pitR(t) - 6) { fallAt[who] = t; break; }
+        }
+      }
+      return fallAt[who];
+    }
+    function manNow(t, who) {
+      if (t < T_CUT) return outdoorMan(t, who);
+      const o = insideMan(t, who);
+      if (t >= T_QUAKE) {
+        const f = fallTime(who);
+        if (t >= f) {                                                      // the floor is gone
+          const base = insideMan(f, who), p = seg(t, f, f + 1050);
+          const pull = Math.atan2(HATCH.y - base.y, HATCH.x - base.x);
+          o.x = base.x + Math.cos(pull) * 70 * outQuad(p); o.y = base.y + Math.sin(pull) * 70 * outQuad(p);
+          o.ang = base.ang + 4.5 * p; o.flail = 1; o.armsUp = 0; o.speed = 0; o.jitter = 0;
+          const sc = 1 - 0.9 * p * p; o.sx = sc; o.sy = sc;
+          o.alpha = 1 - smooth(seg(p, 0.45, 1)); o.shadow = 0; o.time = t;
+          o.fallen = p;
+        }
+      }
+      return o;
+    }
+    function drawMan(g, o, t) {
+      o.time = o.time || t;
+      if (o.fallen !== undefined) {                                        // drawn smaller, spinning, into the dark
+        g.save(); g.translate(o.x, o.y); g.scale(o.sx, o.sy); drawHazmat(g, Object.assign({}, o, { x: 0, y: 0, sx: 1, sy: 1 })); g.restore();
+      } else drawHazmat(g, o);
+    }
+
+    // ---------- the quake: cracks, the pit, falling chunks ----------
+    function drawCracks(g, t) {
+      if (t < T_QUAKE) return;
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * TAU + (hash(i * 4.1) - 0.5) * 0.3;
+        const grow = outCubic(seg(t, T_QUAKE + 100 + i * 45, T_QUAKE + 1700 + i * 35));
+        if (grow <= 0) continue;
+        const L = (170 + 290 * hash(i * 2.9)) * grow, n = 10;
+        const pts = [[HATCH.x + Math.cos(a) * 36, HATCH.y + Math.sin(a) * 36]];
+        let ca = a;
+        for (let k = 1; k <= n; k++) { ca += (hash(i * 31 + k) - 0.5) * 0.34; const d = 36 + (L / n) * k; pts.push([HATCH.x + Math.cos(ca) * d + (hash(i * 7 + k) - 0.5) * 3, HATCH.y + Math.sin(ca) * d + (hash(i * 9 + k) - 0.5) * 3]); }
+        g.lineJoin = 'round'; g.lineCap = 'round';
+        [['rgba(150,190,200,0.16)', 9, 1], ['#000', 3.4, 1], ['#000', 1.8, 0.45]].forEach(([col, w, part]) => {
+          g.strokeStyle = col; g.lineWidth = w; g.beginPath(); pts.slice(0, Math.max(2, Math.ceil(pts.length * part) + (part < 1 ? 0 : 0))).forEach(([px, py], k) => { if (k === 0) g.moveTo(px, py); else g.lineTo(px, py); }); g.stroke();
+        });
+      }
+    }
+    function drawPit(g, t) {
+      const R = pitR(t);
+      if (R < 3) return;
+      const edge = (r) => {
+        g.beginPath();
+        for (let i = 0; i <= 44; i++) {
+          const a = (i / 44) * TAU, rr0 = r * (0.86 + 0.2 * hash((i % 44) * 3.3) + 0.05 * Math.sin(a * 5));
+          const px = HATCH.x + Math.cos(a) * rr0, py = HATCH.y + Math.sin(a) * rr0;
+          if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+        }
+        g.closePath();
+      };
+      edge(R * 1.07); g.fillStyle = 'rgba(0,0,0,0.5)'; g.fill();             // the broken lip
+      edge(R);
+      const pg = g.createRadialGradient(HATCH.x, HATCH.y, 0, HATCH.x, HATCH.y, R);
+      pg.addColorStop(0, '#000'); pg.addColorStop(0.7, '#020304'); pg.addColorStop(1, '#0a0d0e');
+      g.fillStyle = pg; g.fill();
+      g.strokeStyle = '#7a807c'; g.lineWidth = 3; g.stroke();
+      g.save(); edge(R); g.clip();                                            // faint depth: pale mist rising in the dark
+      const pulse = 0.75 + 0.25 * Math.sin(t * 0.004);
+      glow(g, HATCH.x, HATCH.y, R * 0.9, '30,110,120', 0.34 * pulse * seg(t, T_PIT, T_PIT + 1200));
+      glow(g, HATCH.x, HATCH.y, R * 0.45, '10,60,70', 0.4 * seg(t, T_PIT + 400, T_PIT + 1500));
+      for (let i = 1; i <= 4; i++) { g.strokeStyle = `rgba(0,0,0,${0.18 * i})`; g.lineWidth = R * 0.07; g.beginPath(); g.arc(HATCH.x, HATCH.y, R * (1 - i * 0.15), 0, TAU); g.stroke(); }
+      g.restore();
+    }
+    function drawChunks(g, t) {
+      if (t < T_PIT) return;
+      for (let i = 0; i < 80; i++) {
+        const ts = T_PIT + 80 + hash(i * 3.7) * 2500, p = (t - ts) / 950;
+        if (p < 0 || p > 1) continue;
+        const a = hash(i * 5.3) * TAU, r0 = pitR(ts) * (0.78 + 0.26 * hash(i * 2.9));
+        const x = HATCH.x + Math.cos(a) * r0 * (1 - 0.3 * outQuad(p)), y = HATCH.y + Math.sin(a) * r0 * (1 - 0.3 * outQuad(p));
+        const sz = (12 + 20 * hash(i * 7.1)) * (1 - 0.8 * p);
+        g.save(); g.translate(x, y); g.rotate(hash(i) * 3 + p * 5 * (hash(i + 1) - 0.5)); g.globalAlpha = 1 - p * p;
+        g.fillStyle = lerpHex('#3a3f3c', '#7a807c', hash(i * 9.9)); g.beginPath(); g.moveTo(-sz, -sz * 0.6); g.lineTo(sz * 0.9, -sz * 0.8); g.lineTo(sz, sz * 0.7); g.lineTo(-sz * 0.7, sz * 0.9); g.closePath(); g.fill();
+        g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 1; g.stroke();
+        g.restore();
+      }
+    }
+
+    // ---------- the camera ----------
+    function camera(t) {
+      if (t < T_REVEAL) {
+        const m = outdoorMan(t, 'A');
+        return { x: m.x + 150, y: lerp(m.y * 0.4, 0, seg(t, 5000, T_REVEAL)), z: 1.22 + 0.06 * Math.sin(t * 0.0004) + 0.05 * seg(t, 0, T_REVEAL) };
+      }
+      if (t < T_CUT) {
+        const e = smooth(seg(t, T_REVEAL + 300, 12200));
+        const m = outdoorMan(T_REVEAL, 'A');
+        const mid = { x: m.x + 150, y: 0, z: 1.27 };
+        return { x: lerp(mid.x, 1210, e), y: lerp(0, -4, e), z: lerp(mid.z, 0.6, e) + 0.03 * smooth(seg(t, 12200, T_CUT)) };
+      }
+      if (t < 17900) { const m = insideMan(t, 'A'); return { x: m.x + 130, y: 0, z: 1.38 }; }
+      if (t < 20700) { const m = insideMan(t, 'A'); return { x: m.x + 150, y: -4, z: 1.4 - 0.06 * smooth(seg(t, 20000, 20700)) }; }
+      if (t < 24300) { const m = insideMan(t, 'A'); return { x: m.x + 150, y: 0, z: lerp(1.3, 1.1, smooth(seg(t, 20700, 22000))) }; }
+      if (t < T_QUAKE) { const e = smooth(seg(t, 24300, 27500)); return { x: lerp(560, 640, e), y: 0, z: lerp(1.1, 1.6, e) }; }
+      return { x: lerp(640, 660, smooth(seg(t, T_QUAKE, 31000))), y: 0, z: lerp(1.6, 0.95, smooth(seg(t, T_QUAKE + 600, 30600))) + 0.12 * smooth(seg(t, 31200, T_PIT_END)) };
+    }
+
+    // ---------- lights ----------
+    const shaftLights = () => SHAFTS.map(([x, y], i) => ({ x, y, r: 150, a: 0.5 }));
+    function lights(t, c) {
+      const L = [];
+      if (t < T_CUT) {
+        L.push({ x: c.cam.x, y: c.cam.y, r: 560 * (1 + 0.2 * (1.3 - Math.min(c.cam.z, 1.3))) , a: 0.55 });
+        ['A', 'B'].forEach((w) => { const o = outdoorMan(t, w); L.push({ x: o.x, y: o.y, r: 130, a: 0.4 }); });
+        if (t > T_REVEAL) L.push({ x: 1400, y: 0, r: 700, a: 0.3 * smooth(seg(t, T_REVEAL, 11500)) });
+        return L;
+      }
+      const flick = t >= T_QUAKE ? (hash(Math.floor(t / 70)) > 0.3 + 0.3 * seg(t, T_QUAKE, 30500) ? 1 : 0.3) : 1;
+      ['A', 'B'].forEach((w) => {
+        const o = manNow(t, w);
+        if (o.fallen !== undefined) { if (o.fallen < 0.9) L.push({ x: o.x, y: o.y, r: 80 * (1 - o.fallen), a: 0.7 * (1 - o.fallen) }); return; }
+        torchLights(o.x, o.y, o.ang, t, U, flick).forEach((l) => L.push(l));
+      });
+      // cold light through the holes in the ceiling
+      if (t < T_PIT_END) shaftLights().forEach((l) => { l.a *= flick > 0.5 ? 1 : 0.6; L.push(l); });
+      if (t >= T_PIT) { const R = pitR(t); L.push({ x: HATCH.x, y: HATCH.y, r: R * 1.5 + 260, a: 0.55 * (1 - seg(t, 31800, T_BLACK)) }); }
+      L.push({ x: -1150 + 0, y: 0, r: 260 * (1 - seg(t, 13500, 16500)), a: 0.9 * (1 - seg(t, 13500, 16500)) });       // daylight at the door
+      if (t > 22190 && t < 22500) L.push({ x: 60, y: -285, r: 260, a: 0.9 * (1 - seg(t, 22190, 22500)) });       // the spark
+      if (t < T_QUAKE + 900) L.push({ x: HATCH.x, y: HATCH.y, r: 190, a: 0.28 });
+      return L;
+    }
+
+    // ---------- the scene ----------
+    const steps = [];
+    function stepRun(a, b, every) { for (let t = a; t < b; t += every) steps.push([t, 'step'], [t + every / 2, 'step']); }
+    stepRun(500, 8800, 340); stepRun(10800, 13400, 400); stepRun(13900, 17800, 340); stepRun(20800, 24200, 340); stepRun(24400, 26200, 420); stepRun(29400, 30300, 240);
+    SCENES.season2 = {
+      name: 'SEASON 2', color: '#e8c34a', dur: DUR,
+      dark: (t) => (t < T_CUT ? (t < T_REVEAL ? 0.34 : 0.3) : 0.8 + 0.12 * seg(t, T_QUAKE, 31800)),
+      shade: (t) => (t < T_CUT ? '6,16,10' : '2,5,7'),
+      dip: (t) => (t > T_CUT - 700 && t < T_CUT ? seg(t, T_CUT - 700, T_CUT) : (t >= T_CUT && t < T_CUT + 500 ? 1 - seg(t, T_CUT, T_CUT + 500) : 0)) + seg(t, T_PIT_END - 200, T_BLACK),
+      shakes: [[25200, 1.2, 600], [27000, 0.8, 500], [T_QUAKE, 2, 900], [T_QUAKE + 900, 3.5, 700], [29000, 6, 900], [29800, 9, 1000], [30800, 13, 1100], [31700, 12, 900], [T_PIT, 4, 500]],
+      sfx: steps.concat([
+        [0, 'wind'], [4800, 'wind'], [900, 'chirp'], [2600, 'chirp'], [4400, 'chirp'], [6300, 'chirp'], [8100, 'chirp'], [10300, 'chirp'],
+        [11000, 'creak'], [T_CUT - 300, 'creak'], [14500, 'drip'], [16100, 'drip'], [18300, 'drip'], [19050, 'step'], [20900, 'drip'], [22200, 'spark'], [23600, 'drip'],
+        [25200, 'tremor'], [26500, 'drip'], [27600, 'knock'], [27850, 'knock'],
+        [T_QUAKE, 'rumble'], [28750, 'crack'], [29450, 'crack'], [29900, 'crack'], [30050, 'scream'], [30200, 'fall'], [30280, 'scream'], [30800, 'thud'], [31500, 'shatter'],
+      ]),
+      camera,
+      lights,
+      world(g, t) {
+        if (t < T_CUT) {
+          blit(g, cached('s2ground', OW, OH, OX, OY, buildGround), OX, OY);
+          // slow cloud shadows drifting over the forest floor
+          for (let i = 0; i < 6; i++) glow(g, -1000 + ((hash(i * 7) * 2800 + t * 0.012 * (1 + hash(i))) % 2800), -250 + hash(i * 3) * 500, 260, '0,6,2', 0.22);
+          const A = outdoorMan(t, 'A'), B = outdoorMan(t, 'B');
+          (A.x > B.x ? [B, A] : [A, B]).forEach((m) => drawMan(g, m, t));
+          // the canopy overhead, easing away as the camera rises
+          g.save(); g.globalAlpha = 1 - 0.78 * smooth(seg(t, T_REVEAL, 11800));
+          blit(g, cached('s2canopy', OW, OH, OX, OY, buildCanopy), OX, OY, 3 * Math.sin(t * 0.0007), 2 * Math.sin(t * 0.0009 + 1));
+          g.restore();
+          return;
+        }
+        blit(g, cached('s2inside', IW, IH, IX, IY, buildInterior), IX, IY);
+        // the rat
+        if (t > 18900 && t < 19700) {
+          const p = seg(t, 18900, 19700), rx = lerp(-500, -330, p), ry = 6 + 4 * Math.sin(p * 18);
+          g.save(); g.translate(rx, ry); g.rotate(0.05 * Math.sin(p * 40));
+          g.fillStyle = '#26211f'; g.beginPath(); g.ellipse(0, 0, 10, 5, 0, 0, TAU); g.fill();
+          g.strokeStyle = '#4a3a38'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(-9, 0); g.quadraticCurveTo(-18, 5 * Math.sin(p * 30), -26, 2); g.stroke();
+          g.fillStyle = '#d83a2a'; g.beginPath(); g.arc(8, -2, 1, 0, TAU); g.fill();
+          g.restore();
+        }
+        // a drip into the puddle
+        [[150, 130, 0], [540, 120, 600]].forEach(([x, y, off]) => {
+          const p = ((t + off) % 2200) / 2200;
+          g.strokeStyle = `rgba(160,210,220,${0.5 * (1 - p)})`; g.lineWidth = 1.5; g.beginPath(); g.ellipse(x, y, 4 + 26 * p, 2 + 12 * p, 0, 0, TAU); g.stroke();
+        });
+        drawCracks(g, t); drawPit(g, t); drawChunks(g, t);
+        const A = manNow(t, 'A'), B = manNow(t, 'B');
+        [B, A].forEach((m) => drawMan(g, m, t));
+      },
+      after(g, t, c) {
+        g.save(); g.globalCompositeOperation = 'lighter';
+        if (t < T_CUT) {
+          // slanting shafts of low sun through the canopy
+          for (let i = 0; i < 9; i++) {
+            const x = -1100 + i * 260 + 40 * Math.sin(i * 3), w = 60 + 70 * hash(i * 3.3), a = (0.045 + 0.04 * hash(i * 5.1)) * (0.75 + 0.25 * Math.sin(t * 0.0008 + i));
+            const lg = g.createLinearGradient(x, -460, x + 260, 460);
+            lg.addColorStop(0, `rgba(255,236,170,${a})`); lg.addColorStop(1, 'rgba(255,236,170,0)');
+            g.fillStyle = lg; g.beginPath(); g.moveTo(x, -460); g.lineTo(x + w, -460); g.lineTo(x + 260 + w, 460); g.lineTo(x + 260, 460); g.closePath(); g.fill();
+          }
+          for (let i = 0; i < 12; i++) glow(g, -1000 + ((hash(i * 11) * 2400 + t * 0.008) % 2400), -300 + hash(i * 13) * 600, 140 + 80 * hash(i), '160,200,150', 0.05);   // ground mist
+          drift(g, t, 70, { x: -1000, y: -320, w: 2100, h: 640 }, { seed: 3, speed: 0.6, vx: 8, vy: -5, colors: ['#e8f090', '#c8e870', '#fff8b0'], size: 1.7, alpha: 0.85, sway: 8 });   // fireflies and pollen
+          g.globalCompositeOperation = 'source-over';
+          drift(g, t, 26, { x: -1000, y: -380, w: 2100, h: 760 }, { seed: 17, speed: 1, vx: 20, vy: 38, colors: ['#8a4a1a', '#c9842a', '#6a5a1a'], size: 2.6, alpha: 0.8, sway: 16 });   // falling leaves
+        } else {
+          g.globalCompositeOperation = 'lighter';
+          // dust turning in the cold light
+          SHAFTS.forEach(([x, y], k) => drift(g, t, 14, { x: x - 60, y: y - 60, w: 120, h: 120 }, { seed: k * 5, speed: 0.4, vx: 3, vy: 5, color: '#cfe4ea', size: 1.3, alpha: 0.7 }));
+          // the red emergency lamp at the far end
+          const on = (t % 1700) < 700 ? 1 : 0.15;
+          glow(g, 1040, -262, 150, '255,40,30', 0.28 * on); glow(g, 1040, -262, 28, '255,150,120', 0.7 * on);
+          // the spark
+          if (t > 22190 && t < 22700) glow(g, 60, -285, 90, '255,226,140', 0.8 * (1 - seg(t, 22190, 22700)));
+          // the quake: dust shaken out of the ceiling and boiling up out of the pit
+          const q = seg(t, T_QUAKE, 29500);
+          if (q > 0) drift(g, t, Math.floor(40 + 90 * q), { x: 300, y: -300, w: 800, h: 600 }, { seed: 41, speed: 1.6, vx: 0, vy: 90, color: '#b8b4a4', size: 2, alpha: 0.5 * q, sway: 6 });
+          for (let i = 0; i < 12; i++) {
+            const ts = T_QUAKE + 200 + i * 230, p = (t - ts) / 800;
+            if (p > 0 && p < 1) glow(g, 330 + hash(i * 5) * 700, -250 + hash(i * 9) * 500, 40 + 60 * p, '170,166,150', 0.5 * (1 - p));
+          }
+          if (t > T_PIT) for (let i = 0; i < 10; i++) {
+            const a = hash(i * 3.3) * TAU, rr0 = pitR(t) * (0.8 + 0.3 * hash(i)), p = (t - T_PIT) * 0.001;
+            glow(g, HATCH.x + Math.cos(a) * rr0, HATCH.y + Math.sin(a) * rr0, 60 + 30 * hash(i * 2) + 30 * p, '150,152,140', 0.05 * (1 - seg(t, 31300, T_BLACK)));
+          }
+        }
+        g.restore();
+      },
+    };
+  })();
+
   // <<SCENES-END>>
 
   window.BossCutscene = {
