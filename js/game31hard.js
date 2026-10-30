@@ -2,7 +2,7 @@
 // the Being of Pure Chaos, on the rooftop landing pad from Level 30 (same 35x21
 // arena, same auto-firing missile rig) -- 1000 HP, hundreds of eyes, skin and
 // wings stitched from the textures of the whole game, only hurt by antimatter
-// missiles (25 damage, one touches down every 20 seconds, at most 3 waiting).
+// missiles (25 damage, one touches down every 10 seconds, at most 3 waiting).
 // level31.html sends hard-mode runs to level31hard.html, which loads this.
 (function () {
   const HM = window.HardMode;
@@ -121,11 +121,11 @@
   const SHOCKWAVE_MAX_RADIUS = TILE * 5;
 
   // Antimatter missiles: the only way to actually hurt this boss. One
-  // touches down on a random pad tile every 20s (the first the moment the
+  // touches down on a random pad tile every 10s (the first the moment the
   // fight starts) and no more than 3 wait on the pad at once; walking into
   // one fires it automatically, and it homes in on the boss at 5x player
   // speed for 25 damage.
-  const MISSILE_SPAWN_INTERVAL_MS = 20000;
+  const MISSILE_SPAWN_INTERVAL_MS = 10000;
   const MAX_MISSILES_ON_FIELD = 3;
   const MISSILE_PICKUP_RADIUS = 20;
   const MISSILE_SPEED = HM.proj(PLAYER_SPEED * 5);
