@@ -82,19 +82,18 @@
   const VICTORY_REDIRECT_MS = 3500;
   // After the Multipod falls its car is wrecked and the swarm splits into its
   // individual monsters, every one of them chasing at the runners' own speed.
-  // You get out and run -- at the double, no stamina -- down a road that winds
-  // through the forest and is littered with 2x1-tile concrete roadblocks to
-  // weave around, to a military roadblock; passing through that plays the
-  // soldiers' film just before the ending.
+  // You get out and run -- at the double, no stamina -- down the straight road,
+  // weaving round 2x1-tile concrete roadblocks, to a military roadblock;
+  // passing through that plays the soldiers' film just before the ending.
   const ESCAPE_RUN = PLAYER_SPEED * 2;
   const ESCAPE_ROAD_TILES = 52;
   const ESCAPE_HEAD = 640;         // nothing starts closer than this to a runner
   const SPLIT_STUN_MS = 1600;      // the pieces are dazed for this long after the split
   const ESCAPE_RAMP_MS = 500;
   const MILITARY_MS = 10000;
-  // The road bends: [tiles from where the escape starts, rows the road has shifted]
-  // smoothed between points, and it is back on the original line for the roadblock.
-  const ESCAPE_BENDS = [[0, 0], [8, 0], [15, -7], [21, -7], [28, 5], [34, 5], [39, -4], [43, -4], [49, 0]];
+  // Past the generated stretch the drive winds: every BEND_LEN tiles the road
+  // swings to the other side of the forest, easing over BEND_EASE of them.
+  const BEND_FROM = 12, BEND_LEN = 32, BEND_LEAD = 4, BEND_EASE = 22;
   const ESCAPE_BLOCKS_FROM = 11, ESCAPE_BLOCKS_TO = 44, ESCAPE_BLOCK_EVERY = 5;
   // The credits that roll once the bomb has gone off: scrolled up the
   // screen like movie credits, then "THE END..." and a sting for "FOR NOW...".
@@ -449,11 +448,24 @@
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(k, 2246822519);
     return ((h ^ (h >>> 13)) >>> 0);
   }
+  // how far (rows) the driving road has swung from the straight line at this column
+  function bendTarget(k) { return (k % 2 === 0 ? 1 : -1) * (5 + hash2(k, 2, 33) % 4); }
+  function chaseRoadShift(tx) {
+    const off = tx - (COLS + BEND_FROM);
+    if (off <= 0) return 0;
+    const k = Math.floor(off / BEND_LEN), p = clamp((off - k * BEND_LEN - BEND_LEAD) / BEND_EASE, 0, 1);
+    return lerp(k === 0 ? 0 : bendTarget(k - 1), bendTarget(k), p * p * (3 - 2 * p));
+  }
+  // the top row of the 8-row road at a column
+  function roadTopAt(tx) {
+    if (escape && tx >= escape.t0) return escape.rt0;
+    return LEVEL.road.y0 + (tx < COLS ? 0 : Math.round(chaseRoadShift(tx)));
+  }
   function procTile(tx, ty) {
-    const R = LEVEL.road;
     if (ty <= 0 || ty >= ROWS - 1) return '#';
-    if (ty >= R.y0 && ty <= R.y1) return (hash2(tx, ty, 7) % 10000 < 45 && !knocked.has(tx + ',' + ty)) ? 'K' : 'R';
-    if (ty === R.y0 - 1 || ty === R.y1 + 1) return '.';
+    const rt = roadTopAt(tx);
+    if (ty >= rt && ty < rt + 8) return (hash2(tx, ty, 7) % 10000 < 45 && !knocked.has(tx + ',' + ty)) ? 'K' : 'R';
+    if (ty === rt - 1 || ty === rt + 8) return '.';
     return hash2(tx, ty, 9) % 1000 < 740 ? 'T' : '.';
   }
   function tileChar(tx, ty) {
@@ -968,20 +980,10 @@
 
   // ---- the escape: the car is wrecked, the swarm comes apart into its
   // monsters, and the road ends at a military roadblock ----
-  // the winding road: rows 0..7 of it start at escapeRoadTop(tx)
-  function escapeRoadTop(tx) {
-    const off = tx - escape.t0;
-    let shift = 0;
-    for (let i = 1; i < ESCAPE_BENDS.length; i++) {
-      const [o0, r0] = ESCAPE_BENDS[i - 1], [o1, r1] = ESCAPE_BENDS[i];
-      if (off <= o1) { const f = clamp((off - o0) / (o1 - o0), 0, 1); shift = lerp(r0, r1, f * f * (3 - 2 * f)); break; }
-      shift = r1;
-    }
-    return LEVEL.road.y0 + Math.round(shift);
-  }
-  function escapeTile(tx, ty) {
+  // the straight run to the roadblock: the road carries on at the row it was on when the car went
+    function escapeTile(tx, ty) {
     if (ty <= 0 || ty >= ROWS - 1) return '#';
-    const rt = escapeRoadTop(tx);
+    const rt = escape.rt0;
     if (ty >= rt && ty < rt + 8) return escape.blockSet.has(tx + ',' + ty) ? 'X' : 'R';
     if (ty === rt - 1 || ty === rt + 8) return '.';
     return hash2(tx, ty, 9) % 1000 < 740 ? 'T' : '.';
@@ -992,7 +994,7 @@
     escape.blocks = []; escape.blockSet = new Set();
     for (let off = ESCAPE_BLOCKS_FROM; off < ESCAPE_BLOCKS_TO; off += ESCAPE_BLOCK_EVERY) {
       const tx = escape.t0 + off;
-      const lo = Math.max(escapeRoadTop(tx), escapeRoadTop(tx + 1)), hi = Math.min(escapeRoadTop(tx), escapeRoadTop(tx + 1)) + 7;
+      const lo = escape.rt0, hi = escape.rt0 + 7;
       const rows = [lo + (hash2(tx, 3, 21) % (hi - lo + 1))];
       if (hash2(tx, 5, 22) % 3 === 0) {
         const second = lo + (hash2(tx, 7, 23) % (hi - lo + 1));
@@ -1007,7 +1009,7 @@
   function blockedByRoadblock(x, y) {
     const E = escape.endX;
     if (x < E - PLAYER_RADIUS || x > E + 36 + PLAYER_RADIUS) return false;
-    const R = LEVEL.road, mid = (R.y0 + R.y1 + 1) / 2 * TILE;
+    const mid = (escape.rt0 + 4) * TILE;
     return Math.abs(y - mid) > 2.5 * TILE - PLAYER_RADIUS;
   }
   function startEscape(now) {
@@ -1040,11 +1042,12 @@
     chasers.forEach((c) => { c.kx = need; });
     escape = {
       startedAt: now,
-      t0: Math.floor(Math.min(...players.map((p) => p.x)) / TILE),
+      t0: Math.floor(Math.min(...players.map((p) => p.x)) / TILE), rt0: 0,
       blocks: [], blockSet: new Set(),
       endX: Math.max(...players.map((p) => p.x)) + ESCAPE_ROAD_TILES * TILE,
       start: { players: players.map((p) => ({ x: p.x, y: p.y })), chasers: chasers.map((c) => ({ x: c.x, y: c.y, kx: c.kx })) },
     };
+    escape.rt0 = roadTopAt(escape.t0 - 1);
     layRoadblocks();
     gameState = 'escape';
     missiles = []; thrown = [];
@@ -1223,13 +1226,14 @@
     });
   }
 
-  // the dashes and edge lines of the road, following its bends
-  function drawEscapeRoadMarkings(g, camX, vw, zoom) {
-    const tx0 = Math.max(escape.t0, Math.floor((camX - vw / 2 / zoom) / TILE) - 2), tx1 = Math.ceil((camX + vw / 2 / zoom) / TILE) + 2;
+  // the dashes and edge lines of the road past the generated stretch, following its bends
+  function drawBentRoadMarkings(g, camX, vw, zoom) {
+    const tx0 = Math.max(COLS, Math.floor((camX - vw / 2 / zoom) / TILE) - 2), tx1 = Math.ceil((camX + vw / 2 / zoom) / TILE) + 2;
+    if (tx1 <= tx0) return;
     const trace = (dy) => {
       g.beginPath();
       for (let tx = tx0; tx <= tx1; tx++) {
-        const y = escapeRoadTop(tx) * TILE + dy;
+        const y = roadTopAt(tx) * TILE + dy;
         if (tx === tx0) g.moveTo(tx * TILE, y); else g.lineTo(tx * TILE, y);
         g.lineTo((tx + 1) * TILE, y);
       }
@@ -1244,10 +1248,11 @@
   }
 
   function drawRoadMarkings(g, camX, vw, zoom) {
-    if (escape) { drawEscapeRoadMarkings(g, camX, vw, zoom); drawEscapeBlocks(g, camX, vw, zoom); }
+    drawBentRoadMarkings(g, camX, vw, zoom);
+    if (escape) drawEscapeBlocks(g, camX, vw, zoom);
     const R = LEVEL.road;
     const left = Math.max(R.x0 * TILE, camX - vw / 2 / zoom - 40);
-    const right = Math.min(camX + vw / 2 / zoom + 40, escape ? escape.t0 * TILE : Infinity);   // the bends take over from here
+    const right = Math.min(camX + vw / 2 / zoom + 40, COLS * TILE);   // the bends take over from here
     if (right <= left) return;
     g.save();
     g.strokeStyle = 'rgba(255,214,70,0.85)';
@@ -1568,7 +1573,7 @@
     if (escape) {
       players.forEach((p) => { if (p.down) return; const q = sp(p.x, p.y); punch(q.x, q.y, 210 * z, 0.95); });
       chasers.forEach((c) => { const q = sp(c.x, c.y); punch(q.x, q.y, (c.size * 2.4 + 24) * z, 0.7); });
-      const R = LEVEL.road, q = sp(escape.endX + 30, (R.y0 + R.y1 + 1) / 2 * TILE);
+      const q = sp(escape.endX + 30, (escape.rt0 + 4) * TILE);
       punch(q.x, q.y, 620 * z, 0.97);                    // the roadblock's floodlights
     } else if (gameState !== 'foot') { const b = sp(boss.x, boss.y); punch(b.x, b.y, BOSS_SPREAD * 2.6 * z, 0.88); }
     missiles.forEach((m) => { const q = sp(m.x, m.y); punch(q.x, q.y, 90 * z, 0.8); });
@@ -1839,8 +1844,8 @@
   // wide enough to run through, trucks, soldiers with rifles trained down the
   // road, and floodlights
   function drawRoadblock(g, now) {
-    const E = escape.endX, R = LEVEL.road;
-    const top = R.y0 * TILE, bot = (R.y1 + 1) * TILE, mid = (top + bot) / 2, GAP = 2.5 * TILE;
+    const E = escape.endX;
+    const top = escape.rt0 * TILE, bot = (escape.rt0 + 8) * TILE, mid = (top + bot) / 2, GAP = 2.5 * TILE;
     const y0 = top - 5 * TILE, y1 = bot + 5 * TILE;
     g.save();
     g.fillStyle = '#4b4e53'; g.fillRect(E - 30, y0, 300, y1 - y0);
