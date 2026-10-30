@@ -55,6 +55,21 @@
     if (n === TOTAL_LEVELS) {
       try { localStorage.setItem(BEATEN_KEY, '1'); } catch (e) { /* ignore */ }
     }
+    awardBossAchievement(n);
+  }
+
+  // Beating a boss level earns its achievement (js/achievements.js, which a boss level page loads
+  // before this file). Level 31 is the Multipod, or the Being of Pure Chaos -- and Hard Mode's
+  // own achievement -- on a hard run.
+  const BOSS_ACHIEVEMENTS = { 5: 'ashen', 10: 'knight', 15: 'frozen', 20: 'cistern', 25: 'cultivator', 30: 'garguantuagoyle' };
+  function awardBossAchievement(n) {
+    const A = window.Achievements;
+    if (!A) return;
+    if (n === TOTAL_LEVELS) {
+      if (HARD) { A.unlock('chaos'); A.unlock('hardmode'); } else A.unlock('multipod');
+    } else if (BOSS_ACHIEVEMENTS[n]) {
+      A.unlock(BOSS_ACHIEVEMENTS[n]);
+    }
   }
 
   // Halloween 2026: bonus levels that sit outside the main story.
@@ -74,10 +89,32 @@
   }
   let halloween = loadHalloween();
   function isHalloweenCompleted(n) { return halloween.completed.indexOf(n) !== -1; }
-  function isHalloweenUnlocked(n) { return n === 1 || isHalloweenCompleted(n - 1); }
+  function isHalloweenUnlocked(n) {
+    return n === 1 || isHalloweenCompleted(n - 1) || (halloween.opened || []).indexOf(n) !== -1;
+  }
+  function persistHalloween() {
+    try { localStorage.setItem(HALLOWEEN_KEY, JSON.stringify(halloween)); } catch (e) { /* ignore */ }
+  }
   function completeHalloween(n) {
     if (!isHalloweenCompleted(n)) halloween.completed.push(n);
-    try { localStorage.setItem(HALLOWEEN_KEY, JSON.stringify(halloween)); } catch (e) { /* ignore */ }
+    persistHalloween();
+    if (n === 5 && window.Achievements) window.Achievements.unlock('pumpkinking');
+    awardHalloweenClear();
+  }
+  // All five beaten (really beaten -- a Sourcerer unlock doesn't count) while the achievement's
+  // deadline (Nov 1, 2026) hasn't passed. Checked on load too, for runs finished before it existed.
+  function awardHalloweenClear() {
+    const A = window.Achievements;
+    if (!A) return;
+    for (let i = 1; i <= HALLOWEEN_LEVELS; i++) if (!isHalloweenCompleted(i)) return;
+    A.unlock('homebeforemidnight');
+  }
+  awardHalloweenClear();
+  // Opens a Halloween level without beating the one before it (a Sourcerer code, js/sourcerer.js).
+  function unlockHalloween(n) {
+    if (!halloween.opened) halloween.opened = [];
+    if (halloween.opened.indexOf(n) === -1) halloween.opened.push(n);
+    persistHalloween();
   }
 
   // Season 2: the story after the fall. Its own tiny save, like the Halloween levels', so it
@@ -125,6 +162,28 @@
 
   function isStoryComplete() {
     return state.completed.length >= TOTAL_LEVELS;
+  }
+
+  // Sourcerer codes (js/sourcerer.js): open every level / Hard Mode without having earned them.
+  function unlockAllLevels() {
+    state.unlocked = TOTAL_LEVELS;
+    persist();
+  }
+  // Opens every level of the Hard Mode save (its own record, whichever mode this page is in).
+  function unlockAllHardLevels() {
+    const HARD_KEY = 'goofy-horror-story-hard';
+    let saved = { completed: [], unlocked: 1 };
+    try {
+      const parsed = JSON.parse(localStorage.getItem(HARD_KEY));
+      if (parsed && Array.isArray(parsed.completed) && Number.isFinite(parsed.unlocked)) saved = parsed;
+    } catch (e) { /* fresh hard save */ }
+    saved.unlocked = TOTAL_LEVELS;
+    try { localStorage.setItem(HARD_KEY, JSON.stringify(saved)); } catch (e) { /* ignore */ }
+    if (HARD) state = saved;
+    unlockHard();
+  }
+  function unlockHard() {
+    try { localStorage.setItem(BEATEN_KEY, '1'); } catch (e) { /* ignore */ }
   }
 
   function resetProgress() {
@@ -314,9 +373,13 @@
     isHalloweenCompleted,
     isHalloweenUnlocked,
     completeHalloween,
+    unlockHalloween,
     isSeason2Completed,
     isSeason2Unlocked,
     completeSeason2,
+    unlockAllLevels,
+    unlockHard,
+    unlockAllHardLevels,
     resetProgress,
     getPlayerMode,
     setPlayerMode,

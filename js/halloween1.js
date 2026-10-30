@@ -433,6 +433,7 @@
   }
 
   window.addEventListener('keydown', (e) => {
+    if (gameState === 'sourcerer') return; // typing a code: WASD are just letters
     ensureAudio();
     if (TRACKED_KEYS.has(e.key)) {
       if (!keys[e.key]) handleMovementKeyPress(e.key, performance.now());
@@ -445,6 +446,7 @@
     }
   });
   window.addEventListener('keyup', (e) => {
+    if (gameState === 'sourcerer') return;
     if (TRACKED_KEYS.has(e.key)) {
       keys[e.key] = false;
       e.preventDefault();
@@ -526,7 +528,7 @@
   // ---- game state ----
   let buttonsPressed = LEVEL.buckets.map(() => false); // which candy buckets are collected
   let doorUnlocked = false;
-  let gameState = 'playing'; // 'playing' | 'complete'
+  let gameState = 'playing'; // 'playing' | 'complete' | 'sourcerer' (the code screen is open)
   let catchFlash = 0;
 
   // ---- timer / best time (best is kept per-browser in localStorage, not
@@ -736,12 +738,22 @@
   function isHidden(p) {
     const t = worldToTile(p.x, p.y);
     const ch = tileChar(t.x, t.y);
-    return ch === 'S' || ch === 'V';
+    return ch === 'S' || ch === 'V' || isSecretTile(ch);
   }
+
+  // The Sourcerer's vent (Y), duct (v) and room (R): hidden from, and closed to, the monster.
+  function isSecretTile(ch) { return ch === 'Y' || ch === 'v' || ch === 'R'; }
+
+  // The vent, duct and room only exist for a viewer who is standing in them: from anywhere else they
+  // render as plain wall (no tiles, decor, glow or avatars), since this game draws every tile in
+  // light range without any wall occlusion.
+  let secretSeen = false;
+  function inSecret(p) { const t = worldToTile(p.x, p.y); return isSecretTile(tileChar(t.x, t.y)); }
 
   function isInSafeZone(p) {
     const t = worldToTile(p.x, p.y);
-    return tileChar(t.x, t.y) === 'S';
+    const ch = tileChar(t.x, t.y);
+    return ch === 'S' || ch === 'R';
   }
 
   function resetExploration() {
@@ -754,12 +766,16 @@
     if (ch === 'D') return '#d9ac4a';
     if (ch === 'S') return '#3ddc84';
     if (ch === 'V') return '#6a4a2a';
+    if (ch === 'Y') return '#9a7ab0';   // the secret vent passes for wall until you're in it
+    if (ch === 'v') return '#8a6adf';
+    if (ch === 'R') return '#b48aff';
     return '#7a4416';
   }
 
   function updateExploration() {
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
+      const inSecret = isSecretTile(tileChar(t.x, t.y));
       for (let dy = -EXPLORE_RADIUS; dy <= EXPLORE_RADIUS; dy++) {
         const ty = t.y + dy;
         if (ty < 0 || ty >= ROWS) continue;
@@ -769,8 +785,15 @@
           if (dx * dx + dy * dy > EXPLORE_RADIUS * EXPLORE_RADIUS) continue;
           const idx = ty * COLS + tx;
           if (explored[idx]) continue;
+          const ch = LEVEL.grid[ty][tx];
+          if (isSecretTile(ch) && !inSecret) {
+            // seen from outside, the secret reads as solid wall (and stays unexplored)
+            exploredCtx.fillStyle = minimapColorFor('#');
+            exploredCtx.fillRect(tx, ty, 1, 1);
+            continue;
+          }
           explored[idx] = 1;
-          exploredCtx.fillStyle = minimapColorFor(LEVEL.grid[ty][tx]);
+          exploredCtx.fillStyle = minimapColorFor(ch);
           exploredCtx.fillRect(tx, ty, 1, 1);
         }
       }
@@ -966,6 +989,31 @@
     });
   }
 
+  // Walking up to the Sourcerer opens his screen; the game stands still until it closes. You have
+  // to step away from him before he'll speak again.
+  let sourcererReady = true;
+  function updateSourcerer() {
+    if (!LEVEL.secret || !window.Sourcerer || gameState !== 'playing') return;
+    const sc = secretCenter(LEVEL.secret.sourcerer);
+    const near = players.some((p) => !p.caught && Math.hypot(p.x - sc.x, p.y - sc.y) < 56);
+    if (!near) {
+      if (players.every((p) => Math.hypot(p.x - sc.x, p.y - sc.y) > 90)) sourcererReady = true;
+      return;
+    }
+    if (!sourcererReady) return;
+    sourcererReady = false;
+    gameState = 'sourcerer';
+    Object.keys(keys).forEach((k) => { keys[k] = false; });
+    players.forEach((p) => { p.sprintActive = false; });
+    const openedAt = performance.now();
+    window.Sourcerer.open({
+      onClose() {
+        runStartTime += performance.now() - openedAt;   // the clock doesn't run while you talk to him
+        gameState = 'playing';
+      },
+    });
+  }
+
   function updateTriggers() {
     players.forEach((p) => {
       const t = worldToTile(p.x, p.y);
@@ -993,7 +1041,7 @@
 
   // ---- monster AI ----
   function monsterCanOccupy(ch) {
-    if (ch === '#' || ch === 'S' || ch === 'V') return false;
+    if (ch === '#' || ch === 'S' || ch === 'V' || isSecretTile(ch)) return false;
     if (ch === 'D') return doorUnlocked;
     return true;
   }
@@ -1338,13 +1386,17 @@
     const maxTY = Math.min(ROWS - 1, Math.ceil((camY + VIEW_H / 2) / TILE) + 1);
     for (let y = minTY; y <= maxTY; y++) {
       for (let x = minTX; x <= maxTX; x++) {
-        const ch = LEVEL.grid[y][x];
+        let ch = LEVEL.grid[y][x];
+        if ((ch === 'v' || ch === 'R') && !secretSeen) ch = '#';
         const px = x * TILE, py = y * TILE;
         let color;
         switch (ch) {
           case '#': color = '#2a1633'; break;
           case 'S': color = '#8a4a2e'; break;
           case 'V': color = '#3a2a1c'; break;
+          case 'Y': color = '#2a1633'; break;
+          case 'v': color = '#1c1a24'; break;
+          case 'R': color = ((x + y) & 1) ? '#3a1f5a' : '#42246a'; break;
           case 'E': color = '#d98a2e'; break;
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#4a2410'; break;
           default: color = floorShade(x, y);
@@ -1356,6 +1408,8 @@
           g.strokeStyle = 'rgba(0,0,0,0.45)';
           g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
         }
+        if (ch === 'Y') drawSecretVent(g, px, py);
+        else if (ch === 'v') drawDuct(g, px, py, x, y);
         if (ch === 'V') {
           g.strokeStyle = 'rgba(180,200,220,0.35)';
           g.lineWidth = 2;
@@ -1397,12 +1451,93 @@
     g.fill();
 
     drawSafeZone(g);
+    if (secretSeen) drawSourcererRoom(g, performance.now());
     drawLanterns(g, minTX, maxTX, minTY, maxTY, performance.now());
     drawCorpses(g);
     drawBloodSplatters(g);
     drawCrates(g);
     drawMeatLure(g);
     drawFloatingTexts(g);
+  }
+
+  // ---- the Sourcerer's secret ----
+  // The entrance passes for wall at a glance: the same purple block, but with a rusted slatted
+  // grate, four bolts, and (now and then) a faint violet shimmer.
+  function drawSecretVent(g, px, py) {
+    g.strokeStyle = 'rgba(0,0,0,0.45)';
+    g.lineWidth = 1;
+    g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+    g.fillStyle = 'rgba(10,6,16,0.45)';
+    g.fillRect(px + 6, py + 7, TILE - 12, TILE - 14);
+    g.strokeStyle = 'rgba(120,100,150,0.3)';
+    g.lineWidth = 1.5;
+    for (let i = 1; i < 4; i++) {
+      const gy = py + 7 + ((TILE - 14) / 4) * i;
+      g.beginPath(); g.moveTo(px + 7, gy); g.lineTo(px + TILE - 7, gy); g.stroke();
+    }
+  }
+
+  // Dull metal duct floor, ribbed so a winding path reads as a vent shaft.
+  function drawDuct(g, px, py, x, y) {
+    g.strokeStyle = 'rgba(120,115,140,0.22)';
+    g.lineWidth = 2;
+    const horiz = tileChar(x - 1, y) === 'v' || tileChar(x + 1, y) === 'v' || tileChar(x - 1, y) === 'Y';
+    for (let i = 1; i < 4; i++) {
+      g.beginPath();
+      if (horiz) { g.moveTo(px + (TILE / 4) * i, py + 3); g.lineTo(px + (TILE / 4) * i, py + TILE - 3); }
+      else { g.moveTo(px + 3, py + (TILE / 4) * i); g.lineTo(px + TILE - 3, py + (TILE / 4) * i); }
+      g.stroke();
+    }
+    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+  }
+
+  function drawCandyPile(g, cx, cy, seed) {
+    const cols = ['#ff4f9a', '#6df0ff', '#ffe14a', '#8aff5a', '#c07aff', '#ff8a3d'];
+    g.fillStyle = 'rgba(0,0,0,0.3)';
+    g.beginPath(); g.ellipse(cx, cy + 6, 13, 5, 0, 0, Math.PI * 2); g.fill();
+    for (let i = 0; i < 16; i++) {
+      const h = Math.imul(i + 1 + Math.floor(seed) * 31, 2654435761) >>> 0;
+      const a = (h % 628) / 100, r = ((h >>> 9) % 100) / 100;
+      const x = cx + Math.cos(a) * 11 * r, y = cy + 3 - Math.abs(Math.sin(a)) * 9 * (1 - r * 0.6);
+      g.fillStyle = cols[h % cols.length];
+      g.beginPath(); g.arc(x, y, 2.4, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.45)';
+      g.beginPath(); g.arc(x - 0.7, y - 0.7, 0.8, 0, Math.PI * 2); g.fill();
+    }
+  }
+
+  function drawCandle(g, cx, cy, now, seed) {
+    const f = 0.8 + 0.2 * Math.sin(now * 0.02 + seed);
+    g.fillStyle = '#e8e0cc'; g.fillRect(cx - 2.5, cy - 2, 5, 10);
+    g.fillStyle = `rgba(255,${190 + 30 * f | 0},80,${f})`;
+    g.beginPath(); g.ellipse(cx, cy - 5, 2.4, 4.4, 0, 0, Math.PI * 2); g.fill();
+  }
+
+  function secretCenter(o) { return tileCenter(o.x, o.y); }
+
+  function drawSourcererRoom(g, now) {
+    const S = LEVEL.secret;
+    if (!S || !window.Sourcerer) return;
+    const r = S.room, x0 = r.x0 * TILE, y0 = r.y0 * TILE, w = (r.x1 - r.x0 + 1) * TILE, h = (r.y1 - r.y0 + 1) * TILE;
+    const sc = secretCenter(S.sourcerer);
+    g.fillStyle = '#5a1f6a';
+    g.beginPath(); g.ellipse(sc.x, sc.y + 6, 62, 40, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#d9b24a'; g.lineWidth = 2;
+    g.beginPath(); g.ellipse(sc.x, sc.y + 6, 54, 34, 0, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = 'rgba(217,178,74,0.5)'; g.lineWidth = 1;
+    g.beginPath(); g.ellipse(sc.x, sc.y + 6, 42, 26, 0, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = 'rgba(170,110,255,0.7)'; g.lineWidth = 2;
+    g.strokeRect(x0 + 1.5, y0 + 1.5, w - 3, h - 3);
+
+    (S.candy || []).forEach((c, i) => { const p = secretCenter(c); drawCandyPile(g, p.x, p.y, i + 1); });
+    (S.candles || []).forEach((c, i) => { const p = secretCenter(c); drawCandle(g, p.x, p.y, now, i * 1.7); });
+    (S.pumpkins || []).forEach((c, i) => { const p = secretCenter(c); drawJackOLantern(g, p.x, p.y, 8, now, i * 2.3); });
+
+    g.save();
+    g.translate(sc.x, sc.y);
+    window.Sourcerer.drawFigure(g, now, 1);
+    g.restore();
   }
 
   // ---- Halloween decor ----
@@ -1770,6 +1905,7 @@
   function drawPlayers(g) {
     const R = PLAYER_RADIUS;
     players.forEach((p) => {
+      if (!secretSeen && inSecret(p)) return;   // a friend down the vent isn't visible through the wall
       g.save();
       g.translate(p.x, p.y);
 
@@ -1840,6 +1976,18 @@
     maskCtx.fillRect(s0.x, s0.y, (sz.x1 - sz.x0 + 1) * TILE, (sz.y1 - sz.y0 + 1) * TILE);
     maskCtx.restore();
 
+    // the Sourcerer's room glows violet and orange on its own
+    if (LEVEL.secret && secretSeen) {
+      const S = LEVEL.secret, sc = secretCenter(S.sourcerer), ss = worldToScreen(sc.x, sc.y);
+      if (ss.x > -260 && ss.x < VIEW_W + 260 && ss.y > -260 && ss.y < VIEW_H + 260) {
+        punchLight(maskCtx, ss.x, ss.y, 170, 0.95);
+        S.pumpkins.concat(S.candles).forEach((o) => {
+          const c = secretCenter(o), s = worldToScreen(c.x, c.y);
+          punchLight(maskCtx, s.x, s.y, 70, 0.7);
+        });
+      }
+    }
+
     // jack-o-lanterns and the orange windows glow on their own
     LEVEL.lanterns.forEach((l) => {
       const c = tileCenter(l.x, l.y), s = worldToScreen(c.x, c.y);
@@ -1875,6 +2023,7 @@
 
     ctx.save();
     ctx.translate(vx + VIEW_W / 2 - camX, VIEW_H / 2 - camY);
+    secretSeen = inSecret(p);
     drawTiles(ctx, camX, camY);
     drawSmokeBombs(ctx, now);
     monsters.forEach((m) => HM.monster(ctx, m, (c) => drawMonster(c, now, m)));
@@ -2105,6 +2254,7 @@
       elapsedMs = now - runStartTime;
       updateInputMovement(now, dt);
       updateTriggers();
+      updateSourcerer();
       updateCrates(now);
       updateSmokeBombs(now);
       monsters.forEach((m) => updateMonster(m, now, dt));

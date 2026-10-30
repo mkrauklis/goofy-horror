@@ -27,6 +27,7 @@
   <button type="button" class="side-tab" data-goto="story">&#128214; Story</button>
   <button type="button" class="side-tab" data-goto="season-2">&#127794; Season 2</button>
   <button type="button" class="side-tab" data-goto="holidays">&#127881; Holidays</button>
+  <button type="button" class="side-tab" data-goto="achievements">&#127942; Achievements</button>
 </nav>
 
 <div class="wrap">
@@ -423,6 +424,11 @@
     </a>
   </div>
   </section>
+  <section class="achievements" data-view="achievements" hidden>
+    <h2 class="holidays-title">Achievements</h2>
+    <p class="holidays-sub" id="achievements-count"></p>
+    <div class="achievement-list" id="achievement-list"></div>
+  </section>
   <section class="holidays" data-view="holidays" hidden>
     <h2 class="holidays-title">Holidays</h2>
     <p class="holidays-sub">Pick a holiday to see its levels. Each one is its own set of bonus levels, separate from the main story.</p>
@@ -481,6 +487,7 @@
 </div>
 
 <script src="js/hardmode.js"></script>
+<script src="js/achievements.js"></script>
 <script src="js/story.js"></script>
 <script src="js/playermodel.js"></script>
 <script src="js/monsterpedia.js"></script>
@@ -538,7 +545,7 @@
   // The level selector has a side rail: Story (the main chapters) and Holidays
   // (bonus level sets per holiday). The view is kept in the URL hash so Back and
   // links straight into a holiday (the Halloween levels' "Menu" link) both work.
-  const VIEWS = ['story', 'chapter-1', 'chapter-2', 'chapter-3', 'chapter-4', 'chapter-5', 'chapter-6', 'chapter-7', 'season-2', 'holidays', 'halloween-2026'];
+  const VIEWS = ['story', 'chapter-1', 'chapter-2', 'chapter-3', 'chapter-4', 'chapter-5', 'chapter-6', 'chapter-7', 'season-2', 'holidays', 'halloween-2026', 'achievements'];
   function showView(name) {
     if (!VIEWS.includes(name)) name = 'story';
     document.querySelectorAll('[data-view]').forEach((el) => { el.hidden = el.dataset.view !== name; });
@@ -570,6 +577,31 @@
       el.textContent = !story.isUnlocked(first) ? 'Locked' : done === total ? `All ${total} completed` : `${done} / ${total} completed`;
       el.closest('.chapter-card').classList.toggle('locked', !story.isUnlocked(first));
     });
+  })();
+  (function renderAchievements() {
+    const A = window.Achievements, list = document.getElementById('achievement-list');
+    if (!A || !list) return;
+    let got = 0;
+    A.DEFS.forEach((d) => {
+      const have = A.has(d.id);
+      if (have) got++;
+      const secret = d.kind === 'secret' && !have;
+      const missed = !have && !A.available(d.id);
+      const row = document.createElement('div');
+      row.className = 'achievement' + (have ? ' earned' : '');
+      const c = document.createElement('canvas');
+      c.width = c.height = 72;
+      A.drawIcon(c, d.id, !have);
+      const body = document.createElement('div');
+      const h = document.createElement('h3');
+      h.textContent = secret ? '???' : d.name;
+      const p = document.createElement('p');
+      p.textContent = secret ? (d.hint || 'A secret achievement.') : d.desc + (missed ? ' (No longer available.)' : '');
+      body.appendChild(h); body.appendChild(p);
+      row.appendChild(c); row.appendChild(body);
+      list.appendChild(row);
+    });
+    document.getElementById('achievements-count').textContent = `${got} / ${A.DEFS.length} earned`;
   })();
   (function renderHolidayProgress() {
     const story = window.GoofyStory, el = document.getElementById('holiday-halloween-progress');
