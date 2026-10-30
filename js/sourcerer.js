@@ -280,6 +280,7 @@
     try { if (def.run) def.run(); } catch (e) { console.error('sourcerer code failed', e); }
     say(def.say + (def.warp ? ' (Hold on to something.)' : ''));
     if (def.warp) {
+      try { sessionStorage.setItem('goofy-horror-sourcerer-warp', def.warp); } catch (e) { /* ignore */ }
       overlay.querySelector('#src-input').disabled = true;
       setTimeout(() => { window.location.href = def.warp; }, 2600);
     }

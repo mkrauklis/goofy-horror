@@ -2243,6 +2243,18 @@
     if (hudBestEl) hudBestEl.textContent = `Best: ${bestMs === null ? '--:--' : formatTime(bestMs)}`;
   }
 
+  // Coming back from a level the Sourcerer warped you into (js/sourcererreturn.js): land in his room.
+  try {
+    if (sessionStorage.getItem('goofy-horror-sourcerer-return') === '1' && LEVEL.secret) {
+      sessionStorage.removeItem('goofy-horror-sourcerer-return');
+      const S = LEVEL.secret;
+      players.forEach((p, i) => {
+        const c = tileCenter(S.sourcerer.x - 1 + i * 2, S.sourcerer.y + 2);
+        p.x = c.x; p.y = c.y;
+      });
+    }
+  } catch (e) { /* storage blocked: start where you normally do */ }
+
   let lastFrameTime = null;
 
   function loop(now) {

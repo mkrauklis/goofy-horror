@@ -541,6 +541,7 @@
       : next === 1 ? 'Start the Story' : `Continue — Level ${next}`);
   }
   renderStoryState();
+  try { sessionStorage.removeItem('goofy-horror-sourcerer-warp'); } catch (e) { /* ignore */ }   // the menu ends a Sourcerer warp (js/sourcererreturn.js)
 
   // The level selector has a side rail: Story (the main chapters) and Holidays
   // (bonus level sets per holiday). The view is kept in the URL hash so Back and
