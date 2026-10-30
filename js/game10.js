@@ -150,6 +150,20 @@
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
+  // The game draws in 920x340 "logical" pixels, but the canvas is shown much larger than that
+  // and the browser stretches its bitmap -- every curve and the throne went soft and blocky.
+  // So the bitmap is kept at the size it is actually displayed at and drawing is scaled up to it.
+  const LOGICAL_W = canvas.width, LOGICAL_H = canvas.height;
+  let renderRes = 1;
+  function fitCanvasResolution() {
+    const shown = canvas.clientWidth * (window.devicePixelRatio || 1);
+    const r = shown > 0 ? Math.min(2.5, Math.max(1, Math.round(shown / LOGICAL_W * 2) / 2)) : 1;
+    if (r !== renderRes || canvas.width !== Math.round(LOGICAL_W * r)) {
+      renderRes = r;
+      canvas.width = Math.round(LOGICAL_W * r);
+      canvas.height = Math.round(LOGICAL_H * r);
+    }
+  }
   const messageEl = document.getElementById('game-message');
 
   const maskCanvas = document.createElement('canvas');
@@ -1776,15 +1790,15 @@
     g.fillStyle = '#2a2a32'; g.fillRect(cx - 80, 90, 160, 6);
   }
 
-  // painted at twice the world's resolution and drawn with smoothing on: the arena is
-  // shown zoomed out, and a 1x copy of the throne and statues aliased into blocks
-  const DECOR_SCALE = 2;
-  let arenaDecor = null;
-  function buildArenaDecor() {
+  // painted at exactly twice the resolution it is shown at (so the smoothed copy is a clean
+  // 2:1 average) and repainted when the camera zoom changes. A fixed 2x copy of the world
+  // got shrunk ~6x on screen, which threw most of the throne's detail away and left it blocky.
+  let arenaDecor = null, arenaDecorScale = 0;
+  function buildArenaDecor(scale) {
     const c = document.createElement('canvas');
-    c.width = COLS * TILE * DECOR_SCALE; c.height = ROWS * TILE * DECOR_SCALE;
+    c.width = Math.ceil(COLS * TILE * scale); c.height = Math.ceil(ROWS * TILE * scale);
     const g = c.getContext('2d');
-    g.scale(DECOR_SCALE, DECOR_SCALE);
+    g.scale(scale, scale);
     const cx = 15.5 * TILE;                                    // throne and carpet centre line
     // giant statues carved into the walls on every side, between the torches
     const NICHE_H = 84;
@@ -1850,7 +1864,8 @@
       }
     }
 
-    if (!arenaDecor) arenaDecor = buildArenaDecor();
+    const decorScale = Math.min(4, Math.max(0.5, Math.round(g.getTransform().a * 2 * 20) / 20));
+    if (!arenaDecor || arenaDecorScale !== decorScale) { arenaDecor = buildArenaDecor(decorScale); arenaDecorScale = decorScale; }
     g.imageSmoothingEnabled = true;
     g.imageSmoothingQuality = 'high';
     g.drawImage(arenaDecor, 0, 0, COLS * TILE, ROWS * TILE);
@@ -2865,9 +2880,12 @@
     updateParticles(dt);
     updateFloatingTexts(dt);
 
+    fitCanvasResolution();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(renderRes, 0, 0, renderRes, 0, 0);
     if (gameState === 'intro' && window.BossCutscene) {
-      window.BossCutscene.draw(ctx, canvas.width, canvas.height, now - introStartedAt, 'knight');
+      window.BossCutscene.draw(ctx, LOGICAL_W, LOGICAL_H, now - introStartedAt, 'knight');
     } else {
       renderViewport(0, now);
       if (PLAYER_MODE === 2) {
@@ -2880,18 +2898,18 @@
       const freezeT = clamp((now - freezeStartedAt) / FREEZE_CUTSCENE_MS, 0, 1);
       drawSnow(ctx);
       ctx.fillStyle = `rgba(220,240,255,${freezeT * 0.75})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
       if (freezeT > 0.3) {
         ctx.font = 'bold 22px monospace';
         ctx.textAlign = 'center';
         ctx.fillStyle = `rgba(20,40,60,${Math.min(1, (freezeT - 0.3) * 2.5)})`;
-        ctx.fillText('THE COLD TAKES IT...', canvas.width / 2, canvas.height / 2);
+        ctx.fillText('THE COLD TAKES IT...', LOGICAL_W / 2, LOGICAL_H / 2);
       }
     }
 
     if (catchFlash > 0) {
       ctx.fillStyle = `rgba(180,20,30,${catchFlash * 0.5})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
       catchFlash -= dt * 1.2;
     }
 
