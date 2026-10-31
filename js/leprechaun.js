@@ -1,6 +1,6 @@
 // The Green Field (the Sourcerer's "lilleperchaun" secret): a giant grassy field with 25 leprechauns.
-// They are not hostile -- they stand and hop, and when you walk up to one it fades, its body going
-// black while its eyes turn red. Every one you meet tints the screen a little redder; the 25th turns
+// They are not hostile -- they wander about hopping, and when you walk up to one it goes completely
+// black, eyes red, and stays that way. Every one you meet tints the screen a little redder; the 25th turns
 // it solid red, the screen shakes, the word "why" appears, then black, then the Gold achievement.
 (function () {
   const canvas = document.getElementById('game-canvas');
@@ -17,6 +17,7 @@
   const EDGE = 56;                  // the tree line: players stay this far in from the world edge
   const TOTAL = 25;
   const FADE_NEAR = 70, FADE_FAR = 250, MEET_DIST = 100;
+  const WANDER_SPEED = 34, WANDER_RANGE = 280;   // leprechauns stroll about within this far of where they started
   const TINT_SPEED = 0.16;          // how fast the red creeps in, per second
   const SHAKE_MS = 6500, BLACK_MS = 3200, LEAVE_MS = 5500;
 
@@ -101,7 +102,7 @@
       const x = 150 + hash(tries, 31, 7) * (WORLD_W - 300), y = 150 + hash(tries, 32, 7) * (WORLD_H - 300);
       if (Math.hypot(x - SPAWNS[0].x, y - SPAWNS[0].y) < 380) continue;
       if (leps.some((l) => Math.hypot(l.x - x, l.y - y) < 300)) continue;
-      leps.push({ x, y, seed: hash(tries, 33, 7) * 10, f: 0, met: false });
+      leps.push({ x, y, hx: x, hy: y, tx: x, ty: y, wait: Math.random() * 3, seed: hash(tries, 33, 7) * 10, f: 0, met: false });
     }
   })();
 
@@ -186,11 +187,28 @@
     });
   }
 
+  // They roam: stroll to a spot near home, stand a while, pick another. Harmless.
+  function wander(l, dt) {
+    if (l.wait > 0) { l.wait -= dt; return; }
+    const dx = l.tx - l.x, dy = l.ty - l.y, d = Math.hypot(dx, dy);
+    if (d < 4) {
+      l.wait = 1 + Math.random() * 3;
+      const a = Math.random() * Math.PI * 2, r = 50 + Math.random() * (WANDER_RANGE - 50);
+      l.tx = clamp(l.hx + Math.cos(a) * r, EDGE + 30, WORLD_W - EDGE - 30);
+      l.ty = clamp(l.hy + Math.sin(a) * r, EDGE + 30, WORLD_H - EDGE - 30);
+      return;
+    }
+    l.x += (dx / d) * WANDER_SPEED * dt;
+    l.y += (dy / d) * WANDER_SPEED * dt;
+  }
+
   function updateLeprechauns(dt) {
     leps.forEach((l) => {
+      wander(l, dt);
       const d = Math.min(...players.map((p) => Math.hypot(p.x - l.x, p.y - l.y)));
-      const target = clamp((FADE_FAR - d) / (FADE_FAR - FADE_NEAR), 0, 1);
-      l.f += (target - l.f) * Math.min(1, dt * 4);
+      // darkens as you approach; once you've reached one it goes completely black and stays that way
+      const target = l.met ? 1 : clamp((FADE_FAR - d) / (FADE_FAR - FADE_NEAR), 0, 1);
+      l.f += (target - l.f) * Math.min(1, dt * (l.met ? 2.5 : 4));
       if (!l.met && d <= MEET_DIST) {
         l.met = true;
         met++;
@@ -201,13 +219,13 @@
 
   // ---- drawing ----
   // A little green man, front-on: top hat, orange beard, green coat, black boots, gold buckles. `f`
-  // (0 far .. 1 beside you) drains him to black and fades him out -- except his eyes, which go red.
+  // (0 far .. 1 reached) drains him to black and dims him -- except his eyes, which go red.
   function drawLeprechaun(g, x, y, now, f, seed) {
     const hop = Math.abs(Math.sin(now * 0.0042 + seed)) * 4 * (1 - f * 0.85);
     const C = (c) => mix(c, '#040404', Math.min(1, f * 1.15));
     g.save();
     g.translate(x, y - hop);
-    g.globalAlpha = 1 - 0.68 * f;
+    g.globalAlpha = 1 - 0.3 * f;
     g.fillStyle = 'rgba(0,0,0,0.3)';
     g.beginPath(); g.ellipse(0, 15 + hop, 11, 3.6, 0, 0, 6.3); g.fill();
     g.fillStyle = C('#1a1a1a');
