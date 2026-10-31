@@ -57,6 +57,9 @@
     season2: {
       say: 'The fall was only the first floor. Beneath that forest there is more facility, and the yellow thing with the grass on its back is not the worst resident.',
     },
+    story2: {
+      say: 'The fall was only the first floor. Beneath that forest there is more facility, and the yellow thing with the grass on its back is not the worst resident.',
+    },
     pumpkinking: {
       say: 'He wears the whole harvest as armour. If his lantern starts to laugh, do not be standing near it.',
     },

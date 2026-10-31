@@ -2291,7 +2291,7 @@
     function stepRun(a, b, every) { for (let t = a; t < b; t += every) steps.push([t, 'step'], [t + every / 2, 'step']); }
     stepRun(500, 8800, 340); stepRun(10800, 13400, 400); stepRun(13900, 17800, 340); stepRun(20800, 24200, 340); stepRun(24400, 26200, 420); stepRun(29400, 30300, 240);
     SCENES.season2 = {
-      name: 'SEASON 2', color: '#e8c34a', dur: DUR,
+      name: 'STORY 2', color: '#e8c34a', dur: DUR,
       dark: (t) => (t < T_CUT ? (t < T_REVEAL ? 0.34 : 0.3) : 0.8 + 0.12 * seg(t, T_QUAKE, 31800)),
       shade: (t) => (t < T_CUT ? '6,16,10' : '2,5,7'),
       dip: (t) => (t > T_CUT - 700 && t < T_CUT ? seg(t, T_CUT - 700, T_CUT) : (t >= T_CUT && t < T_CUT + 500 ? 1 - seg(t, T_CUT, T_CUT + 500) : 0)) + seg(t, T_PIT_END - 200, T_BLACK),

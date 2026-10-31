@@ -2197,7 +2197,7 @@
   function updateOverlay() {
     if (gameState === 'complete') {
       messageEl.style.display = 'flex';
-      messageEl.innerHTML = 'YOU MADE IT OUT &mdash; the rest of Season 2 is still being dug up&hellip;';
+      messageEl.innerHTML = 'YOU MADE IT OUT &mdash; the rest of Story 2 is still being dug up&hellip;';
     } else {
       messageEl.style.display = 'none';
     }
