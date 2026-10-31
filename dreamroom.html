@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; The Dream</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+</nav>
+
+<header class="hero">
+  <h1>The Dream</h1>
+  <p class="objective">A dark room with no walls, no doors and a checkered floor that doesn't end. Something very large is walking toward you. <strong>It is watching.</strong></p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-buttons"></span>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    There is nothing to find here. You can walk as far as you like, in any direction, and the floor
+    goes on. It follows, and it gets quicker. You do not escape a dream by outrunning it.
+  </p>
+</div>
+
+<script src="js/hardmode.js"></script>
+<script src="js/footsteps.js"></script>
+<script src="js/achievements.js"></script>
+<script src="js/story.js"></script>
+<script src="js/playermodel.js"></script>
+<script src="js/eyes.js"></script>
+<script src="js/dream.js"></script>
+</body>
+</html>

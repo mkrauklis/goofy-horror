@@ -30,6 +30,10 @@
       say: 'Hard Mode is open to you now. It is the same house, but the house has noticed you.',
       run() { story().unlockHard(); },
     },
+    dream: {
+      say: 'Ah. You want to sleep. Very well. Be careful what you look at, and do not expect it to look away. You will wake up here when it is over.',
+      warp: 'dreamroom.html',
+    },
     lilleperchaun: {
       say: 'The little ones. Harmless, quite harmless. They only want you to come close. If your head starts to feel warm, that is just the sun.',
       warp: 'leprechaunfield.html',
