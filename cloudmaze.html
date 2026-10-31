@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; The Clouds</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+</nav>
+
+<header class="hero">
+  <h1>The Clouds</h1>
+  <p class="objective">You are somewhere very high up, and very bright. The maze has no roof. Something with <strong>a great many eyes</strong> is patrolling it. Find <strong>five pieces of the book</strong> and the gate will open.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-buttons"></span>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    The pieces lie in the dead ends. It follows the corridors the way you do, and
+    it quickens with every piece you find. If it reaches you, you start again from the beginning
+    &mdash; but the pieces you have already found stay found. When the book is whole, the gate at the far end opens.
+  </p>
+</div>
+
+<script src="js/hardmode.js"></script>
+<script src="js/footsteps.js"></script>
+<script src="js/achievements.js"></script>
+<script src="js/story.js"></script>
+<script src="js/playermodel.js"></script>
+<script src="js/eyes.js"></script>
+<script src="js/clouds.js"></script>
+</body>
+</html>

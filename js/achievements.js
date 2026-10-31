@@ -308,10 +308,10 @@
 
   function toast(d) {
     const el = document.createElement('div');
-    el.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:99999;display:flex;align-items:center;gap:12px;'
+    el.style.cssText = 'position:fixed;left:50%;top:16px;z-index:99999;display:flex;align-items:center;gap:12px;'
       + 'padding:10px 16px 10px 10px;background:#111;border:1px solid #777;border-radius:10px;color:#eee;'
       + 'font:14px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,0.6);filter:none;'
-      + 'transform:translateY(20px);opacity:0;transition:transform .4s,opacity .4s;pointer-events:none';
+      + 'transform:translate(-50%,-20px);opacity:0;transition:transform .4s,opacity .4s;pointer-events:none';
     const c = document.createElement('canvas');
     c.width = c.height = 56;
     c.style.cssText = 'width:56px;height:56px;border-radius:8px;flex:none';
@@ -321,7 +321,7 @@
       + `<div style="font-size:18px;font-weight:700">${d.name}</div>`;
     el.appendChild(c); el.appendChild(t);
     document.body.appendChild(el);
-    requestAnimationFrame(() => { el.style.transform = 'none'; el.style.opacity = '1'; });
+    requestAnimationFrame(() => { el.style.transform = 'translate(-50%,0)'; el.style.opacity = '1'; });
     setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 600); }, 6500);
   }
 

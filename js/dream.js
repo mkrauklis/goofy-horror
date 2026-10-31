@@ -250,8 +250,7 @@
       phase = 'end'; phaseAt = now;
     } else if (phase === 'end' && now - phaseAt > END_MS && !leaving) {
       leaving = true;
-      try { sessionStorage.setItem('goofy-horror-sourcerer-return', '1'); } catch (e) { /* ignore */ }
-      window.location.href = 'halloween1.html';    // you wake up in the Sourcerer's room
+      window.location.href = 'cloudmaze.html';     // ...and you wake up somewhere very high and very bright
     }
   }
 

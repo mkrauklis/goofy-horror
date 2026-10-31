@@ -31,7 +31,7 @@
       run() { story().unlockHard(); },
     },
     dream: {
-      say: 'Ah. You want to sleep. Very well. Be careful what you look at, and do not expect it to look away. You will wake up here when it is over.',
+      say: 'Ah. You want to sleep. Very well. Be careful what you look at, and do not expect it to look away. And when it is over, do not expect to wake up just yet.',
       warp: 'dreamroom.html',
     },
     lilleperchaun: {
