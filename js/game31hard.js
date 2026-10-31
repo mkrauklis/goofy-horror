@@ -741,9 +741,11 @@
   let catchFlash = 0;
 
   function bossHealthFrac() { return clamp(bossHealth / BOSS_MAX_HEALTH, 0, 1); }
-  // The boss's clock: how fast it moves and attacks (and how fast what it throws flies). It runs at BOSS_TEMPO
-  // times the base speeds the whole fight; frozen slows it, phase 2 speeds it up further.
+  // The boss's clock: how fast it moves and attacks. It runs at BOSS_TEMPO times the base speeds the whole
+  // fight; frozen slows it, phase 2 speeds it up further. What it throws flies at the old speed (projMult):
+  // it throws twice as often, but a feather is no harder to dodge.
   const BOSS_TEMPO = 2;
+  function projMult(now) { return speedMult(now) / BOSS_TEMPO; }
   function speedMult(now) { return BOSS_TEMPO * (now < boss.frozenUntil ? FROZEN_SPEED_MULT : 1) * (boss.phase2 ? PHASE2_SPEED_MULT : 1); }
 
   function makePlayer(spawn, color) {
@@ -1221,7 +1223,7 @@
       const target = nearestPlayer(boss.x, boss.y);
       const dx = target.x - boss.x, dy = target.y - boss.y;
       const d = Math.hypot(dx, dy) || 1;
-      feathers.push({ x: boss.x, y: boss.y, vx: (dx / d) * FEATHER_SPEED * speedMult(now), vy: (dy / d) * FEATHER_SPEED * speedMult(now), tex: Math.floor(Math.random() * NTEX) });
+      feathers.push({ x: boss.x, y: boss.y, vx: (dx / d) * FEATHER_SPEED * projMult(now), vy: (dy / d) * FEATHER_SPEED * projMult(now), tex: Math.floor(Math.random() * NTEX) });
     }
     if (boss.feathersThrown >= FEATHER_COUNT) finishAttack(now);
   }
@@ -1273,7 +1275,7 @@
       const target = nearestPlayer(boss.x, boss.y);
       const dx = target.x - boss.x, dy = target.y - boss.y;
       const d = Math.hypot(dx, dy) || 1;
-      antimatterBolts.push({ x: boss.x, y: boss.y, vx: (dx / d) * ANTIMATTER_SPEED * speedMult(now), vy: (dy / d) * ANTIMATTER_SPEED * speedMult(now) });
+      antimatterBolts.push({ x: boss.x, y: boss.y, vx: (dx / d) * ANTIMATTER_SPEED * projMult(now), vy: (dy / d) * ANTIMATTER_SPEED * projMult(now) });
     }
     if (boss.antimatterThrown >= ANTIMATTER_COUNT) finishAttack(now);
   }
