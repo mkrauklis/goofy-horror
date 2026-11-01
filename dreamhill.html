@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Desolate Apes &mdash; The Hill</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="level-nav">
+  <a href="index.html">Menu</a>
+</nav>
+
+<header class="hero">
+  <h1>The Hill</h1>
+  <p class="objective">A green hill under a very blue sky. The sky is a painted dome and there are <strong>little houses</strong> dotted about. Every <strong>15 seconds</strong> the sky goes out for <strong>10</strong>.</p>
+</header>
+
+<div class="wrap">
+  <div id="game-fullscreen-wrap">
+    <div id="hud">
+      <span id="hud-buttons"></span>
+    </div>
+    <div id="game-canvas-holder" class="panel">
+      <canvas id="game-canvas" width="920" height="340"></canvas>
+      <div id="game-message"></div>
+  </div>
+  </div>
+  <p class="hint">Player 1 (orange, left): W A S D &nbsp;&middot;&nbsp; Player 2 (green, right): Arrow keys<span id="sound-hint">&nbsp;&middot;&nbsp;sound plays after your first key press</span></p>
+</div>
+
+<div class="wrap">
+  <p class="level-description">
+    In the daytime there is nothing to be afraid of. When the sky goes out, eyes open in the dark &mdash;
+    huge, wet, realistic ones &mdash; and drift about the hill. While you are indoors they only drift.
+    The moment you step outside, every one of them comes for you at <strong>six times</strong> its
+    drifting speed, and keeps coming until you are back inside a house.
+  </p>
+  <p class="level-description">
+    There is a small door in the rim of the sky, to the north. Houses can be entered by their open front doors.
+  </p>
+</div>
+
+<script src="js/hardmode.js"></script>
+<script src="js/footsteps.js"></script>
+<script src="js/achievements.js"></script>
+<script src="js/story.js"></script>
+<script src="js/playermodel.js"></script>
+<script src="js/eyes.js"></script>
+<script src="js/dreamhill.js"></script>
+</body>
+</html>

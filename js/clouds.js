@@ -407,8 +407,7 @@
       if (now - phaseAt > WHITE_MS) { phase = 'end'; phaseAt = now; if (ac) master.gain.setTargetAtTime(0, ac.currentTime, 0.4); }
     } else if (phase === 'end' && now - phaseAt > END_MS && !leaving) {
       leaving = true;
-      try { sessionStorage.setItem('goofy-horror-sourcerer-return', '1'); } catch (e) { /* ignore */ }
-      window.location.href = 'halloween1.html';        // you wake up in the Sourcerer's room
+      window.location.href = 'dreamhill.html';         // ...and you are not awake yet
     }
   }
 
