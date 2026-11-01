@@ -480,7 +480,8 @@
   // "inside" reads differently from "outside" at a glance, not just by
   // checking whether a Warden is currently diving at you.
   const INTERIOR_SHADES = ['#3a3836', '#403e3b', '#443f3c', '#383634', '#413d39'];
-  function interiorShade(x, y) {
+  function interiorShade(x, y) { const c = interiorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function interiorShade0(x, y) {
     const h = Math.imul(x, 668265261) ^ Math.imul(y, 1274126177);
     const idx = ((h ^ (h >>> 13)) >>> 0) % INTERIOR_SHADES.length;
     return INTERIOR_SHADES[idx];
@@ -1465,13 +1466,13 @@
           continue;
         }
         if (ch === 'G') {
-          g.fillStyle = gateOpen() ? interiorShade(x, y) : '#2a1216';
-          g.fillRect(px, py, TILE, TILE);
+          const tc = gateOpen() ? interiorShade(x, y) : '#2a1216';
+          if (!(window.FloorTex && FloorTex.tile(g, tc, x, y, px, py, TILE))) { g.fillStyle = tc; g.fillRect(px, py, TILE, TILE); }
           continue;
         }
         if (ch === 'S') {
-          g.fillStyle = interiorShade(x, y);
-          g.fillRect(px, py, TILE, TILE);
+          const tc = interiorShade(x, y);
+          if (!(window.FloorTex && FloorTex.tile(g, tc, x, y, px, py, TILE))) { g.fillStyle = tc; g.fillRect(px, py, TILE, TILE); }
           continue;
         }
         if (ch === 'E') {
@@ -1495,8 +1496,8 @@
           continue;
         }
         // '.' / 'X' / 'P' -- interior floor
-        g.fillStyle = interiorShade(x, y);
-        g.fillRect(px, py, TILE, TILE);
+        const tc = interiorShade(x, y);
+        if (!(window.FloorTex && FloorTex.tile(g, tc, x, y, px, py, TILE))) { g.fillStyle = tc; g.fillRect(px, py, TILE, TILE); }
       }
     }
 

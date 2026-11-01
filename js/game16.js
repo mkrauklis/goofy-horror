@@ -469,7 +469,8 @@
   // coordinates, so the flooded floor reads as moving, uneven water
   // instead of one flat color.
   const WATER_SHADES = ['#1c4850', '#204f58', '#245660', '#1a4349', '#235058', '#1e4a52'];
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % WATER_SHADES.length;
     return WATER_SHADES[idx];
@@ -1438,8 +1439,10 @@
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#2a4552'; break;
           default: color = floorShade(x, y);
         }
-        g.fillStyle = color;
-        g.fillRect(px, py, TILE, TILE);
+        if (!(window.FloorTex && FloorTex.tile(g, color, x, y, px, py, TILE))) {
+          g.fillStyle = color;
+          g.fillRect(px, py, TILE, TILE);
+        }
 
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';

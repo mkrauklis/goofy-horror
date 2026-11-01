@@ -433,7 +433,8 @@
   // hashing its coordinates, so the rooftop reads as a worn, uneven
   // surface instead of one flat color.
   const ROOF_SHADES = ['#33343a', '#383a40', '#3d3f45', '#30323a', '#3a3c43'];
-  function roofShade(x, y) {
+  function roofShade(x, y) { const c = roofShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function roofShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % ROOF_SHADES.length;
     return ROOF_SHADES[idx];
@@ -1487,23 +1488,23 @@
           continue;
         }
         if (ch === 'D') {
-          g.fillStyle = doorOpen() ? roofShade(x, y) : '#2a1216';
-          g.fillRect(px, py, TILE, TILE);
+          const tc = doorOpen() ? roofShade(x, y) : '#2a1216';
+          if (!(window.FloorTex && FloorTex.tile(g, tc, x, y, px, py, TILE))) { g.fillStyle = tc; g.fillRect(px, py, TILE, TILE); }
           continue;
         }
         if (ch === 'S') {
-          g.fillStyle = roofShade(x, y);
-          g.fillRect(px, py, TILE, TILE);
+          const tc = roofShade(x, y);
+          if (!(window.FloorTex && FloorTex.tile(g, tc, x, y, px, py, TILE))) { g.fillStyle = tc; g.fillRect(px, py, TILE, TILE); }
           continue;
         }
         if (ch === 'C' || ch === 'F') {
-          g.fillStyle = roofShade(x, y);
-          g.fillRect(px, py, TILE, TILE);
+          const tc = roofShade(x, y);
+          if (!(window.FloorTex && FloorTex.tile(g, tc, x, y, px, py, TILE))) { g.fillStyle = tc; g.fillRect(px, py, TILE, TILE); }
           continue;
         }
         // plain floor ('.'/'X'/'W'/'T')
-        g.fillStyle = roofShade(x, y);
-        g.fillRect(px, py, TILE, TILE);
+        const tc = roofShade(x, y);
+        if (!(window.FloorTex && FloorTex.tile(g, tc, x, y, px, py, TILE))) { g.fillStyle = tc; g.fillRect(px, py, TILE, TILE); }
         if (hasRoofProp(x, y)) drawRoofProp(g, px, py, x, y);
       }
     }

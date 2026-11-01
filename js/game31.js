@@ -1181,11 +1181,13 @@
         const ch = tileChar(x, y);
         const px = x * TILE, py = y * TILE;
         const hh = hash2(x, y, 1);
-        if (ch === 'R' || ch === 'K' || ch === 'X') g.fillStyle = ROAD[hh % 3];
-        else if (ch === 'P') g.fillStyle = LOTC[hh % 3];
-        else if (ch === 'B') g.fillStyle = '#9aa0a8';
-        else g.fillStyle = GRASS[hh % 4];
-        g.fillRect(px, py, TILE + 0.5, TILE + 0.5);
+        let tc, ts;
+        if (ch === 'R' || ch === 'K' || ch === 'X') { tc = ROAD[hh % 3]; ts = 'tarmac'; }
+        else if (ch === 'P') { tc = LOTC[hh % 3]; ts = 'concrete'; }
+        else if (ch === 'B') { tc = '#9aa0a8'; ts = 'concrete'; }
+        else { tc = GRASS[hh % 4]; ts = 'grass'; }
+        if (window.FloorTex) FloorTex.tileAs(ts, g, tc, x, y, px, py, TILE);
+        else { g.fillStyle = tc; g.fillRect(px, py, TILE + 0.5, TILE + 0.5); }
         if (ch === 'T') {
           const forestTree = x > 62;
           g.fillStyle = 'rgba(0,0,0,0.18)'; g.beginPath(); g.ellipse(px + 18, py + 24, 12, 6, 0, 0, Math.PI * 2); g.fill();

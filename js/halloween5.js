@@ -1467,7 +1467,8 @@
   // The ward's floor shades, hashed per tile (the same mottled teal as the
   // Quiet Ward and the Overgrown Ward).
   const FLOOR_SHADES = ['#7fa39f', '#86aba6', '#8db0ab', '#82a69f', '#89ada8', '#92b5b0'];
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     return FLOOR_SHADES[((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length];
   }
@@ -1503,8 +1504,8 @@
     f.beginPath(); f.arc(ARENA_CX, ARENA_CY, ARENA_R, 0, Math.PI * 2); f.clip();
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
-        f.fillStyle = floorShade(x, y);
-        f.fillRect(x * TILE, y * TILE, TILE, TILE);
+        const tc = floorShade(x, y);
+        if (!(window.FloorTex && FloorTex.tile(f, tc, x, y, x * TILE, y * TILE, TILE))) { f.fillStyle = tc; f.fillRect(x * TILE, y * TILE, TILE, TILE); }
       }
     }
     paintVines(f);

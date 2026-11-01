@@ -467,7 +467,8 @@
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(k, 2246822519);
     return ((h ^ (h >>> 13)) >>> 0);
   }
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     return FLOOR_SHADES[hash2(x, y, 0) % FLOOR_SHADES.length];
   }
   const WALL_SHADES = ['#2c302b', '#303430', '#282c28'];
@@ -1402,8 +1403,10 @@
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
-        g.fillStyle = color;
-        g.fillRect(px, py, TILE, TILE);
+        if (!(window.FloorTex && FloorTex.tile(g, color, x, y, px, py, TILE))) {
+          g.fillStyle = color;
+          g.fillRect(px, py, TILE, TILE);
+        }
         if (ch === '#') drawRuinWall(g, px, py, x, y, hh);
         else if (ch === 'L') drawLog(g, px, py, x, y, hh);
         else if (ch === '.' || ch === 'S' || ch === 'B') drawDirtDecor(g, px, py, x, y, hh);

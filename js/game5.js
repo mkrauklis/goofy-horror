@@ -686,7 +686,8 @@
   // This arena's floor is dark obsidian: near-black volcanic glass, each tile a
   // slightly different cool tint (see drawObsidianSheen for the polish on top).
   const FLOOR_SHADES = ['#25222d', '#2a2634', '#2f2a3a', '#272330', '#322c40', '#2b2736'];
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length;
     return FLOOR_SHADES[idx];
@@ -2702,8 +2703,10 @@
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
-        g.fillStyle = color;
-        g.fillRect(px, py, TILE, TILE);
+        if (!(window.FloorTex && FloorTex.tile(g, color, x, y, px, py, TILE))) {
+          g.fillStyle = color;
+          g.fillRect(px, py, TILE, TILE);
+        }
         if (ch === '.' || ch === 'X' || (ch === 'D' && doorUnlocked)) drawObsidianSheen(g, x, y, px, py);
 
         if (ch === '#') {

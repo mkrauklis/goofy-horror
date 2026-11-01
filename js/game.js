@@ -475,15 +475,10 @@
   // one flat color -- stable across frames since it's a function of (x, y),
   // not random noise re-rolled every draw.
   // Floors match the opening cutscene's corridor (js/crawlerchase.js): a dark two-tone checker of bolted
-  // plates, with the odd drain grate or old stain.
-  function floorShade(x, y) {
+  // plates (js/floors.js bakes the detail on top of these two colours).
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     return (x + y) & 1 ? '#2a313c' : '#262c36';
-  }
-  function drawFloorDetail(g, x, y, px, py) {
-    const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263), k = (((h ^ (h >>> 13)) >>> 0) % 1000) / 1000;
-    g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 2; g.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2);
-    if (k > 0.9) { g.fillStyle = 'rgba(0,0,0,0.5)'; for (let b = 0; b < 5; b++) g.fillRect(px + 4 + b * 5, py + 4, 3, TILE - 8); }
-    else if (k < 0.12) { g.fillStyle = 'rgba(140,40,30,0.25)'; g.beginPath(); g.arc(px + 8 + k * 120, py + 18, 6, 0, Math.PI * 2); g.fill(); }
   }
 
   // Shifts a '#rrggbb' color toward white (amt > 0) or black (amt < 0) --
@@ -1387,11 +1382,12 @@
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#3a4552'; break;
           default: color = floorShade(x, y);
         }
-        g.fillStyle = color;
-        g.fillRect(px, py, TILE, TILE);
+        if (!(window.FloorTex && FloorTex.tile(g, color, x, y, px, py, TILE))) {
+          g.fillStyle = color;
+          g.fillRect(px, py, TILE, TILE);
+        }
 
         if (ch === '#') drawWallTile(g, x, y, px, py);
-        else if (ch !== 'V' && ch !== 'E' && (ch !== 'D' || doorUnlocked)) drawFloorDetail(g, x, y, px, py);
         if (ch === 'V') {
           g.strokeStyle = 'rgba(180,200,220,0.35)';
           g.lineWidth = 2;

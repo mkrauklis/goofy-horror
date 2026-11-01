@@ -592,7 +592,8 @@
   }
 
   const FLOOR_SHADES = ['#4c4c53', '#525258', '#58585f', '#5e5e66', '#54545c', '#605f68'];
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length;
     return FLOOR_SHADES[idx];
@@ -1854,8 +1855,10 @@
           case 'T': color = dirtShade(x, y); break;
           default: color = floorShade(x, y);
         }
-        g.fillStyle = color;
-        g.fillRect(px, py, TILE, TILE);
+        if (!(window.FloorTex && FloorTex.tile(g, color, x, y, px, py, TILE))) {
+          g.fillStyle = color;
+          g.fillRect(px, py, TILE, TILE);
+        }
 
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';

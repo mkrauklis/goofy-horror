@@ -476,7 +476,8 @@
   // one flat color -- stable across frames since it's a function of (x, y),
   // not random noise re-rolled every draw.
   const FLOOR_SHADES = ['#b4541a', '#bb5c1e', '#c26523', '#b85a1c', '#bf6221', '#c76c28'];
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length;
     return FLOOR_SHADES[idx];
@@ -1401,8 +1402,10 @@
           case 'D': color = doorUnlocked ? floorShade(x, y) : '#4a2410'; break;
           default: color = floorShade(x, y);
         }
-        g.fillStyle = color;
-        g.fillRect(px, py, TILE, TILE);
+        if (!(window.FloorTex && FloorTex.tile(g, color, x, y, px, py, TILE))) {
+          g.fillStyle = color;
+          g.fillRect(px, py, TILE, TILE);
+        }
 
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.45)';

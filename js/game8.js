@@ -476,7 +476,8 @@
   // Darker than a normal facility floor on purpose -- old, cracked
   // cobblestone reads as older and grimmer than level 1's poured concrete.
   const FLOOR_SHADES = ['#302f34', '#343338', '#38373c', '#3c3b41', '#363539', '#3a393e'];
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length;
     return FLOOR_SHADES[idx];
@@ -1428,8 +1429,10 @@
           case 'C': color = '#2a1f14'; break;
           default: color = floorShade(x, y);
         }
-        g.fillStyle = color;
-        g.fillRect(px, py, TILE, TILE);
+        if (!(window.FloorTex && FloorTex.tile(g, color, x, y, px, py, TILE))) {
+          g.fillStyle = color;
+          g.fillRect(px, py, TILE, TILE);
+        }
 
         if (ch === '#' || ch === 'Z') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';

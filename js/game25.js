@@ -398,7 +398,8 @@
   function tileCenter(tx, ty) { return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 }; }
 
   const FLOOR_SHADES = ['#3c4a30', '#425030', '#384a2c', '#405232', '#3a4a2e'];
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length;
     return FLOOR_SHADES[idx];
@@ -1543,8 +1544,8 @@
         if (ch === '#') { g.fillStyle = '#20281a'; g.fillRect(px, py, TILE, TILE); continue; }
         if (ch === 'U') { g.fillStyle = '#20281a'; g.fillRect(px, py, TILE, TILE); continue; }
         if (ch === 'N') { g.fillStyle = '#20281a'; g.fillRect(px, py, TILE, TILE); continue; }
-        g.fillStyle = floorShade(x, y);
-        g.fillRect(px, py, TILE, TILE);
+        const tc = floorShade(x, y);
+        if (!(window.FloorTex && FloorTex.tile(g, tc, x, y, px, py, TILE))) { g.fillStyle = tc; g.fillRect(px, py, TILE, TILE); }
         if (hasGrassAt(x, y)) drawGrassTuft(g, px, py, x, y, now);
       }
     }

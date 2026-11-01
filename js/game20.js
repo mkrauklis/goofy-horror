@@ -463,7 +463,8 @@
   // its coordinates, so the flooded floor reads as moving, uneven water
   // instead of one flat color -- teal to match the boss itself.
   const WATER_SHADES = ['#0f4a46', '#115450', '#0c3e3a', '#135a54', '#0a3632', '#105048'];
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % WATER_SHADES.length;
     return WATER_SHADES[idx];
@@ -1572,8 +1573,8 @@
       for (let x = 0; x < COLS; x++) {
         const ch = LEVEL.grid[y][x];
         const px = x * TILE, py = y * TILE;
-        g.fillStyle = ch === '#' ? '#1a2226' : floorShade(x, y);
-        g.fillRect(px, py, TILE, TILE);
+        const tc = ch === '#' ? '#1a2226' : floorShade(x, y);
+        if (!(window.FloorTex && FloorTex.tile(g, tc, x, y, px, py, TILE))) { g.fillStyle = tc; g.fillRect(px, py, TILE, TILE); }
 
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';

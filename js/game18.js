@@ -473,7 +473,8 @@
   // instead of one flat color -- a clear blue, unlike the sickly greens
   // of the other two flood levels.
   const WATER_SHADES = ['#143c5c', '#184468', '#123354', '#1a4a70', '#0f3050', '#164060'];
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % WATER_SHADES.length;
     return WATER_SHADES[idx];
@@ -1847,8 +1848,10 @@
           case 'W': color = doorUnlocked ? floorShade(x, y) : '#1e3a50'; break;
           default: color = floorShade(x, y);
         }
-        g.fillStyle = color;
-        g.fillRect(px, py, TILE, TILE);
+        if (!(window.FloorTex && FloorTex.tile(g, color, x, y, px, py, TILE))) {
+          g.fillStyle = color;
+          g.fillRect(px, py, TILE, TILE);
+        }
 
         if (ch === '#') {
           g.strokeStyle = 'rgba(0,0,0,0.4)';

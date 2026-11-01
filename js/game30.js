@@ -450,7 +450,8 @@
   // (no grass, no windows) so the only real color on the pad is the
   // painted perimeter stripe and the big "H".
   const PAD_SHADES = ['#3a3a3e', '#404044', '#363638', '#3e3e42', '#383840'];
-  function padShade(x, y) {
+  function padShade(x, y) { const c = padShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function padShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % PAD_SHADES.length;
     return PAD_SHADES[idx];
@@ -1326,8 +1327,8 @@
         const ch = LEVEL.grid[y][x];
         const px = x * TILE, py = y * TILE;
         if (ch === '#') { drawVoidTile(g, px, py, x, y); continue; }
-        g.fillStyle = padShade(x, y);
-        g.fillRect(px, py, TILE, TILE);
+        const tc = padShade(x, y);
+        if (!(window.FloorTex && FloorTex.tile(g, tc, x, y, px, py, TILE))) { g.fillStyle = tc; g.fillRect(px, py, TILE, TILE); }
       }
     }
     // painted perimeter stripe, yellow/black chevrons just inside the edge

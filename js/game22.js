@@ -482,7 +482,8 @@
   // one flat color -- stable across frames since it's a function of (x, y),
   // not random noise re-rolled every draw.
   const FLOOR_SHADES = ['#4c4c53', '#525258', '#58585f', '#5e5e66', '#54545c', '#605f68'];
-  function floorShade(x, y) {
+  function floorShade(x, y) { const c = floorShade0(x, y); if (window.FloorTex) FloorTex.mark(c); return c; }
+  function floorShade0(x, y) {
     const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
     const idx = ((h ^ (h >>> 13)) >>> 0) % FLOOR_SHADES.length;
     return FLOOR_SHADES[idx];
@@ -1643,8 +1644,10 @@
           default: break; // plain floor ('.'/'G') -- mossed over or intact, decided below
         }
         if (color !== null) {
-          g.fillStyle = color;
-          g.fillRect(px, py, TILE, TILE);
+          if (!(window.FloorTex && FloorTex.tile(g, color, x, y, px, py, TILE))) {
+            g.fillStyle = color;
+            g.fillRect(px, py, TILE, TILE);
+          }
         } else if (isMossTile(x, y)) {
           drawMossPatch(g, px, py, x, y);
         } else {
