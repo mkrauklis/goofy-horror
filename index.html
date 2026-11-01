@@ -422,6 +422,16 @@
         of its back.</p>
       <p class="lock-note"></p>
     </a>
+    <a class="menu-item panel" href="season2level2.html" data-season2="2">
+      <h2>Story 2 &mdash; Level 2: The Hollow Reach <span class="best-time" data-level="season2-level2"></span></h2>
+      <p>The same overgrown facility, turned around &mdash; now with thick 2&times;2
+        bushes you can hide in. Something pale and stick-thin, with harvestman
+        legs and a mouth where its eye should be, is roaming it, and it can't
+        see into the bushes. Find the wheel room, crank the wheel with SPACE
+        (8 presses a second, for 10 seconds) and the exit door will slowly
+        open.</p>
+      <p class="lock-note"></p>
+    </a>
   </div>
   </section>
   <section class="achievements" data-view="achievements" hidden>
@@ -520,6 +530,16 @@
       if (note) {
         note.textContent = !unlocked ? `Locked — finish Level ${n - 1} first` : completed ? 'Completed' : '';
       }
+    });
+
+    document.querySelectorAll('.menu-item[data-season2]').forEach((card) => {
+      const n = parseInt(card.dataset.season2, 10);
+      const unlocked = story.isSeason2Unlocked(n);
+      const completed = story.isSeason2Completed(n);
+      card.classList.toggle('locked', !unlocked);
+      card.classList.toggle('story-done', completed);
+      const note = card.querySelector('.lock-note');
+      if (note) note.textContent = !unlocked ? `Locked — finish Story 2, Level ${n - 1} first` : completed ? 'Completed' : '';
     });
 
     document.querySelectorAll('.menu-item[data-halloween]').forEach((card) => {
