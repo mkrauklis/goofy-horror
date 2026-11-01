@@ -19,6 +19,7 @@
   const PIECES = 5;
   const ANGEL_GRACE_MS = 7000;
   const CATCH_DIST = 30;
+  const SAFE_N = 3;                                  // the sanctuary is SAFE_N x SAFE_N tiles, in the top-left corner
   const FADE_IN_MS = 2200, CAUGHT_MS = 1500, WHITE_MS = 2600, END_MS = 1500;
 
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -62,8 +63,15 @@
         if (a && rnd() < 0.13) grid[idx(x, y)] = 0;
       }
     }
+    // the sanctuary: a 3x3 open room at the start, with two separate doors out of it (east and south).
+    // Every cell is already joined to the rest of the maze, so opening both doors makes a loop: two ways to go.
+    for (let y = 1; y <= SAFE_N; y++) for (let x = 1; x <= SAFE_N; x++) grid[idx(x, y)] = 0;
+    grid[idx(SAFE_N + 1, 1)] = 0;
+    grid[idx(1, SAFE_N + 1)] = 0;
   })();
-  const START = { tx: 1, ty: 1 };
+  const START = { tx: 2, ty: 2 };                    // the middle of the sanctuary
+  const inSafeTile = (tx, ty) => tx >= 1 && ty >= 1 && tx <= SAFE_N && ty <= SAFE_N;
+  const inSafe = (o) => inSafeTile(Math.floor(o.x / T), Math.floor(o.y / T));
   const EXIT = { tx: GW - 2, ty: GH - 2 };
   const gate = { tx: GW - 2, ty: GH - 1, open: 0, opening: false };   // open: 0..1
 
@@ -80,7 +88,7 @@
     const q = [[tx, ty]]; f[idx(tx, ty)] = 0;
     for (let i = 0; i < q.length; i++) {
       const [x, y] = q[i];
-      neighbours(x, y).forEach(([nx, ny]) => { if (f[idx(nx, ny)] < 0) { f[idx(nx, ny)] = f[idx(x, y)] + 1; q.push([nx, ny]); } });
+      neighbours(x, y).forEach(([nx, ny]) => { if (f[idx(nx, ny)] < 0 && !inSafeTile(nx, ny)) { f[idx(nx, ny)] = f[idx(x, y)] + 1; q.push([nx, ny]); } });
     }
     return f;
   }
@@ -132,13 +140,23 @@
     const g = world.getContext('2d');
     for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
       if (grid[idx(tx, ty)] === 0) {
-        g.fillStyle = (tx + ty) & 1 ? '#f8eecf' : '#efe2b8';
+        g.fillStyle = inSafeTile(tx, ty) ? ((tx + ty) & 1 ? '#fffdf0' : '#fff4cf') : (tx + ty) & 1 ? '#f8eecf' : '#efe2b8';
         g.fillRect(tx * T, ty * T, T, T);
         g.strokeStyle = 'rgba(190,160,90,0.25)'; g.lineWidth = 1; g.strokeRect(tx * T + 0.5, ty * T + 0.5, T - 1, T - 1);
         g.fillStyle = 'rgba(255,255,255,0.35)';
         g.fillRect(tx * T + 4, ty * T + 4, T - 8, 3);
       }
     }
+    // the sanctuary: a gold ring and a soft glow on its floor, and a bright line across each of its two doors
+    const sc = (1 + SAFE_N / 2) * T, sg = g.createRadialGradient(sc, sc, 4, sc, sc, SAFE_N * T * 0.75);
+    sg.addColorStop(0, 'rgba(255,240,170,0.75)'); sg.addColorStop(1, 'rgba(255,240,170,0)');
+    g.fillStyle = sg; g.fillRect(T, T, SAFE_N * T, SAFE_N * T);
+    g.strokeStyle = 'rgba(214,169,58,0.8)'; g.lineWidth = 3;
+    g.beginPath(); g.arc(sc, sc, T * 0.9, 0, 6.283); g.stroke();
+    g.lineWidth = 1.5; g.beginPath(); g.arc(sc, sc, T * 0.7, 0, 6.283); g.stroke();
+    g.beginPath(); g.moveTo(sc, sc - T * 0.9); g.lineTo(sc, sc + T * 0.9); g.moveTo(sc - T * 0.9, sc); g.lineTo(sc + T * 0.9, sc); g.stroke();
+    g.fillStyle = 'rgba(255,230,140,0.9)';
+    g.fillRect((SAFE_N + 1) * T - 3, T, 4, T); g.fillRect(T, (SAFE_N + 1) * T - 3, T, 4);
     for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
       if (grid[idx(tx, ty)] !== 1) continue;
       const cx = tx * T + T / 2, cy = ty * T + T / 2;
@@ -307,7 +325,8 @@
     pickDir(now);
     const speed = Math.min(112, 58 + 11 * gotCount);
     let near = players[0], nd = Infinity;
-    players.forEach((p) => { const d = Math.hypot(p.x - angel.x, p.y - angel.y); if (d < nd) { nd = d; near = p; } });
+    const exposed = players.filter((p) => !inSafe(p));
+    (exposed.length ? exposed : players).forEach((p) => { const d = Math.hypot(p.x - angel.x, p.y - angel.y); if (d < nd) { nd = d; near = p; } });
     angel.gaze = { gx: clamp(Math.round((near.x - angel.x) / 120), -1, 1), gy: clamp(Math.round((near.y - angel.y) / 90), -1, 1) };
 
     let tx, ty;
@@ -327,7 +346,9 @@
       if (angel.next) { tx = angel.next[0] * T + T / 2; ty = angel.next[1] * T + T / 2; } else return;
     }
     const dx = tx - angel.x, dy = ty - angel.y, d = Math.hypot(dx, dy) || 1, step = Math.min(d, speed * dt);
-    angel.x += (dx / d) * step; angel.y += (dy / d) * step;
+    const nx = angel.x + (dx / d) * step, ny = angel.y + (dy / d) * step;
+    if (inSafeTile(Math.floor((nx + Math.sign(dx) * 16) / T), Math.floor((ny + Math.sign(dy) * 16) / T))) { angel.next = null; return; }   // its light stops at the sanctuary's doors
+    angel.x = nx; angel.y = ny;
   }
 
   function update(now, dt) {
@@ -373,7 +394,7 @@
       players.forEach((p, i) => {
         const d = Math.hypot(p.x - angel.x, p.y - angel.y);
         nd = Math.min(nd, d);
-        if (sinceStart >= ANGEL_GRACE_MS && d < CATCH_DIST && phase === 'play') { caught = i; phase = 'caught'; phaseAt = now; shriek(); }
+        if (sinceStart >= ANGEL_GRACE_MS && d < CATCH_DIST && phase === 'play' && !inSafe(p)) { caught = i; phase = 'caught'; phaseAt = now; shriek(); }
         if (gate.open >= 1 && phase === 'play' && Math.floor(p.x / T) === gate.tx && Math.floor(p.y / T) === gate.ty) {
           phase = 'white'; phaseAt = now; chime(1047, 0, 0.3, 3.5); chime(1568, 0.2, 0.2, 3.5);
         }
@@ -535,7 +556,7 @@
       if (since < FADE_IN_MS) { ctx.fillStyle = `rgba(255,255,255,${1 - since / FADE_IN_MS})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
 
       if (phase === 'play') {
-        if (since > 1800 && since < 9500) text('Find the five pieces of the book. The gate will open when it is whole.', canvas.height - 16, clamp(Math.min((since - 1800) / 600, (9500 - since) / 800), 0, 1), 15);
+        if (since > 1800 && since < 9500) text('Find the five pieces of the book. It cannot follow you into the sanctuary.', canvas.height - 16, clamp(Math.min((since - 1800) / 600, (9500 - since) / 800), 0, 1), 15);
         const ta = now - toastAt;
         if (ta < 3200) text(toast, 34, clamp(Math.min(ta / 300, (3200 - ta) / 600), 0, 1), 20);
       }
