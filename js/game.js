@@ -436,6 +436,10 @@
       keys[e.key] = true;
       e.preventDefault();
     }
+    if ((e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') && gameState === 'intro') {
+      introSkipAt = performance.now();
+      e.preventDefault();
+    }
     if (e.key === 'Enter' && gameState === 'complete') {
       resetLevel();
       gameState = 'playing';
@@ -523,7 +527,8 @@
   // ---- game state ----
   let buttonsPressed = [false, false, false];
   let doorUnlocked = false;
-  let gameState = 'playing'; // 'playing' | 'complete'
+  let gameState = 'intro'; // 'intro' (the opening film) | 'playing' | 'complete'
+  let introStartedAt = null, introPrevT = 0, introSkipAt = 0;
   let catchFlash = 0;
 
   // ---- timer / best time (best is kept per-browser in localStorage, not
@@ -2074,6 +2079,16 @@
     const dt = lastFrameTime === null ? 1 / 60 : Math.min((now - lastFrameTime) / 1000, 0.05);
     lastFrameTime = now;
 
+    if (gameState === 'intro') {
+      const CC = window.CrawlerChase;
+      if (introStartedAt === null) introStartedAt = now;
+      const t = now - introStartedAt;
+      if (CC) CC.tick(audioCtx, introPrevT, t);
+      introPrevT = t;
+      if (!CC || t >= CC.duration() || CC.skipRequested(introStartedAt, introSkipAt)) {
+        gameState = 'playing'; runStartTime = now; elapsedMs = 0;
+      }
+    }
     if (gameState === 'playing') {
       elapsedMs = now - runStartTime;
       updateInputMovement(now, dt);
@@ -2093,10 +2108,14 @@
     updateFloatingTexts(dt);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    renderViewport(0, now);
-    if (PLAYER_MODE === 2) {
-      renderViewport(1, now);
-      drawDivider();
+    if (gameState === 'intro' && window.CrawlerChase) {
+      window.CrawlerChase.draw(ctx, canvas.width, canvas.height, now - introStartedAt);
+    } else {
+      renderViewport(0, now);
+      if (PLAYER_MODE === 2) {
+        renderViewport(1, now);
+        drawDivider();
+      }
     }
 
     if (catchFlash > 0) {
