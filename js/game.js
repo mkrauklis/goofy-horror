@@ -1332,6 +1332,38 @@
     return { x0, y0, x1, y1 };
   })();
 
+  // Walls dressed like the corridor in the opening cutscene (js/crawlerchase.js): dark bolted panels, a pair
+  // of pipes running along them, hazard stripes where a wall meets the floor, and now and then a shut blast
+  // door with a blinking red light or a yellow warning plate.
+  const isOpenTile = (x, y) => y >= 0 && y < ROWS && x >= 0 && x < COLS && LEVEL.grid[y][x] !== '#';
+  function drawWallTile(g, x, y, px, py) {
+    const h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263), r = (((h ^ (h >>> 13)) >>> 0) % 1000) / 1000;
+    g.fillStyle = '#222833'; g.fillRect(px + 1, py + 1, TILE - 2, TILE - 2);
+    g.strokeStyle = '#0d1015'; g.lineWidth = 2; g.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2);
+    g.fillStyle = '#2d3441'; [[4, 4], [TILE - 4, 4], [4, TILE - 4], [TILE - 4, TILE - 4]].forEach(([bx, by]) => g.fillRect(px + bx - 1, py + by - 1, 2, 2));
+    g.fillStyle = '#33505c'; g.fillRect(px, py + 7, TILE, 3);                                  // pipes, continuous from tile to tile
+    g.fillStyle = '#6a4a38'; g.fillRect(px, py + 21, TILE, 2);
+    if (r > 0.9) {                                                                            // a shut blast door
+      g.fillStyle = '#3a414d'; g.fillRect(px + 6, py + 12, TILE - 12, TILE - 14);
+      g.fillStyle = `rgba(255,50,40,${0.5 + 0.5 * Math.sin(performance.now() * 0.005 + x * 3 + y)})`;
+      g.beginPath(); g.arc(px + TILE / 2, py + 17, 2.2, 0, Math.PI * 2); g.fill();
+    } else if (r < 0.07) {                                                                    // a warning plate
+      g.fillStyle = '#d6b52a'; g.fillRect(px + 9, py + 11, TILE - 18, 11);
+      g.save(); g.fillStyle = '#17191d'; g.font = 'bold 10px sans-serif'; g.textAlign = 'center'; g.fillText('!', px + TILE / 2, py + 20); g.restore();
+    }
+    const stripe = (sx, sy, sw, sh) => {                                                      // hazard stripes along an edge that faces the floor
+      g.save(); g.beginPath(); g.rect(sx, sy, sw, sh); g.clip();
+      g.fillStyle = '#c9a21f'; g.fillRect(sx, sy, sw, sh);
+      g.fillStyle = '#17191d';
+      for (let k = -sh; k < Math.max(sw, sh) + sh; k += 8) { g.beginPath(); g.moveTo(sx + k, sy + sh); g.lineTo(sx + k + 4, sy + sh); g.lineTo(sx + k + 4 + sh, sy); g.lineTo(sx + k + sh, sy); g.closePath(); g.fill(); }
+      g.restore();
+    };
+    if (isOpenTile(x, y + 1)) stripe(px, py + TILE - 5, TILE, 5);
+    if (isOpenTile(x, y - 1)) stripe(px, py, TILE, 5);
+    if (isOpenTile(x - 1, y)) stripe(px, py, 4, TILE);
+    if (isOpenTile(x + 1, y)) stripe(px + TILE - 4, py, 4, TILE);
+  }
+
   function drawTiles(g, camX, camY) {
     const minTX = Math.max(0, Math.floor((camX - VIEW_W / 2) / TILE) - 1);
     const maxTX = Math.min(COLS - 1, Math.ceil((camX + VIEW_W / 2) / TILE) + 1);
@@ -1353,10 +1385,7 @@
         g.fillStyle = color;
         g.fillRect(px, py, TILE, TILE);
 
-        if (ch === '#') {
-          g.strokeStyle = 'rgba(0,0,0,0.4)';
-          g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
-        }
+        if (ch === '#') drawWallTile(g, x, y, px, py);
         if (ch === 'V') {
           g.strokeStyle = 'rgba(180,200,220,0.35)';
           g.lineWidth = 2;
