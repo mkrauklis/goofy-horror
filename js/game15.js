@@ -27,7 +27,7 @@
   const VIEW_H = 340;
   // Solo play is down a player, so every hit on the boss counts for more --
   // 1.5x damage in 1-player mode, nowhere else.
-  const SOLO_DAMAGE_MULT = PLAYER_MODE === 1 ? 1.5 : 1;
+  const SOLO_DAMAGE_MULT = (PLAYER_MODE === 1 ? 1.5 : 1) * 10; // x10: player damage boost
   // Chosen so the WHOLE arena fits on screen at once in phase 1 --
   // VISIBLE_HALF_W/H both end up bigger than half the arena, so the
   // clamp() in renderViewport's camera math collapses to a fixed center

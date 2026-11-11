@@ -27,7 +27,7 @@
   const VIEW_H = 340;
   // Solo play is down a player, so every hit on the boss counts for more --
   // 1.5x damage in 1-player mode, nowhere else.
-  const SOLO_DAMAGE_MULT = PLAYER_MODE === 1 ? 1.5 : 1;
+  const SOLO_DAMAGE_MULT = (PLAYER_MODE === 1 ? 1.5 : 1) * 10; // x10: player damage boost
   // The arena is huge and the boss is the whole point of the level, so the
   // camera sits noticeably further back than the other levels' 1:1 view --
   // enough to see the boss's full patrol loop at once instead of just

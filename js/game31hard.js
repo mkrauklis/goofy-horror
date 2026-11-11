@@ -129,7 +129,7 @@
   const MAX_MISSILES_ON_FIELD = 3;
   const MISSILE_PICKUP_RADIUS = 20;
   const MISSILE_SPEED = HM.proj(PLAYER_SPEED * 5);
-  const MISSILE_DAMAGE = 50;
+  const MISSILE_DAMAGE = 50 * 10; // x10: player damage boost
   const MISSILE_HIT_RADIUS = BOSS_RADIUS * 0.6;
 
   // Death: it falls forward onto whoever's nearest and drags them down

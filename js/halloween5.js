@@ -22,7 +22,7 @@
   const PLAYER_MODE = (window.GoofyStory && window.GoofyStory.getPlayerMode()) || 2;
   const VIEW_W = PLAYER_MODE === 1 ? 920 : 460;
   const VIEW_H = 460;
-  const SOLO_DAMAGE_MULT = PLAYER_MODE === 1 ? 1.5 : 1;
+  const SOLO_DAMAGE_MULT = (PLAYER_MODE === 1 ? 1.5 : 1) * 10; // x10: player damage boost
 
   // Same trick every boss level uses: ZOOM is picked so the visible half
   // width/height both exceed half the arena's own size, so the camera
@@ -842,7 +842,7 @@
         boss.chunks.push({ ang, size: 0.85 + Math.random() * 0.35 });
         spawnEmberBurst(boss.x + Math.cos(ang) * boss.radius, boss.y + Math.sin(ang) * boss.radius, 14, 220);
         playHitSound();
-        applyBossDamage(HIT_DAMAGE, now);
+        applyBossDamage(HIT_DAMAGE * 10, now);
       }
     });
   }

@@ -57,7 +57,7 @@
   // missiles do half of that (12.5), so the pair of you still do the same
   // damage per volley.
   const BOSS_MAX_HEALTH = HM.bossHp(500);
-  const MISSILE_DAMAGE = PLAYER_MODE === 1 ? 25 : 12.5;
+  const MISSILE_DAMAGE = (PLAYER_MODE === 1 ? 25 : 12.5) * 10; // x10: player damage boost
   const MISSILE_SPEED = HM.proj(PLAYER_SPEED * 5);
   const MISSILE_TURN = 6.5;
   const MISSILE_COOLDOWN_MS = 1100;
